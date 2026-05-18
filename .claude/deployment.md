@@ -56,8 +56,25 @@ Rudimentary Phase-0 scaffold; run with `.venv\Scripts\pytest`:
 `seed_dev.py` exposes a build-only `populate()` (assumes a connected DB; does
 NOT init/close) so the suite and the "seed dev data" launch share one code
 path; the script's `main()` (init → schema → populate → close → print) is
-unchanged. Phase-1+ functional tests (attendance table, identity resolution,
-presence machine, …) build on this scaffold.
+unchanged.
+
+**Phase-1 tests added** (pure/offline — no network: Mojang is an injected
+stub, the WAPI profile fetch is monkeypatched): `test_attendance` (table
+first-match + notice precedence), `test_membership` (case-sensitive ally +
+priority), `test_capability` (Core/Fill + the empty-catalog → UNVERIFIED
+degrade), `test_identity` (roster→alias→Mojang order, api-disabled sentinel),
+`test_presence` (status mapping + bar-flash thresholds), `test_colourblind`
+(constants carry glyph/label/pattern; CSS swaps all 7 hues under `body.cb`),
+`test_auth_flow` (IGN login w/ + w/o password, sticky password, staff
+reset/rotate fail-closed), `test_dashboard_smoke` (logged-in `/me` +
+fragments render — catches Jinja/context regressions). `pip install -e .[dev]`
+again after pulling Phase 1 (the `passlib[bcrypt]` extra was dropped — see
+below). Phase-2 adds the presence-machine full sweep + board/WS tests.
+
+Passwords use passlib **pbkdf2_sha256** (built-in, no native dep): passlib
+1.7.x's bcrypt backend throws on bcrypt≥4's version self-test, and pbkdf2
+also avoids bcrypt's 72-byte input cap. The dependency is plain `passlib`
+(no `[bcrypt]` extra) in `pyproject.toml` and `docker/Dockerfile`.
 
 ## VS Code Run & Debug (Ctrl+Shift+D)
 

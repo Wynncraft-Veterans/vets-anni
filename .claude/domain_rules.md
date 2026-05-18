@@ -54,9 +54,16 @@ primary and a separate 3 for secondary is fine. Modelled as N
 
 ## Attendance likelihood (`domain/attendance.py`)
 `ATTENDANCE_TABLE` is the published priority table as ordered rules
-(membership-set × Core/Fill × notice → `Likelihood`). First match wins;
-`LIKELIHOOD_META` gives the bar % + label. `AttendanceNotice` precedence:
-`ATTEND_EARLY` > `RSVP_HARD` > `RSVP_SOFT` > `ATTEND_LATE`. Only
+(membership × Core/Fill × notice → an **exact `pct`**). First match wins; an
+N/A cell has no row, so `evaluate()` → `None`. The raw percentage is
+**internal and never shown to users** (an exact number invites
+rules-lawyering): `meta()` collapses it via `LIKELIHOOD_BANDS` into one
+visible band (1..6) — `Most Unlikely`…`Most Likely`. An off-table/N/A cell is
+treated as 0% → still `Most Unlikely` (there is **no** separate "not
+prioritised" level). The dashboard bar's fill width + colour are derived from
+the *band*, not the percent, so the number isn't recoverable from the UI.
+`AttendanceNotice`
+precedence: `ATTEND_EARLY` > `RSVP_HARD` > `RSVP_SOFT` > `ATTEND_LATE`. Only
 `RSVP_HARD`/`RSVP_SOFT` are stored (on `Rsvp.notice`); `ATTEND_EARLY`/
 `ATTEND_LATE` are derived.
 
@@ -65,6 +72,14 @@ countdown**: if `anni − now ≥ EARLY_NOTICE_CUTOFF_SECONDS` (60 min) → trea
 `ATTEND_EARLY`, else `ATTEND_LATE`. The dashboard frames it conditionally
 ("assuming you log on now, you'd be EARLY/LATE → likelihood X").
 Board members always have a real notice.
+
+The projection only applies to `_PROJECTABLE_TIERS` (the Vets tiers — the ones
+with an Early/Late cell; derived from the table so it can't drift). For
+Community/Ally/Other, Early/Late are an *impossible* state — we can't track a
+guildless/ally/other player without an RSVP. So the projection never overrides
+or manufactures a notice for them: `effective_notice` returns `None` for a
+non-trackable tier with no RSVP, so such a user falls to the lowest band
+(`Most Unlikely`) until they RSVP (they have no "just show up" option).
 
 ## Presence state machine (`domain/presence.py`)
 Inputs: online-merge membership, assigned `Party.world` vs current server,

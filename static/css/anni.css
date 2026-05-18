@@ -249,9 +249,10 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .level-word { font-weight:700; }
 
 /* Attendance likelihood meter. The whole bar gets a LIGHT tint of the
-   value's colour (worst->best red<orange<yellow<green<blue) with DARK
-   same-hue text so it's always legible (e.g. dark-red on light-red at 0%).
-   The % + label are always shown, so colour is never the only signal. */
+   band's colour (worst->best red<orange<yellow<green<blue) with DARK
+   same-hue text so it's always legible (e.g. dark-red on light-red).
+   The band LABEL is always shown (never the %), so colour is never the
+   only signal. */
 .likelihood { display:flex; align-items:center; gap:.6rem;
   background:#f1f5f9; color:#0f172a; }
 .likelihood-track {

@@ -187,6 +187,11 @@ _GEN_NOTICE_PHRASE = {
     AttendanceNotice.ATTEND_LATE: "you'd log on late (no RSVP, under an hour's notice)",
 }
 
+#: No effective notice at all: a non-trackable tier (Community/Ally/Other)
+#: with no RSVP. They have no "just show up" option — ``effective_notice``
+#: returns ``None`` and the table cannot prioritise them until they RSVP.
+_NO_NOTICE_PHRASE = "you haven't RSVP'd (community attendance can't be tracked unless you do)"
+
 
 async def build_dashboard(request: Request, player) -> dict:
     """Full ``/me`` context (General + Specific)."""
@@ -212,20 +217,22 @@ async def build_dashboard(request: Request, player) -> dict:
         event.stamp_epoch - now if event and event.stamp_epoch > now else None
     )
     stored: AttendanceNotice | None = rsvp.notice if rsvp else None
-    notice = attendance.effective_notice(stored, seconds)
-    likelihood = attendance.evaluate(
+    notice = attendance.effective_notice(
+        stored, seconds, tier=player.membership_tier
+    )
+    pct = attendance.evaluate(
         player.membership_tier, core=is_core, notice=notice
     )
-    pct, like_label = attendance.meta(likelihood)
+    band, like_label = attendance.meta(pct)
 
     desynced = bool(
         player.wynn_username and player.wynn_username != player.mc_username
     )
     specific = _build_specific(player, event, rsvp, placement, st)
     logger.debug(
-        "dashboard %s: tier=%s %s caps=%d like=%s%% event=%s%s",
+        "dashboard %s: tier=%s %s caps=%d like=%s event=%s%s",
         player.mc_username, player.membership_tier.value,
-        "Core" if is_core else "Fill", len(cap_rows), pct,
+        "Core" if is_core else "Fill", len(cap_rows), like_label,
         event is not None,
         f" presence={specific['presence'].status.value}" if specific else "",
     )
@@ -247,9 +254,9 @@ async def build_dashboard(request: Request, player) -> dict:
         "is_core": is_core,
         "fill_warning": None if is_core else capability.FILL_WARNING,
         "attendance": {
-            "pct": pct,
+            "band": band,
             "label": like_label,
-            "notice_phrase": _GEN_NOTICE_PHRASE.get(notice, notice.value),
+            "notice_phrase": _GEN_NOTICE_PHRASE.get(notice, _NO_NOTICE_PHRASE),
         },
         "capabilities": cap_rows,
         "specific": specific,

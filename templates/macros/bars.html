@@ -9,21 +9,23 @@
   </p>
 {% endmacro %}
 
-{# Attendance-likelihood meter: a labelled progress bar (width = %, but the
-   number + label are always shown so it never depends on the bar visual). #}
-{% macro likelihood(pct, label) %}
-  {# Colour tracks the value, worst->best: red < orange < yellow < green <
+{# Attendance-likelihood meter: a labelled bar. The user only ever sees the
+   band LABEL — never the underlying probability (spec). The fill width and
+   colour are derived from the band (1..6, worst -> best), so the exact
+   percentage is not recoverable from the rendered UI either. #}
+{% macro likelihood(band, label) %}
+  {# Colour tracks the band, worst->best: red < orange < yellow < green <
      blue. Light tinted background + dark same-hue text (always legible); the
-     number + label are always shown so colour is never the only signal. #}
-  {% set lvl = "lk-red" if pct < 15
-               else ("lk-orange" if pct < 35
-               else ("lk-yellow" if pct < 55
-               else ("lk-green" if pct < 75 else "lk-blue"))) %}
+     label is always shown so colour is never the only signal. Index 0 is an
+     unused placeholder so `band` (1..6) indexes directly. #}
+  {% set lvl = ["lk-red", "lk-red", "lk-orange", "lk-yellow",
+                "lk-green", "lk-blue", "lk-blue"][band] %}
+  {% set fill = band * 100 // 6 %}
   <div class="bar likelihood {{ lvl }}" role="img"
-       aria-label="Attendance likelihood: {{ label }} ({{ pct }}%)">
+       aria-label="Attendance likelihood: {{ label }}">
     <div class="likelihood-track">
-      <div class="likelihood-fill" style="width: {{ pct }}%"></div>
+      <div class="likelihood-fill" style="width: {{ fill }}%"></div>
     </div>
-    <span class="likelihood-label">{{ label }} · {{ pct }}%</span>
+    <span class="likelihood-label">{{ label }}</span>
   </div>
 {% endmacro %}

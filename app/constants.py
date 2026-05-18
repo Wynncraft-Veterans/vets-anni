@@ -297,72 +297,92 @@ STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
 # ---------------------------------------------------------------------------
 # Attendance likelihood (the bottom bar on the dashboard)
 # ---------------------------------------------------------------------------
-class Likelihood(StrEnum):
-    VIRTUALLY_GUARANTEED = "virtually_guaranteed"
-    MORE_OFTEN_THAN_NOT = "more_often_than_not"
-    FREQUENTLY = "frequently"
-    OFTEN = "often"
-    SOMETIMES = "sometimes"
-    RARELY = "rarely"
-    UNLIKELY = "unlikely"
-
-
-#: Bar fill percentage + human label per likelihood (best -> worst).
-LIKELIHOOD_META: dict[Likelihood, tuple[int, str]] = {
-    Likelihood.VIRTUALLY_GUARANTEED: (95, "Virtually guaranteed"),
-    Likelihood.MORE_OFTEN_THAN_NOT: (75, "More often than not"),
-    Likelihood.FREQUENTLY: (60, "Frequently"),
-    Likelihood.OFTEN: (45, "Often"),
-    Likelihood.SOMETIMES: (25, "Sometimes"),
-    Likelihood.RARELY: (10, "Rarely"),
-    Likelihood.UNLIKELY: (3, "Unlikely"),
-}
+# The published table maps (membership, Core/Fill, notice) to an *exact
+# percentage*. Users must never see that number (spec: an exact probability
+# invites rules-lawyering) — ``app.domain.attendance.meta`` collapses it into
+# one of the visible bands below and only the band LABEL is ever rendered.
+#
+# Banding (the published "Visible Sort Orders"): a percentage maps to the
+# FIRST band whose exclusive upper bound it is below. Band index is 1..6
+# (worst -> best). An off-table cell (an N/A cell, or a non-trackable tier
+# with no RSVP) is treated as 0% — i.e. still "Most Unlikely"; there is no
+# distinct "not prioritised" level.
+LIKELIHOOD_BANDS: tuple[tuple[int, str], ...] = (
+    (1,   "Most Unlikely"),    # < 1%
+    (20,  "Very Unlikely"),    # < 20%
+    (40,  "Unlikely"),         # < 40%
+    (60,  "Likely"),           # < 60%
+    (80,  "Very Likely"),      # < 80%
+    (100, "Most Likely"),      # < 100%
+)
 
 
 @dataclass(frozen=True)
 class AttendanceRule:
     """One row of the wynnvets.org attendance-priority table. ``memberships``
-    is the set this row applies to; ``core`` None = applies to both Core and
-    Fill. Rules are evaluated top-to-bottom; first match wins (see
-    ``app.domain.attendance``)."""
+    is the tier(s) this row applies to; ``core`` True=Non-Fill, False=Fill,
+    None=either. ``pct`` is the raw attendance probability for this cell —
+    internal only, never shown to the user (see ``LIKELIHOOD_BANDS``). Rules
+    are evaluated top-to-bottom, first match wins (see
+    ``app.domain.attendance``); an N/A cell is simply absent (no rule)."""
 
     memberships: frozenset[MembershipTier]
     core: bool | None          # True=Non-Fill only, False=Fill only, None=either
     notice: AttendanceNotice
-    likelihood: Likelihood
+    pct: int                   # raw probability for this cell (0-100); never shown
 
 
-_GUILD_WL = frozenset({MembershipTier.MEMBER, MembershipTier.WAITLIST,
-                       MembershipTier.HONOURARY})
 _MEMBER = frozenset({MembershipTier.MEMBER})
+_WAITLIST = frozenset({MembershipTier.WAITLIST})
+_HONOURARY = frozenset({MembershipTier.HONOURARY})
 _COMMUNITY = frozenset({MembershipTier.COMMUNITY})
 _ALLY = frozenset({MembershipTier.ALLY})
 _OTHER = frozenset({MembershipTier.OTHER})
 
-#: Ordered exactly as the published table (top = highest priority).
+_E = AttendanceNotice.ATTEND_EARLY   # ">1hr Early" column
+_H = AttendanceNotice.RSVP_HARD      # "Hard RSVP" column
+_S = AttendanceNotice.RSVP_SOFT      # "Soft RSVP" column
+_L = AttendanceNotice.ATTEND_LATE    # "Late" column
+
+#: Ordered exactly as the published table (top = highest priority). N/A cells
+#: (Community/Ally/Other × Early/Late) have no row — evaluate() returns None.
 ATTENDANCE_TABLE: tuple[AttendanceRule, ...] = (
-    AttendanceRule(_MEMBER, None, AttendanceNotice.ATTEND_EARLY,
-                   Likelihood.VIRTUALLY_GUARANTEED),
-    AttendanceRule(_GUILD_WL, True, AttendanceNotice.RSVP_HARD,
-                   Likelihood.VIRTUALLY_GUARANTEED),
-    AttendanceRule(_GUILD_WL, False, AttendanceNotice.RSVP_HARD,
-                   Likelihood.MORE_OFTEN_THAN_NOT),
-    AttendanceRule(_GUILD_WL, True, AttendanceNotice.RSVP_SOFT,
-                   Likelihood.MORE_OFTEN_THAN_NOT),
-    AttendanceRule(_GUILD_WL, False, AttendanceNotice.RSVP_SOFT,
-                   Likelihood.FREQUENTLY),
-    AttendanceRule(_COMMUNITY, True, AttendanceNotice.RSVP_HARD,
-                   Likelihood.FREQUENTLY),
-    AttendanceRule(_COMMUNITY, False, AttendanceNotice.RSVP_HARD,
-                   Likelihood.OFTEN),
-    AttendanceRule(_COMMUNITY, True, AttendanceNotice.RSVP_SOFT,
-                   Likelihood.OFTEN),
-    AttendanceRule(_ALLY, True, AttendanceNotice.RSVP_HARD, Likelihood.OFTEN),
-    AttendanceRule(_ALLY, True, AttendanceNotice.RSVP_SOFT, Likelihood.SOMETIMES),
-    AttendanceRule(_COMMUNITY, False, AttendanceNotice.RSVP_SOFT,
-                   Likelihood.SOMETIMES),
-    AttendanceRule(_ALLY, False, AttendanceNotice.RSVP_SOFT, Likelihood.RARELY),
-    AttendanceRule(_OTHER, True, AttendanceNotice.RSVP_HARD, Likelihood.RARELY),
+    AttendanceRule(_MEMBER,    True,  _E, 90),
+    AttendanceRule(_MEMBER,    True,  _H, 80),
+    AttendanceRule(_MEMBER,    True,  _S, 50),
+    AttendanceRule(_MEMBER,    True,  _L, 20),
+    AttendanceRule(_MEMBER,    False, _E, 80),
+    AttendanceRule(_MEMBER,    False, _H, 65),
+    AttendanceRule(_MEMBER,    False, _S, 30),
+    AttendanceRule(_MEMBER,    False, _L, 10),
+    AttendanceRule(_WAITLIST,  True,  _E, 81),
+    AttendanceRule(_WAITLIST,  True,  _H, 71),
+    AttendanceRule(_WAITLIST,  True,  _S, 41),
+    AttendanceRule(_WAITLIST,  True,  _L, 16),
+    AttendanceRule(_WAITLIST,  False, _E, 61),
+    AttendanceRule(_WAITLIST,  False, _H, 41),
+    AttendanceRule(_WAITLIST,  False, _S, 21),
+    AttendanceRule(_WAITLIST,  False, _L, 6),
+    AttendanceRule(_HONOURARY, True,  _E, 80),
+    AttendanceRule(_HONOURARY, True,  _H, 70),
+    AttendanceRule(_HONOURARY, True,  _S, 40),
+    AttendanceRule(_HONOURARY, True,  _L, 15),
+    AttendanceRule(_HONOURARY, False, _E, 60),
+    AttendanceRule(_HONOURARY, False, _H, 40),
+    AttendanceRule(_HONOURARY, False, _S, 20),
+    AttendanceRule(_HONOURARY, False, _L, 5),
+    AttendanceRule(_COMMUNITY, True,  _H, 30),
+    AttendanceRule(_COMMUNITY, True,  _S, 5),
+    AttendanceRule(_COMMUNITY, False, _H, 20),
+    AttendanceRule(_COMMUNITY, False, _S, 0),
+    AttendanceRule(_ALLY,      True,  _H, 20),
+    AttendanceRule(_ALLY,      True,  _S, 5),
+    AttendanceRule(_ALLY,      False, _H, 10),
+    AttendanceRule(_ALLY,      False, _S, 0),
+    AttendanceRule(_OTHER,     True,  _H, 5),
+    AttendanceRule(_OTHER,     True,  _S, 0),
+    AttendanceRule(_OTHER,     False, _H, 5),
+    AttendanceRule(_OTHER,     False, _S, 0),
 )
 
 
