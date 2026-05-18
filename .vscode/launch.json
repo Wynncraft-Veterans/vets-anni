@@ -14,7 +14,16 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": false,
-      "env": { "DEBUG": "true", "PORT": "8000" }
+      // DEV ONLY — the vets-deploy stack uses its own .env, never this.
+      // STAFF_PASSWORD is bootstrapped into AppConfig (./data/anni.db) on the
+      // first staff-login attempt and then "sticks": to change it later,
+      // delete that DB (or use the ADMIN_PASSWORD-gated rotate route).
+      "env": {
+        "DEBUG": "true",
+        "PORT": "8000",
+        "STAFF_PASSWORD": "staff",
+        "ADMIN_PASSWORD": "admin"
+      }
     },
     {
       "name": "vets-anni: seed dev data",
