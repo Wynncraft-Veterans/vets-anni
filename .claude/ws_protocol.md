@@ -29,7 +29,23 @@ Frames are JSON `{v:1, type, ...}`.
   on the event loop (SQLite single writer). Reconnect → `HELLO{since_seq}` →
   fresh `WELCOME` snapshot (simplest correct behaviour for a low-volume staff
   tool; no fragile delta replay).
+- **Convergence (impl):** after any successful mutation the hub broadcasts a
+  **full snapshot** as the single `PATCH` op (`{op:"snapshot",snapshot}`) —
+  the simplest correct model for a low-volume tool; the actor also gets
+  `APPLIED{op_id,seq}` (same seq). The *presence poller* sends granular
+  `{op:"presence",player_uuid,status,chip}` ops. `board.js` never templates:
+  any `WELCOME`/`PATCH`/`BOARD_WIPE` just re-fetches the SSR `#board`
+  fragment, so SSR and live render through one path and can't drift.
 - **Degradation:** every WS mutation has a `POST /staff/board/*` REST twin so
-  the board still works if the socket drops (HTMX fallback).
+  the board still works if the socket drops (HTMX fallback). The twins run
+  the *same* `board_hub.handle` (a recorder stands in for the socket), so a
+  no-JS action still broadcasts to live tabs and keeps the single-instance
+  guarantee — no divergent second code path.
 - During grace (now>stamp & ≤stamp+2h) the board is read-only except
-  `PARTY_SET {result, stage}`.
+  `PARTY_SET {result, stage}` — enforced live in `board_hub` via
+  `domain/schedule.phase_of` (not a stored flag, so clock skew can't strand
+  it). `PLAYER_ADD` re-adding an on-board player is an idempotent no-op.
+- **Testing:** the hub is FastAPI-free, so it is unit-tested directly with a
+  fake client (seq monotonicity, grace gate, single-instance, idempotency) —
+  not over a real socket (the httpx ASGITransport test transport has no
+  websocket/lifespan by design).

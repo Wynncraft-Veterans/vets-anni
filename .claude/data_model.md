@@ -38,6 +38,14 @@ aerich upgrade                                # apply (Docker entrypoint runs th
 reviewed set via `manage update vets-anni`. Tests use in-memory SQLite +
 `generate_schemas` (no Aerich) via `lifecycle.init_for_tests`.
 
+**Phase 2 added no migration:** the full board schema (`Party`,
+`BoardPlacement`, the `unique_together(event,player)` invariant, `Rsvp`,
+`grace_opened_at`/`wiped_at`) already shipped in the Phase-1 models, so the
+staff/board work is pure behaviour over the existing schema —
+`app.domain.buckets` is the only writer of `BoardPlacement` (UPSERT in a
+transaction). Verified by the seeder rebuild + the full suite on
+`generate_schemas`.
+
 **Aerich-on-SQLite gotcha:** `aerich migrate`'s auto-diff aborts with
 `NotSupportError: Alter column comment is unsupported in SQLite` whenever the
 diff touches a field whose *description* drifted from the last migration's

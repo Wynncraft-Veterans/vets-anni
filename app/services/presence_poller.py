@@ -1,0 +1,129 @@
+"""presence_poller — live "how we see each board member right now".
+
+Every ~10 s it recomputes :class:`PresenceStatus` for every member of the
+active event's board (the pure rule is ``domain/presence`` — the same one the
+user dashboard's Specific module renders), then **diffs against last tick** and
+pushes only the changes to the board hub as a ``PATCH`` of status-border
+updates. The full map is also cached on :class:`AppState` so a fresh SSR paint
+or a non-WS client shows the identical status without recomputing.
+
+Online truth is the online-merge set (hard rule — never the bare server API),
+plus one extra signal: an API-disabled player the slow ``api_disabled`` probe
+*inferred* active counts as online (→ ``ONLINE_ELSEWHERE``, since we still
+don't know their world) rather than ``UNKNOWN``. We never invent a more
+specific online status for a hidden player — the spec's "never fabricate
+online".
+
+Resilience copied from the other pollers: a bad tick logs and is swallowed,
+last-good ``presence_by_uuid`` stays served.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+
+from app.constants import AttendanceNotice, PresenceStatus
+from app.db.lifecycle import get_active_event
+from app.db.models import BoardPlacement, Rsvp
+from app.domain import identity, presence
+from app.domain.colourblind import status_chip
+from app.services.loop import poll_forever
+from app.services.state import AppState
+from app.settings import Settings
+
+logger = logging.getLogger("anni.presence")
+
+
+async def _compute(state: AppState) -> dict[str, PresenceStatus]:
+    """Status for every board member of the active event (``{}`` if no anni)."""
+    event = await get_active_event()
+    if event is None:
+        return {}
+
+    now = int(time.time())
+    seconds = event.stamp_epoch - now if event.stamp_epoch > now else None
+
+    # One query each for placements + non-revoked RSVPs, then a pure pass.
+    placements = (
+        await BoardPlacement.filter(event=event)
+        .select_related("player", "party")
+    )
+    rsvps = await Rsvp.filter(event=event, revoked_at=None).select_related("player")
+    notice_by_uuid: dict[str, AttendanceNotice] = {
+        r.player.mc_uuid: r.notice for r in rsvps
+    }
+
+    out: dict[str, PresenceStatus] = {}
+    for p in placements:
+        uuid = p.player.mc_uuid
+        online = state.is_online(uuid)
+        api_disabled = identity.is_api_disabled(p.player.last_online)
+        # online-merge is authoritative; the probe-inferred set only ever
+        # *adds* an api-disabled player (never removes / never fabricates a
+        # specific world), so they surface as ONLINE_ELSEWHERE not UNKNOWN.
+        is_online = online is not None or (
+            api_disabled and uuid in state.api_active_uuids
+        )
+        party = p.party
+        out[uuid] = presence.classify(
+            presence.PresenceInputs(
+                online=is_online,
+                queued=bool(online and online.queued),
+                api_disabled=api_disabled,
+                rsvp_notice=notice_by_uuid.get(uuid),
+                has_party=party is not None,
+                party_world=party.world if party else None,
+                party_created=party is not None,
+                current_server=online.server if online else None,
+                in_party_confirmed=False,  # App4 vetsmod corroboration only
+                seconds_to_anni=seconds,
+            )
+        )
+    return out
+
+
+async def _tick(state: AppState, settings: Settings) -> None:
+    new = await _compute(state)
+    old = state.presence_by_uuid
+    new_values = {u: s.value for u, s in new.items()}
+
+    changed = [u for u, v in new_values.items() if old.get(u) != v]
+    dropped = [u for u in old if u not in new_values]  # left the board / wiped
+
+    state.presence_by_uuid = new_values
+    state.touch("presence_fetched_at")
+
+    if not changed and not dropped:
+        logger.debug("presence tick: %d members, no change", len(new))
+        return
+
+    # Lazy import keeps the services layer free of any web import at module
+    # load (the hub itself is FastAPI-free; this is the planned poller->hub
+    # broadcast path).
+    from app.web.ws.board_hub import get_board_hub
+
+    hub = get_board_hub()
+    ops = [
+        {
+            "op": "presence",
+            "player_uuid": u,
+            "status": new_values[u],
+            "chip": status_chip(new[u]),
+        }
+        for u in changed
+    ]
+    logger.debug(
+        "presence tick: %d members, %d changed, %d dropped -> %d ws clients",
+        len(new), len(changed), len(dropped), hub.client_count,
+    )
+    if ops:
+        await hub.broadcast_patch(ops)
+
+
+async def run(state: AppState, settings: Settings) -> None:
+    await poll_forever(
+        "presence",
+        lambda: settings.presence_poll_seconds,
+        lambda: _tick(state, settings),
+    )

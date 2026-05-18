@@ -1,0 +1,187 @@
+{# The #board fragment: parties (left) / players-buckets (right) + legend.
+
+   Rendered server-side on first load (board.html includes it) AND re-fetched
+   by board.js on every WS signal — so all board markup comes from ONE place
+   (board_view.snapshot) and the SSR board can never drift from the live one.
+   `with context` so the person() macro sees `assignable_roles`. #}
+{% from "macros/person.html" import person with context %}
+{% from "macros/chips.html" import host_pill %}
+<div id="board" class="board"
+     {% if has_event %}data-phase="{{ snapshot.event.phase }}"
+     data-frozen="{{ '1' if snapshot.event.frozen else '0' }}"{% endif %}>
+
+  {% if error %}<p class="bar bar-danger" role="alert">{{ error }}</p>{% endif %}
+
+  {% if not has_event %}
+    <p class="muted">No anni is announced — nothing to organise yet. The board
+      appears automatically when <code>/v1/outbound/stamp</code> announces one.</p>
+  {% else %}
+    {% set snap = snapshot %}
+    {% if snap.event.frozen %}
+      <p class="bar bar-warn" role="status">
+        Anni in progress — the board is <strong>read-only</strong>. Only each
+        party's <strong>result</strong> and <strong>stage</strong> can change
+        until the grace window ends.
+      </p>
+    {% endif %}
+
+    <div class="board-grid">
+      {# ---------- LEFT: parties ---------- #}
+      <section class="board-parties">
+        <div class="board-col-head">
+          <h2>Parties</h2>
+          <form hx-post="/staff/board/party/create" hx-target="#board"
+                hx-swap="outerHTML">
+            <button class="btn-sm" type="submit"
+                    {{ 'disabled' if snap.event.frozen }}>+ Party</button>
+          </form>
+        </div>
+
+        {% for party in snap.parties %}
+          <div class="party-card" data-party-id="{{ party.id }}">
+            <div class="party-head">
+              <strong>Party {{ party.ordinal }}</strong>
+              <span class="muted">{{ party.members | length }}/{{ party.capacity }}</span>
+              <span class="pill pill-muted" title="{{ party.stage_label }}">stage {{ party.stage }}/5</span>
+              <span class="pill {{ 'pill-ok' if party.result == 'win' else 'pill-danger' if party.result in ('loss', 'lag') else 'pill-muted' }}">{{ party.result }}</span>
+            </div>
+            <details class="party-set">
+              <summary>Edit party</summary>
+              <form class="party-form" hx-post="/staff/board/party/{{ party.id }}/set"
+                    hx-target="#board" hx-swap="outerHTML">
+                <label>Host
+                  <select name="host_uuid" {{ 'disabled' if snap.event.frozen }}>
+                    <option value="">— none —</option>
+                    {% for r in snap.roster %}
+                      <option value="{{ r.uuid }}"
+                              {{ 'selected' if r.uuid == party.host_uuid }}>{{ r.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>World
+                  <input name="world" value="{{ party.world or '' }}"
+                         placeholder="e.g. NA12" {{ 'disabled' if snap.event.frozen }}>
+                </label>
+                <label>Stage
+                  <select name="stage">
+                    {% for s in range(1, 6) %}
+                      <option value="{{ s }}" {{ 'selected' if party.stage == s }}>{{ s }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>Result
+                  <select name="result">
+                    {% for r in results %}
+                      <option value="{{ r }}" {{ 'selected' if party.result == r }}>{{ r }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <button class="btn-sm" type="submit">Save</button>
+              </form>
+            </details>
+            <div class="dropzone" data-party-id="{{ party.id }}"
+                 aria-label="Party {{ party.ordinal }} members">
+              {% for m in party.members %}{{ person(m) }}{% endfor %}
+              {% if not party.members %}
+                <p class="muted dz-empty">Empty — drag players here.</p>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <p class="muted">No parties yet — “+ Party” to start assigning.</p>
+        {% endfor %}
+      </section>
+
+      {# ---------- RIGHT: players / buckets ---------- #}
+      <section class="board-buckets">
+        <div class="board-col-head"><h2>Players</h2></div>
+        <form class="addign" hx-post="/staff/board/player-add"
+              hx-target="#board" hx-swap="outerHTML">
+          <input name="ign" placeholder="Add a walk-in by IGN"
+                 aria-label="Add a player by in-game name"
+                 {{ 'disabled' if snap.event.frozen }}>
+          <button class="btn-sm" type="submit"
+                  {{ 'disabled' if snap.event.frozen }}>Add</button>
+        </form>
+
+        {% set u = snap.buckets.unassigned %}
+        <div class="bucket">
+          <h3>{{ u.label }}
+            <span class="muted">({{ u.on_time | length + u.late | length }})</span></h3>
+          <div class="dropzone" data-bucket="unassigned"
+               aria-label="Unassigned (on time)">
+            {% for m in u.on_time %}{{ person(m) }}{% endfor %}
+            {% if not u.on_time %}<p class="muted dz-empty">No one waiting.</p>{% endif %}
+          </div>
+          <h4 class="late-head">Late sub-bucket</h4>
+          <div class="dropzone late" data-bucket="unassigned" data-late="1"
+               aria-label="Unassigned (joined late)">
+            {% for m in u.late %}{{ person(m) }}{% endfor %}
+            {% if not u.late %}<p class="muted dz-empty">No late players.</p>{% endif %}
+          </div>
+        </div>
+
+        {% for key in ['volunteers', 'wontassign'] %}
+          {% set b = snap.buckets[key] %}
+          <div class="bucket">
+            <h3>{{ b.label }} <span class="muted">({{ b.members | length }})</span></h3>
+            <div class="dropzone" data-bucket="{{ key }}" aria-label="{{ b.label }}">
+              {% for m in b.members %}{{ person(m) }}{% endfor %}
+              {% if not b.members %}<p class="muted dz-empty">Empty.</p>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+    </div>
+
+    {# ---------- Legend + organiser (colour is never the only signal) ---------- #}
+    <section class="card legend">
+      <div class="legend-block">
+        <h3>Lead organiser</h3>
+        <form class="org-form" hx-post="/staff/board/organizer"
+              hx-target="#board" hx-swap="outerHTML">
+          <select name="player_uuid" aria-label="Set lead organiser">
+            <option value="">— unclaimed —</option>
+            {% for r in snap.roster %}
+              <option value="{{ r.uuid }}"
+                      {{ 'selected' if snap.event.organizer and r.uuid == snap.event.organizer.uuid }}>{{ r.name }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn-sm" type="submit">Set</button>
+        </form>
+        {% if snap.event.organizer %}
+          <p class="muted">Current: {{ host_pill(snap.event.organizer.name, snap.event.organizer.avatar) }}</p>
+        {% endif %}
+      </div>
+
+      <div class="legend-block">
+        <h3>Roles</h3>
+        <div class="legend-row">
+          {% for role, s in ROLE_STYLES.items() %}
+            {% set rc = role_chip(role) %}
+            <span class="role-chip" style="background-color: var({{ rc.css_var_dark }})">
+              <span class="glyph" style="background-color: var({{ rc.css_var }})">{{ rc.glyph }}</span>
+              <span class="chip-text">{{ rc.label }}</span>
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="legend-block">
+        <h3>Status borders</h3>
+        <p class="muted">The border colour <em>and</em> its pattern carry the
+          status — it reads online vs offline with no colour at all.</p>
+        <div class="legend-row">
+          {% for status, s in STATUS_STYLES.items() %}
+            {% set sc = status_chip(status) %}
+            <span class="status-border legend-status" data-pattern="{{ sc.pattern }}"
+                  style="border-color: var({{ sc.css_var }})">
+              <span class="glyph">{{ sc.glyph }}</span>
+              {{ sc.label }}
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
+</div>

@@ -55,9 +55,64 @@ progresses. Phasing/status is at the bottom of this file.
 ## Status
 
 Build in progress, phased: **0** ✅ skeleton+deploy → **1** ✅ App1 (user
-web) → **2** App3 (staff/board) → **3** App2 (fishbot) → **4** App4
+web) → **2** ✅ App3 (staff/board) → **3** App2 (fishbot) → **4** App4
 (vetsmod, deferred & coordinated). See the plan file for per-phase scope +
 verification.
+
+**Phase 2 done (2026-05-18):** the staff/organizer board.
+`domain/schedule.py` (pure event-phase: PENDING/GRACE/EXPIRED) +
+`domain/buckets.py` (the **sole** `BoardPlacement` writer — UPSERT-in-
+transaction; `move`/`assign_role`/`add_walkin`/party+organiser ops + raw
+`board_rows`). `web/board_view.py` = the one JSON-able snapshot shape (SSR
+**and** the socket render from it — they can't drift). `web/ws/`:
+`protocol.py` (pure frames + tolerant `parse_intent`), `board_hub.py`
+(server-authoritative, one `asyncio.Lock` ⇒ sequential ops = the 3rd single-
+instance layer; FastAPI-free so pollers can broadcast; `get_board_hub()`
+singleton). 3 new lifespan pollers: `presence_poller` (diff→PATCH + caches
+`state.presence_by_uuid`), `api_disabled` (slow `/v3/player` probe →
+`state.api_active_uuids`), `lifecycle_task` (grace-open then one-txn wipe:
+WIN→`success_count`, purge placements/RSVPs, `wiped_at`+inactive,
+`BOARD_WIPE`). Routers: `staff.py` is now the hub (status + organiser
+claim + the Phase-1 password tools kept), `organizer.py` (`/staff/board`
+SSR + `WS /staff/board/ws` + a REST twin for **every** mutation, all through
+`board_hub.handle`), `roles_dash.py` (`/staff/roles` read view).
+Templates `staff/{home,board,_board,roles}.html` + `macros/person.html`;
+`static/js/board.js` (thin: WS signal ⇒ re-fetch the `#board` fragment;
+SortableJS drag ⇒ MOVE) + **vendored** `sortable.min.js`; CSS board/person/
+legend. 103 pytest green (~1.3 s); boots with all 7 pollers; authed board
+renders all 7 status-border patterns (the CB non-colour channel).
+
+**Phase 2 durable decisions (not derivable from code):**
+- **No schema/Aerich migration** — Phase-1 models already had the full board
+  schema; verified by the seeder rebuild + 103 tests on `generate_schemas`.
+- **Convergence = full-snapshot PATCH** after every mutation (the simplest-
+  correct model `ws_protocol.md` endorses for a low-volume tool); the
+  presence poller sends *granular* `presence` ops; HELLO/reconnect ⇒ fresh
+  `WELCOME` (no delta replay). **board.js never templates** — it re-fetches
+  the SSR `#board` fragment on any WS signal, so there is one render path.
+- **WS is tested against the hub directly** (a `FakeClient`), **not over a
+  real socket**: the project test transport (httpx `ASGITransport`) has no
+  websocket/lifespan by design, and a Starlette `TestClient` would cross
+  event loops vs the in-memory Tortoise fixture. Intentional test-scope
+  choice — the hub *is* the substance (seq/grace/single-instance/idempotency
+  all covered); `organizer.board_ws` is thin glue reusing `deps.read_session`.
+- **`PLAYER_ADD` is idempotent**: an already-on-board player is a no-op —
+  never moved back to Unassigned, never duplicated (single-instance). The
+  WS intent and the REST twin share `board_hub.handle` (one path).
+- **Grace freeze is computed live** by `board_hub` via `schedule.phase_of`
+  (not a stored flag) so a clock skew can't strand the board; in GRACE only
+  `PARTY_SET{result,stage}` is accepted, everything else `REJECTED`.
+- **api-disabled inference is best-effort secondary**: online-merge is the
+  primary signal (consumed in `presence_poller`); the probe only ever *adds*
+  a hidden player as `ONLINE_ELSEWHERE`, unconfirmable ⇒ `UNKNOWN` (never
+  fabricate online); a failed probe carries the prior inference (per-uuid
+  last-good).
+- **conftest `_offline` autouse**: no unit test touches the network — the
+  WAPI profile + Mojang last-resort are stubbed to "nothing found"; a test-
+  body `monkeypatch` / injected `mojang=` still wins (test_auth_flow /
+  test_identity unaffected). Made the suite deterministic + ~1.3 s.
+- Jinja **autoescapes apostrophes** — assert an apostrophe-free slice of a
+  rejected reason in rendered HTML (the raw WS-frame reason is unescaped).
 
 **Phase 1 done (2026-05-18):** OWN-token `services/wapi.py` (priority-queue
 worker, RateLimit/-429 backoff) + `tempserver.py` + AppState + 4 lifespan

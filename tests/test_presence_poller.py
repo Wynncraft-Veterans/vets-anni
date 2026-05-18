@@ -1,0 +1,80 @@
+"""presence_poller — the live status sweep over the seeded board.
+
+The pure rule has its own table test (test_presence.py); this drives the
+*poller* over real placements + an AppState so the wiring is covered: offline
+RSVP buckets, the never-fabricate-online UNKNOWN for a hidden player, and the
+two ways a hidden player gets *confirmed* (online-merge, or the api-disabled
+probe's inferred-active set) → ONLINE_ELSEWHERE, never a faked world.
+"""
+
+from __future__ import annotations
+
+from app.constants import PresenceStatus as S
+from app.services import presence_poller
+from app.services.state import AppState, OnlinePlayer
+
+
+def _online(uuid: str, **kw) -> OnlinePlayer:
+    return OnlinePlayer(uuid=uuid, username="x", **kw)
+
+
+async def test_offline_board_maps_by_rsvp_and_hides_api_disabled(seeded):
+    p = seeded["players"]
+    got = await presence_poller._compute(AppState())  # nobody online
+
+    assert got[p["Wenweia"].mc_uuid] is S.OFFLINE_HARD     # hard RSVP, offline
+    assert got[p["Paradrex"].mc_uuid] is S.OFFLINE_SOFT     # soft RSVP, offline
+    assert got[p["Faulischlumpf"].mc_uuid] is S.OFFLINE_GONE  # no RSVP, offline
+    # API-disabled + unconfirmable -> UNKNOWN even though Metrafish hard-RSVP'd
+    # (never faked online, never downgraded to an OFFLINE_* it can't prove).
+    assert got[p["Metrafish"].mc_uuid] is S.UNKNOWN
+
+
+async def test_online_merge_drives_world_states(seeded):
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid  # party 1, world seeded "AS5"
+
+    # Online but no per-player server signal -> ONLINE_ELSEWHERE (Phase-1/2
+    # common case: we can't confirm the world).
+    got = await presence_poller._compute(
+        AppState(online_by_uuid={wen: _online(wen)})
+    )
+    assert got[wen] is S.ONLINE_ELSEWHERE
+
+    # Server matches the party world -> ONLINE_WORLD (in-party needs App4).
+    got = await presence_poller._compute(
+        AppState(online_by_uuid={wen: _online(wen, server="AS5")})
+    )
+    assert got[wen] is S.ONLINE_WORLD
+
+    # Queued == connecting, never OFFLINE_* (anni is queue-heavy).
+    got = await presence_poller._compute(
+        AppState(online_by_uuid={wen: _online(wen, queued=True)})
+    )
+    assert got[wen] is S.ONLINE_ELSEWHERE
+
+
+async def test_api_disabled_player_confirmed_two_ways(seeded):
+    meta = seeded["players"]["Metrafish"].mc_uuid  # api-disabled, Unassigned
+
+    # (1) online-merge actually shows them (vetsmod connection beats WAPI
+    #     privacy) -> confirmed online -> ONLINE_ELSEWHERE, not UNKNOWN.
+    got = await presence_poller._compute(
+        AppState(online_by_uuid={meta: _online(meta)})
+    )
+    assert got[meta] is S.ONLINE_ELSEWHERE
+
+    # (2) not in online-merge but the slow probe inferred activity.
+    got = await presence_poller._compute(AppState(api_active_uuids={meta}))
+    assert got[meta] is S.ONLINE_ELSEWHERE
+
+
+async def test_tick_caches_and_stamps(seeded):
+    state = AppState()
+    await presence_poller._tick(state, None)  # no WS clients -> no broadcast
+    assert state.presence_by_uuid  # populated from the seeded board
+    assert state.presence_fetched_at > 0
+
+
+async def test_no_active_event_is_empty(db):
+    assert await presence_poller._compute(AppState()) == {}

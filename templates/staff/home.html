@@ -1,9 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Staff tools · Wynnvets Annihilation{% endblock %}
+{% from "macros/chips.html" import host_pill %}
+{% block title %}Staff hub · Wynnvets Annihilation{% endblock %}
 {% block content %}
   <div class="dash-head">
-    <h1>Staff tools</h1>
-    <p class="muted"><a href="/staff/logout">sign out</a> · full board = Phase 2</p>
+    <h1>Staff hub</h1>
+    <p class="muted">
+      <a href="/staff/logout">sign out</a> ·
+      <a href="/staff/board">organizer board</a> ·
+      <a href="/staff/roles">roles dashboard</a>
+    </p>
   </div>
 
   {% if rotate_msg %}
@@ -11,12 +16,91 @@
       {{ rotate_msg }}</p>
   {% endif %}
 
+  <div class="grid-2">
+    {# ---- Anni status ---- #}
+    <section class="card" aria-labelledby="st-h">
+      <h2 id="st-h">Today's Annihilation</h2>
+      {% if event %}
+        <table class="kv">
+          <tr><th>Status</th><td>
+            <span class="pill {{ 'pill-danger' if phase == 'grace' else 'pill-ok' }}">
+              {{ 'In progress (grace)' if phase == 'grace' else 'Announced' }}</span>
+          </td></tr>
+          <tr><th>{{ 'Started' if phase == 'grace' else 'Returns in' }}</th><td>
+            {% if phase == 'grace' %}
+              <span class="muted">grace window — board read-only except result/stage</span>
+            {% else %}
+              <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span>
+            {% endif %}
+          </td></tr>
+          <tr><th>Lead organiser</th><td>
+            {% if organizer %}{{ host_pill(organizer.name, organizer.avatar) }}
+            {% else %}<span class="muted">Unclaimed</span>{% endif %}
+          </td></tr>
+        </table>
+
+        <form method="post" action="/staff/organizer" class="org-form">
+          <label for="org">Claim / change organiser</label>
+          <select id="org" name="player_uuid">
+            <option value="">— release (unclaimed) —</option>
+            {% for s in online_staff %}
+              <option value="{{ s.uuid }}"
+                {{ 'selected' if organizer and s.uuid == organizer.uuid }}>
+                {{ s.name }} ({{ s.rank }})</option>
+            {% endfor %}
+          </select>
+          <button class="btn-sm" type="submit">Set</button>
+        </form>
+      {% else %}
+        <p><span class="pill pill-muted">No anni announced</span></p>
+        <p class="muted">When <code>/v1/outbound/stamp</code> announces one, its
+          countdown, parties and the board appear automatically.</p>
+      {% endif %}
+    </section>
+
+    {# ---- Online staff + parties ---- #}
+    <section class="card" aria-labelledby="ppl-h">
+      <h2 id="ppl-h">Online staff &amp; parties</h2>
+      <h3>Staff online ({{ online_staff | length }})</h3>
+      {% if online_staff %}
+        <div class="chip-row">
+          {% for s in online_staff %}
+            <span class="pill pill-muted" title="{{ s.rank }}">{{ s.name }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">No staff currently online (per the staff feed).</p>
+      {% endif %}
+
+      <h3>Party formation</h3>
+      {% if parties %}
+        <table class="kv">
+          <tr><th>Party</th><th>Host</th><th>World</th><th>Stage</th><th>Result</th></tr>
+          {% for p in parties %}
+            <tr>
+              <td>Party {{ p.ordinal }}</td>
+              <td>{{ host_pill(p.host, p.host_avatar) }}</td>
+              <td>{{ p.world or "TBD" }}</td>
+              <td>{{ p.stage }}/5</td>
+              <td>{{ p.result }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+        <p class="muted"><a href="/staff/board">Open the organizer board →</a></p>
+      {% elif event %}
+        <p class="muted">No parties yet.
+          <a href="/staff/board">Open the board</a> to start.</p>
+      {% else %}
+        <p class="muted">Nothing to show until an anni is announced.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ---- Password tools (Phase-1 spec features, kept) ---- #}
   <section class="card">
     <h2>Reset a user's password</h2>
-    <p class="muted">
-      A user's first password "sticks". Clear it here so they can sign in
-      freely again (and set a new one if they want).
-    </p>
+    <p class="muted">A user's first password "sticks". Clear it so they can
+      sign in freely again (and set a new one if they want).</p>
     <table class="kv staff-users">
       <tr><th>User</th><th>Password</th><th></th></tr>
       {% for u in users %}
@@ -25,8 +109,7 @@
           <td>{% if u.has_password %}🔒 set{% else %}<span class="muted">none</span>{% endif %}</td>
           <td>
             {% if u.has_password %}
-              <form method="post"
-                    action="/staff/users/{{ u.mc_uuid }}/clear-password">
+              <form method="post" action="/staff/users/{{ u.mc_uuid }}/clear-password">
                 <button class="btn-sm btn-danger" type="submit">Clear</button>
               </form>
             {% endif %}
@@ -47,4 +130,20 @@
       <button type="submit">Rotate</button>
     </form>
   </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  for (const el of document.querySelectorAll('.countdown[data-target]')) {
+    const target = Number(el.dataset.target) * 1000;
+    const tick = () => {
+      let s = Math.floor((target - Date.now()) / 1000);
+      if (s <= 0) { el.textContent = 'now / in progress'; return; }
+      const h = Math.floor(s / 3600); s %= 3600;
+      const m = Math.floor(s / 60); s %= 60;
+      el.textContent = `${h}h ${m}m ${s}s`;
+    };
+    tick(); setInterval(tick, 1000);
+  }
+</script>
 {% endblock %}

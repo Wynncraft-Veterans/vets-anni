@@ -28,8 +28,11 @@ load_dotenv()  # local dev convenience; prod injects real env via the stack .env
 from app.bot.client import start_fishbot, stop_fishbot  # noqa: E402
 from app.db import lifecycle  # noqa: E402
 from app.services import (  # noqa: E402
+    api_disabled,
+    lifecycle_task,
     mojang,
     online_merge,
+    presence_poller,
     staff_poller,
     stamp_poller,
     weapons_poller,
@@ -38,7 +41,14 @@ from app.services.state import AppState  # noqa: E402
 from app.services.tempserver import get_tempserver  # noqa: E402
 from app.services.wapi import get_wapi  # noqa: E402
 from app.settings import get_settings  # noqa: E402
-from app.web.routers import capability, public, staff, user  # noqa: E402
+from app.web.routers import (  # noqa: E402
+    capability,
+    organizer,
+    public,
+    roles_dash,
+    staff,
+    user,
+)
 
 logging.basicConfig(
     level=logging.DEBUG if get_settings().debug else logging.INFO,
@@ -63,6 +73,10 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(staff_poller.run(state, settings), name="staff"),
         asyncio.create_task(online_merge.run(state, settings), name="online"),
         asyncio.create_task(weapons_poller.run(state, settings), name="weapons"),
+        # Phase 2: live board status + the api-disabled probe + grace/wipe.
+        asyncio.create_task(presence_poller.run(state, settings), name="presence"),
+        asyncio.create_task(api_disabled.run(state, settings), name="apidisabled"),
+        asyncio.create_task(lifecycle_task.run(state, settings), name="lifecycle"),
     ]
     logger.info("vets-anni started (%d pollers)", len(app.state.poller_tasks))
     try:
@@ -90,6 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(user.router)
     app.include_router(capability.router)
     app.include_router(staff.router)
+    app.include_router(organizer.router)
+    app.include_router(roles_dash.router)
     return app
 
 

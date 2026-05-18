@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -24,6 +25,27 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from app.db import lifecycle  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """No unit test ever touches the network. The two outward calls identity
+    resolution can make — the WAPI profile fetch and the Mojang last-resort —
+    are stubbed to "nothing found" by default (fast + deterministic). Tests
+    that need a specific profile/UUID still override this (a test-body
+    ``monkeypatch`` / an injected ``mojang=`` runs *after* this fixture and
+    wins — e.g. test_auth_flow, test_identity)."""
+    from app.domain import identity
+    from app.services import mojang
+
+    async def _no_profile(_uuid):
+        return None
+
+    async def _no_mojang(_ign):
+        return None
+
+    monkeypatch.setattr(identity, "_fetch_wapi_profile", _no_profile)
+    monkeypatch.setattr(mojang, "username_to_uuid", _no_mojang)
 
 
 @pytest_asyncio.fixture

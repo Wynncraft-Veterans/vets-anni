@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Organizer Board · Wynnvets Annihilation{% endblock %}
+{% block content %}
+  <div class="dash-head">
+    <h1>Organizer Board</h1>
+    <p class="muted">
+      <a href="/staff">← staff hub</a> ·
+      <a href="/staff/roles">roles dashboard</a> ·
+      drag players between parties &amp; buckets · live across every staff tab
+      <span id="ws-state" class="pill pill-muted" title="Live-sync status">connecting…</span>
+    </p>
+  </div>
+
+  {# The board fragment. board.js refreshes #board (via HTMX) on every WS
+     signal, so all rendering stays server-side. Forms inside it post to the
+     REST twins and work even with the socket down (graceful degradation). #}
+  {% include "staff/_board.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ asset('js/sortable.min.js') }}"></script>
+  <script src="{{ asset('js/board.js') }}"></script>
+{% endblock %}

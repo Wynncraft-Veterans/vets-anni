@@ -68,6 +68,24 @@ class AppState:
     weapons_by_name: dict[str, str] = field(default_factory=dict)
     weapons_fetched_at: float = 0.0
 
+    # --- presence_poller (Phase 2) ------------------------------------------
+    #: mc_uuid -> PresenceStatus.value, for the active event's board members
+    #: only. The presence poller owns it (diffs it tick-over-tick and pushes a
+    #: PATCH to the board hub); the staff board + the user dashboard read it so
+    #: a non-WS client (or an SSR first paint) still shows the same status.
+    presence_by_uuid: dict[str, str] = field(default_factory=dict)
+    presence_fetched_at: float = 0.0
+
+    # --- api_disabled probe (Phase 2) ---------------------------------------
+    #: mc_uuids of API-disabled players the slow probe currently *infers* are
+    #: active (a between-tick lastSeen/server change — dazebot purgelist
+    #: style). Read by the presence poller as an extra "online" signal so an
+    #: inferred-active hidden player becomes ONLINE_ELSEWHERE instead of
+    #: UNKNOWN. We never put a player here unless we actually saw movement —
+    #: the spec's "never fabricate online" rule.
+    api_active_uuids: set[str] = field(default_factory=set)
+    api_probe_at: float = 0.0
+
     # --- helpers -------------------------------------------------------------
     def is_online(self, uuid: str) -> OnlinePlayer | None:
         """Return the online-merge entry for ``uuid`` (``None`` if offline)."""

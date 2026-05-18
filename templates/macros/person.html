@@ -1,0 +1,66 @@
+{# The board "person object" — the draggable card for one placement.
+
+   Colour is NEVER the only signal (spec hard rule, enforced via the shared
+   chip builders, see .claude/colourblind.md):
+   * the STATUS is a coloured *border around the whole object* AND a
+     non-colour `data-pattern` (online vs offline reads from the border alone)
+     AND a glyph + aria-label;
+   * the assigned ROLE is the card background (legible -dark shade, white
+     text) plus the raw-hue glyph swatch + label;
+   * tier / LATE / regions are plain text pills (no colour dependence).
+   Every colour comes from a `var(--st-*)` / `var(--role-*)` custom property,
+   so the per-user `cb` cookie swap recolours it with zero markup change. #}
+
+{% macro person(p) %}
+  <div class="person status-border" data-pattern="{{ p.status_chip.pattern }}"
+       data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
+       draggable="true"
+       style="border-color: var({{ p.status_chip.css_var }});
+              background-color: var({{ p.role_chip.css_var_dark }})"
+       aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}"
+       title="{{ p.name }} — {{ p.status_chip.label }}">
+    <img class="person-face" src="{{ p.avatar }}" alt="" width="32" height="32"
+         loading="lazy" onerror="this.remove()">
+    <div class="person-main">
+      <span class="person-name">
+        {{ p.name }}
+        {% if p.desynced %}
+          <span class="muted" title="in-game name differs">|{{ p.wynn_username }}</span>
+        {% endif %}
+      </span>
+      <span class="person-tags">
+        <span class="role-tag" role="img" aria-label="Assigned role: {{ p.role_chip.label }}">
+          <span class="glyph" style="background-color: var({{ p.role_chip.css_var }})">{{ p.role_chip.glyph }}</span>
+          {{ p.assigned_role | capitalize if p.assigned_role else "Unassigned" }}
+        </span>
+        <span class="status-tag" role="img" aria-label="Status: {{ p.status_chip.label }}">
+          <span class="glyph">{{ p.status_chip.glyph }}</span>{{ p.status.replace('_', ' ') }}
+        </span>
+        <span class="pill pill-muted">{{ p.tier_label }}</span>
+        {% if p.is_late %}
+          <span class="pill pill-danger" title="Joined late">LATE</span>
+        {% endif %}
+        {% for r in p.regions %}
+          <span class="pill pill-region" title="{{ r.label }}">{{ r.glyph }} {{ r.code }}</span>
+        {% endfor %}
+      </span>
+    </div>
+
+    {# No-JS / socket-dropped controls: role + move both POST a REST twin and
+       swap #board back in. board.js intercepts the drag for the WS path; both
+       routes funnel through board_hub (single-instance UPSERT). #}
+    <div class="person-actions">
+      <select class="person-role" aria-label="Assign role to {{ p.name }}"
+              hx-post="/staff/board/assign-role" hx-target="#board"
+              hx-swap="outerHTML" hx-include="this"
+              name="role" hx-vals='{"player_uuid": "{{ p.uuid }}"}'>
+        <option value="" {{ 'selected' if not p.assigned_role }}>— role —</option>
+        {% for role in assignable_roles %}
+          <option value="{{ role.value }}"
+                  {{ 'selected' if p.assigned_role == role.value }}>
+            {{ role.value | capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+{% endmacro %}

@@ -16,6 +16,7 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.constants import ROLE_STYLES, STATUS_STYLES, STYLES, UNASSIGNED_STYLE
+from app.domain.colourblind import role_chip, status_chip
 from app.settings import get_settings
 
 _settings = get_settings()
@@ -52,6 +53,10 @@ env.globals.update(
     ROLE_STYLES=ROLE_STYLES,
     STATUS_STYLES=STATUS_STYLES,
     UNASSIGNED_STYLE=UNASSIGNED_STYLE,
+    # Chip builders so the board legend renders the *same* colour-var + glyph
+    # + pattern channels the macros do (one source — no inline var maps).
+    role_chip=role_chip,
+    status_chip=status_chip,
     PUBLIC_BASE_URL=_settings.public_base_url,
     asset=asset,
 )

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros/chips.html" import role_bg %}
+{% from "macros/pills.html" import level, weapon, success, regions as region_pills %}
+{% block title %}Roles dashboard · Wynnvets Annihilation{% endblock %}
+{% block content %}
+  <div class="dash-head">
+    <h1>Roles dashboard</h1>
+    <p class="muted">
+      <a href="/staff">← staff hub</a> ·
+      <a href="/staff/board">organizer board</a> ·
+      {{ core_count }}/{{ total }} players are Core (≥1 capability) ·
+      sorted by priority tier, then Core first
+    </p>
+  </div>
+
+  <section class="card">
+    {% if rows %}
+      <ul class="roles-list">
+        {% for r in rows %}
+          <li class="roles-row">
+            <div class="roles-who">
+              <img class="avatar" src="{{ r.avatar }}" alt="" width="32"
+                   height="32" loading="lazy" onerror="this.remove()">
+              <div>
+                <span class="roles-name">{{ r.name }}
+                  {% if r.desynced %}
+                    <span class="muted" title="in-game name differs">|{{ r.wynn_username }}</span>
+                  {% endif %}
+                </span>
+                <span class="roles-meta">
+                  <span class="pill pill-muted">{{ r.tier_label }}</span>
+                  {% if r.is_core %}<span class="pill pill-ok">Core</span>
+                  {% else %}<span class="pill pill-danger">Fill</span>{% endif %}
+                  {{ region_pills(r.regions) }}
+                </span>
+              </div>
+            </div>
+            <div class="roles-caps">
+              {% if r.capabilities %}
+                {% for c in r.capabilities %}
+                  <div class="roles-cap">
+                    {{ role_bg(c.chip, c.role_label) }}
+                    <span class="cap-weapons">
+                      {% if c.weapons %}
+                        {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
+                      {% else %}<span class="muted">no weapons listed</span>{% endif %}
+                    </span>
+                    <span class="cap-levels">
+                      {{ level("Confidence", c.confidence) }}
+                      {{ level("Build", c.build_quality) }}
+                      {{ success(c.success_count) }}
+                    </span>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <span class="muted">No declared capabilities — attends as Fill.</span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No players known yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}
