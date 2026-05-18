@@ -1,0 +1,41 @@
+{# Small text pills — membership, confidence/build-quality, weapons.
+
+   These are textual by design (no colour dependence) so they need no CB
+   handling; the colour-bearing chips live in chips.html. #}
+
+{% macro membership(label) %}
+  <span class="pill pill-muted">{{ label }}</span>
+{% endmacro %}
+
+{% macro eligibility(is_core) %}
+  {% if is_core %}
+    <span class="pill pill-ok">Core</span>
+  {% else %}
+    <span class="pill pill-danger">Fill</span>
+  {% endif %}
+{% endmacro %}
+
+{# High/Moderate/Low as a 3-segment meter — the level is encoded by the
+   filled-segment count + the word, never colour alone. #}
+{% macro level(kind, value) %}
+  {% set n = {'high': 3, 'moderate': 2, 'low': 1}.get(value, 0) %}
+  <span class="level" aria-label="{{ kind }}: {{ value }}" title="{{ kind }}: {{ value }}">
+    <span class="level-label">{{ kind }}</span>
+    <span class="level-bars" aria-hidden="true">
+      {% for i in range(1, 4) %}<i class="{{ 'on' if i <= n else '' }}"></i>{% endfor %}
+    </span>
+    <span class="level-word">{{ value | capitalize }}</span>
+  </span>
+{% endmacro %}
+
+{% macro weapon(name, subtype) %}
+  <span class="pill pill-weapon" title="{{ subtype }}">
+    {{ name }}<span class="muted"> · {{ subtype }}</span>
+  </span>
+{% endmacro %}
+
+{% macro success(count) %}
+  <span class="pill pill-muted" title="Annihilations completed in a winning party in this role">
+    ★ {{ count }} win{{ '' if count == 1 else 's' }}
+  </span>
+{% endmacro %}

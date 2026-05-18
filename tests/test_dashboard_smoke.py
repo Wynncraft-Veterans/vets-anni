@@ -1,0 +1,68 @@
+"""Logged-in render smoke — the templates Phase 1 added actually render.
+
+The unit tests cover the logic; this catches Jinja/context regressions
+(macro-vs-context name clashes, lazy-relation access, the seeded
+future-event Specific branch) before they reach a browser. Lifespan is
+skipped by ASGITransport, so pollers never run — the empty AppState is the
+realistic "upstream not yet polled" path the templates must survive.
+"""
+
+from __future__ import annotations
+
+import pytest_asyncio
+
+from app.web import deps
+
+
+@pytest_asyncio.fixture
+async def as_user(client, seeded):
+    """``client`` signed in as a seeded player with rich data (Wenweia: 2
+    capabilities, a party placement, a hard RSVP). Cookie set on the client
+    (not per-request) so httpx doesn't warn about ambiguous persistence."""
+    player = seeded["players"]["Wenweia"]
+    client.cookies.set(
+        "anni_session",
+        deps._serializer.dumps(
+            {"kind": "user", "mc_uuid": player.mc_uuid, "name": player.mc_username}
+        ),
+    )
+    return client
+
+
+async def test_me_dashboard_renders_general_and_specific(as_user):
+    r = await as_user.get("/me")
+    assert r.status_code == 200
+    body = r.text
+    assert "Wenweia" in body
+    assert "Role Capacity" in body
+    assert "Registration Status" in body
+    # Seeded event is ~93 min out (future) -> Specific module is NOT blank.
+    assert "Specific — This Annihilation" in body
+    assert "RSVP Status" in body
+    # Role chip emits its glyph + aria-label regardless of colour (CB rule).
+    assert "aria-label" in body and "PRIM" in body
+
+
+async def test_specific_fragment_is_self_refreshing(as_user):
+    r = await as_user.get("/me/specific")
+    assert r.status_code == 200
+    assert 'hx-get="/me/specific"' in r.text  # re-arms after each swap
+
+
+async def test_capability_modal_quotes_guidance_and_links(as_user):
+    r = await as_user.get("/me/capability/new")
+    assert r.status_code == 200
+    assert "wynnvets.org/docs/guild/anni" in r.text  # docs links (spec)
+    assert "Requirements:" in r.text
+
+
+async def test_me_redirects_anonymous_to_login(client):
+    r = await client.get("/me", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+
+
+async def test_staff_page_shows_login_when_signed_out(client):
+    r = await client.get("/staff")
+    assert r.status_code == 200
+    assert "Staff sign in" in r.text

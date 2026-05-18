@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "macros/pills.html" import membership as membership_pill, eligibility as eligibility_pill %}
+{% from "macros/bars.html" import likelihood %}
+{% block title %}My Dashboard · Wynnvets Annihilation{% endblock %}
+{% block content %}
+  <div class="dash-head">
+    <img class="avatar" src="{{ player.avatar }}" alt=""
+         width="48" height="48" loading="lazy">
+    <div>
+      <h1>
+        {% if player.desynced %}
+          <span title="In-game name">{{ player.wynn_username }}</span><span
+            class="muted">|</span><span title="Current Minecraft name">{{ player.mc_username }}</span>
+        {% else %}{{ player.mc_username }}{% endif %}
+      </h1>
+      <p class="muted">
+        {{ player.guild or "No guild" }} ·
+        <a href="/logout">log out</a>
+      </p>
+    </div>
+  </div>
+
+  {# ===================== GENERAL MODULE (any anni) ===================== #}
+  <section class="card" aria-labelledby="gen-h">
+    <h2 id="gen-h">General — Registration Status</h2>
+    <p>
+      Membership: {{ membership_pill(membership.label) }}
+      Eligibility: {{ eligibility_pill(is_core) }}
+      {% if player.has_password %}
+        <span class="pill pill-muted" title="A password is set for this IGN">🔒 password set</span>
+      {% endif %}
+    </p>
+    <p class="muted">
+      {% if attendance.projected_early %}
+        Assuming you log on now you'd be <strong>~1 hr early</strong>.
+      {% else %}
+        Assuming you log on now you'd be <strong>late</strong> ({{ attendance.notice_label }}).
+      {% endif %}
+      With your <strong>{{ membership.label }}</strong> /
+      <strong>{{ eligibility }}</strong> status, the published
+      attendance-priority table puts you at:
+    </p>
+    {{ likelihood(attendance.pct, attendance.label) }}
+  </section>
+
+  {# ----- Role Capacity (HTMX-swappable fragment) ----- #}
+  <section class="card" aria-labelledby="cap-h">
+    <h2 id="cap-h">General — Role Capacity</h2>
+    <p class="muted">
+      Up to five core roles. Editing here is what staff use to build parties —
+      keep your weapons, confidence and build quality honest.
+    </p>
+    {% include "user/_capacity.html" %}
+  </section>
+
+  {# ===================== SPECIFIC MODULE (current anni) ===================== #}
+  {% include "user/_specific.html" %}
+
+  {# Modal mount: the add/edit capability modal is HTMX-loaded into here. #}
+  <div id="modal-mount"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Live countdown(s) — wording stays put; only the digits tick.
+  function armCountdowns() {
+    for (const el of document.querySelectorAll('.countdown[data-target]')) {
+      if (el.dataset.armed) continue;
+      el.dataset.armed = '1';
+      const target = Number(el.dataset.target) * 1000;
+      const tick = () => {
+        let s = Math.floor((target - Date.now()) / 1000);
+        if (s <= 0) { el.textContent = 'now / in progress'; return; }
+        const h = Math.floor(s / 3600); s %= 3600;
+        const m = Math.floor(s / 60); s %= 60;
+        el.textContent = `${h}h ${m}m ${s}s`;
+      };
+      tick(); setInterval(tick, 1000);
+    }
+  }
+  armCountdowns();
+  // Re-arm after any HTMX swap (the Specific module refreshes itself).
+  document.body.addEventListener('htmx:afterSwap', armCountdowns);
+  // Close the modal after a successful capability mutation.
+  document.body.addEventListener('htmx:afterSwap', (e) => {
+    if (e.detail.target && e.detail.target.id === 'capacity') {
+      document.getElementById('modal-mount').innerHTML = '';
+    }
+  });
+</script>
+{% endblock %}

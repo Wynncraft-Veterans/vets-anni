@@ -1,0 +1,31 @@
+{# Role-background + status-border chips.
+
+   The single place the "colour is NEVER the only signal" rule is enforced
+   (spec hard requirement): every chip carries a glyph + aria-label, and
+   status chips additionally a data-pattern, so the meaning survives any CVD
+   type or pure greyscale. Colour comes from a CSS custom property
+   (`chip.css_var`), so the per-user `cb` cookie swap in colourblind.css
+   recolours every chip with zero template changes.
+
+   Inputs are the dicts from app.domain.colourblind (role_chip/status_chip):
+   {css_var, glyph, label[, pattern]}. #}
+
+{% macro role_bg(chip, text=None) %}
+  <span class="role-chip" role="img" aria-label="{{ chip.label }}"
+        title="{{ chip.label }}"
+        style="background-color: var({{ chip.css_var }})">
+    <span class="glyph">{{ chip.glyph }}</span>
+    {% if text %}<span class="chip-text">{{ text }}</span>{% endif %}
+  </span>
+{% endmacro %}
+
+{% macro status_dot(chip) %}
+  {# Inline status indicator for the user dashboard (the staff border is
+     Phase 2). Still emits glyph + label + data-pattern so it reads with no
+     colour at all. #}
+  <span class="status-border status-dot" data-pattern="{{ chip.pattern }}"
+        role="img" aria-label="{{ chip.label }}" title="{{ chip.label }}"
+        style="border-color: var({{ chip.css_var }})">
+    <span class="glyph">{{ chip.glyph }}</span>
+  </span>
+{% endmacro %}

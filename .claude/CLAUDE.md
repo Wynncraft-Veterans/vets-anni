@@ -54,6 +54,24 @@ progresses. Phasing/status is at the bottom of this file.
 
 ## Status
 
-Build in progress, phased: **0** skeleton+deploy → **1** App1 (user web) →
-**2** App3 (staff/board) → **3** App2 (fishbot) → **4** App4 (vetsmod,
-deferred & coordinated). See the plan file for per-phase scope + verification.
+Build in progress, phased: **0** ✅ skeleton+deploy → **1** ✅ App1 (user
+web) → **2** App3 (staff/board) → **3** App2 (fishbot) → **4** App4
+(vetsmod, deferred & coordinated). See the plan file for per-phase scope +
+verification.
+
+**Phase 1 done (2026-05-18):** OWN-token `services/wapi.py` (priority-queue
+worker, RateLimit/-429 backoff) + `tempserver.py` + AppState + 4 lifespan
+pollers (stamp/staff/online_merge/weapons, copied temp-server resilience);
+pure `domain/` (identity, membership, capability, attendance, presence,
+roles, colourblind); low-trust `web/auth.py`; routers public(login/overview)
++ user(`/me` General+Specific, HTMX self-refresh) + capability CRUD +
+**Phase-1-minimal** staff (login + password reset/rotate only — full board is
+Phase 2); chips/pills/bars macros (glyph+label+pattern always emitted);
+dashboard/modal/fragment templates + CSS. 52 tests green; boots end-to-end
+with pollers degrading gracefully offline. **Decisions:** passwords hash with
+passlib **pbkdf2_sha256**, not bcrypt (passlib 1.7.x ⨯ bcrypt 4.x self-test is
+broken; also dodges the 72-byte cap). `domain/presence.py` is implemented now
+(the Specific module needs it) but its live poller + full status sweep are
+Phase 2. `domain/buckets.py` is intentionally absent until Phase 2 (board
+mutation path). Weapons catalog is best-effort: an empty/odd WAPI result
+degrades to "accepted, unverified" rather than blocking capability edits.

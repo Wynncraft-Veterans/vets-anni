@@ -13,6 +13,27 @@
 `online_merge` = union of `list` ∪ WAPI `/v3/guild/Returners` online ∪ roster,
 with a ~30 s grace cache — mirrors vetsmod `OnlineMemberService`.
 
+## Identity (IGN → UUID) — spare the shared Mojang bucket
+
+`api.mojang.com` is aggressively ratelimited **and that bucket is shared by
+every stack on the vets-deploy host**. So `app/services/mojang.py` resolves an
+IGN with the cheapest source first and only ever calls the network for a
+brand-new, non-guild user's first login:
+
+1. AppState **roster** (whole Returners guild, in-memory) — guild members
+   never hit the network at all;
+2. AppState **aliases** (legacy names) — offline renames;
+3. **MojangNameCache** (our DB, 7-day, write-through);
+4. a known **AnniPlayer** row (anyone who logged in before);
+5. only then the network: **PlayerDB** (Nodecraft, no ratelimit) → **ashcon**
+   → Mojang's *services* host (`api.minecraftservices.com`, a *different*
+   bucket). **`api.mojang.com` is never called.**
+
+temp-server has no name→uuid endpoint, but its roster/aliases (already polled
+by `online_merge`) cover every guild/renamed case for free. dazebot's
+`lib/mc/mojang.py` proves the provider set; we reorder gentle-first because we
+want the (stable) UUID, not the canonical current name.
+
 ## Wynncraft API — OWN token, separate ratelimit bucket (mandated)
 `services/wapi.py` is the only place that sends `WAPI_TOKEN`. Honour
 `RateLimit-*` headers, back off on 429 (port of dazebot's Requestor). We spend

@@ -139,7 +139,101 @@ a { color: inherit; text-decoration: none; }
 }
 @keyframes barFlash { 0%{opacity:1} 50%{opacity:.35} 100%{opacity:1} }
 
-/* Respect reduced-motion (reference parity). */
+/* ===== Phase 1 — user dashboard ========================================= */
+.dash-head { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+.dash-head h1 { margin:0; }
+.avatar { border-radius:10px; image-rendering:pixelated; background:#0002; }
+
+h3 { margin:1rem 0 .35rem; font-size:1rem; }
+.btn-sm {
+  width:auto; margin:0; padding:.25rem .6rem; font-size:.78rem;
+  border-radius:999px; background:#e5e7eb; color:#111827; border:none;
+  cursor:pointer;
+}
+.btn-sm.btn-danger { background:#fecaca; color:#b91c1c; }
+.add-cap {
+  width:auto; margin-top:.8rem; background:#1d4ed8; color:#fff;
+  border:none; border-radius:999px; padding:.45rem 1rem; cursor:pointer;
+}
+
+/* Role-background chip — colour from the swappable --c-* via the alias var.
+   Glyph + aria-label are emitted regardless of colour (CB hard rule). */
+.role-chip {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.2rem .6rem; border-radius:8px; font-weight:700; color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,.55);
+}
+.role-chip .glyph {
+  font-size:.7rem; letter-spacing:.06em; background:rgba(0,0,0,.28);
+  padding:.05rem .35rem; border-radius:5px;
+}
+.status-dot {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:1.5rem; height:1.5rem; border-radius:50%; vertical-align:middle;
+  background:rgba(255,255,255,.7);
+}
+.status-dot .glyph { font-size:.8rem; font-weight:700; color:#111827; }
+
+/* Role-capacity list */
+.cap-list { list-style:none; margin:.5rem 0 0; padding:0; }
+.cap-row {
+  display:grid; gap:.5rem 1rem; align-items:center; padding:.6rem 0;
+  border-top:1px solid #e5e7eb;
+  grid-template-columns:minmax(150px,auto) 1fr auto auto;
+}
+@media (max-width:760px){ .cap-row{ grid-template-columns:1fr; } }
+.cap-weapons { display:flex; flex-wrap:wrap; gap:.3rem; }
+.cap-levels { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
+.cap-actions { display:flex; gap:.4rem; }
+.pill-weapon { background:#e0e7ff; color:#3730a3; }
+
+/* High/Moderate/Low meter — count of filled bars carries the level, not hue */
+.level {
+  display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem;
+  background:#f3f4f6; padding:.15rem .5rem; border-radius:999px;
+}
+.level-bars { display:inline-flex; gap:2px; }
+.level-bars i {
+  width:6px; height:12px; border-radius:2px; background:#d1d5db; display:block;
+}
+.level-bars i.on { background:#374151; }
+.level-label { color:#6b7280; }
+.level-word { font-weight:700; }
+
+/* Attendance likelihood meter */
+.likelihood { display:flex; align-items:center; gap:.6rem; }
+.likelihood-track {
+  flex:1; height:.6rem; background:#e5e7eb; border-radius:999px; overflow:hidden;
+}
+.likelihood-fill { height:100%; background:#0369a1; border-radius:999px; }
+.likelihood-label { font-weight:700; white-space:nowrap; }
+
+.countdown-big { font-size:1.15rem; }
+.kv { border-collapse:collapse; width:100%; max-width:560px; }
+.kv th, .kv td { text-align:left; padding:.35rem .6rem; border-bottom:1px solid #e5e7eb; }
+.kv th { color:#6b7280; font-weight:600; width:9rem; }
+.staff-users { max-width:none; }
+.staff-users form { display:inline; }
+
+/* Modal (HTMX-mounted) */
+.modal-overlay {
+  position:fixed; inset:0; z-index:50; display:flex;
+  align-items:flex-start; justify-content:center; padding:4vh 1rem;
+  background:rgba(15,23,42,.55); backdrop-filter:blur(3px); overflow:auto;
+}
+.modal {
+  background:#fff; border-radius:16px; padding:1.25rem 1.4rem;
+  max-width:560px; width:100%; box-shadow:0 24px 60px rgba(15,23,42,.5);
+}
+.modal-head { display:flex; justify-content:space-between; align-items:center; }
+.modal-head h2 { margin:0; }
+.modal .guidance {
+  background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px;
+  padding:.6rem .8rem; margin:.6rem 0;
+}
+.modal-actions { display:flex; gap:.6rem; margin-top:.9rem; }
+
+/* Respect reduced-motion (reference parity). Covers the new flash/anim too. */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration:.01ms !important; animation-iteration-count:1 !important;
       transition-duration:.01ms !important; }

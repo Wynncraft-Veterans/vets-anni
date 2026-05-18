@@ -1,0 +1,64 @@
+{# Specific module — the current anni. Self-refreshing (~15 s) HTMX fragment;
+   the root carries the hx-get so it re-arms after each swap. Blank (per spec)
+   when the stamp is in the past, but still polls so it lights up the moment
+   an anni is announced. #}
+{% from "macros/chips.html" import status_dot, role_bg %}
+{% from "macros/bars.html" import status_bar %}
+<section id="specific" class="card" aria-labelledby="spec-h"
+         hx-get="/me/specific" hx-trigger="every 15s" hx-swap="outerHTML">
+  <h2 id="spec-h">Specific — This Annihilation</h2>
+  {% if not specific %}
+    <p class="muted">
+      No upcoming annihilation right now. When one is announced your
+      countdown, RSVP status and tentative party show here automatically.
+    </p>
+  {% else %}
+    <p class="countdown-big">
+      Anni in
+      <span class="countdown" data-target="{{ specific.stamp_epoch }}">…</span>
+    </p>
+
+    <h3>RSVP Status</h3>
+    <p>
+      Notice: <strong>{{ specific.rsvp_label }}</strong>
+      {% if not specific.rsvp_notice %}
+        <span class="muted">(no RSVP yet — use <code>`rsvp</code> in Discord)</span>
+      {% endif %}
+      &nbsp; How we see you: {{ status_dot(specific.status_chip) }}
+      <strong>{{ specific.status_chip.label }}</strong>
+    </p>
+    {{ status_bar(specific.presence.bar_class, specific.presence.message,
+                  specific.presence.flash) }}
+
+    <h3>Tentative Information</h3>
+    {% if specific.tentative %}
+      {% set t = specific.tentative %}
+      <table class="kv">
+        <tr><th>Party</th><td>
+          {% if t.party_ordinal %}Party {{ t.party_ordinal }}{% else %}
+          <span class="muted">{{ t.bucket or "Unassigned" }}</span>{% endif %}
+          {% if t.is_late %}<span class="pill pill-danger">LATE</span>{% endif %}
+        </td></tr>
+        <tr><th>Host</th><td>{{ t.party_host or "—" }}</td></tr>
+        <tr><th>Likely world</th><td>{{ t.world or "TBD" }}</td></tr>
+        <tr><th>Assigned role</th><td>
+          {% if t.assigned_role %}{{ role_bg(t.role_chip, t.assigned_role | capitalize) }}
+          {% else %}<span class="muted">Not yet assigned</span>{% endif %}
+        </td></tr>
+        <tr><th>Party stage</th><td>{{ t.stage or "—" }} / 5</td></tr>
+      </table>
+      {% if t.stage_finalised %}
+        {{ status_bar("bar-ok", "Party finalised — join now!", False) }}
+      {% else %}
+        {{ status_bar("bar-warn",
+           "Stage " ~ (t.stage or 1) ~ ": “" ~ (t.stage_label or "early") ~
+           "” — assignments can still change.", False) }}
+      {% endif %}
+    {% else %}
+      <p class="muted">
+        You're not on the board yet. RSVP via <code>`rsvp</code> in Discord
+        (or just log on ~1 hr early) and staff will place you.
+      </p>
+    {% endif %}
+  {% endif %}
+</section>

@@ -1,0 +1,6 @@
+{# <datalist> options for the weapons search (HTMX swaps the inner here).
+   Names are stored lower-cased in the catalog; title-case for display only —
+   server-side validation is case-insensitive. #}
+{% for m in matches %}
+  <option value="{{ m.name | title }}">{{ m.name | title }} · {{ m.subtype }}</option>
+{% endfor %}

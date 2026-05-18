@@ -24,7 +24,7 @@ RUN pip install \
       "aiosqlite>=0.20,<1" \
       "aiohttp>=3.10,<4" \
       "discord.py>=2.5,<3" \
-      "passlib[bcrypt]>=1.7,<2" \
+      "passlib>=1.7,<2" \
       "pydantic>=2.8,<3" \
       "pydantic-settings>=2.4,<3" \
       "python-dotenv>=1.0,<2"

@@ -1,0 +1,63 @@
+{# Role-Capacity fragment. Root id="capacity" so every capability mutation
+   can `hx-target="#capacity" hx-swap="outerHTML"` and replace it in place.
+   Rendered both inside dashboard.html and standalone by the CRUD routes. #}
+{% from "macros/chips.html" import role_bg %}
+{% from "macros/pills.html" import level, weapon, success %}
+<div id="capacity">
+  {% if cap_error %}
+    <p class="bar bar-danger" role="alert">{{ cap_error }}</p>
+  {% endif %}
+  {% if cap_flagged %}
+    <p class="bar bar-warn" role="status">
+      Saved, but we couldn't verify against the live weapons catalog yet:
+      <strong>{{ cap_flagged | join(", ") }}</strong>. They'll re-check
+      automatically — fix the spelling if they stay flagged.
+    </p>
+  {% endif %}
+  {% if fill_warning %}
+    <p class="bar bar-danger" role="alert">{{ fill_warning }}</p>
+  {% endif %}
+
+  {% if capabilities %}
+    <ul class="cap-list">
+      {% for c in capabilities %}
+        <li class="cap-row">
+          <div class="cap-role">{{ role_bg(c.chip, c.role_label) }}</div>
+          <div class="cap-weapons">
+            {% if c.weapons %}
+              {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
+            {% else %}
+              <span class="muted">No weapons listed</span>
+            {% endif %}
+          </div>
+          <div class="cap-levels">
+            {{ level("Confidence", c.confidence) }}
+            {{ level("Build", c.build_quality) }}
+            {{ success(c.success_count) }}
+          </div>
+          <div class="cap-actions">
+            <button class="btn-sm" hx-get="/me/capability/{{ c.id }}/edit"
+                    hx-target="#modal-mount" hx-swap="innerHTML">Edit</button>
+            <button class="btn-sm btn-danger"
+                    hx-post="/me/capability/{{ c.id }}/delete"
+                    hx-target="#capacity" hx-swap="outerHTML"
+                    hx-confirm="Remove your {{ c.role_label }} capability?">
+              Delete
+            </button>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">No capabilities yet — you'd attend as <strong>Fill</strong>.</p>
+  {% endif %}
+
+  {% if available_roles is not defined or available_roles %}
+    <button class="add-cap" hx-get="/me/capability/new"
+            hx-target="#modal-mount" hx-swap="innerHTML">
+      + Add a role capability
+    </button>
+  {% else %}
+    <p class="muted">All five core roles registered. Edit a row to adjust it.</p>
+  {% endif %}
+</div>

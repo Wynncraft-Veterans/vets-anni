@@ -43,5 +43,5 @@ request. fishbot writes `Rsvp` rows; `dazebot_client` resolves Discord→MC at
 poll tick never kills its loop.
 
 ## Phasing
-0 skeleton+deploy · 1 App1 · 2 App3/board · 3 fishbot · 4 vetsmod (deferred).
+0 ✅ skeleton+deploy · 1 ✅ App1 · 2 App3/board · 3 fishbot · 4 vetsmod (deferred).
 Full per-phase scope + verification: the plan file (see CLAUDE.md).

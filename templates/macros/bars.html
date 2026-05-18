@@ -1,0 +1,22 @@
+{# Bottom "bars" — the escalating status/likelihood/warning strips that sit
+   under each dashboard module (spec). `flash` adds the subtle pulse used by
+   the presence escalation rules; it is auto-disabled under
+   prefers-reduced-motion (see anni.css). #}
+
+{% macro status_bar(klass, message, flash=False) %}
+  <p class="bar {{ klass }}{{ ' bar-flash' if flash else '' }}" role="status">
+    {{ message }}
+  </p>
+{% endmacro %}
+
+{# Attendance-likelihood meter: a labelled progress bar (width = %, but the
+   number + label are always shown so it never depends on the bar visual). #}
+{% macro likelihood(pct, label) %}
+  <div class="bar bar-info likelihood" role="img"
+       aria-label="Attendance likelihood: {{ label }} ({{ pct }}%)">
+    <div class="likelihood-track">
+      <div class="likelihood-fill" style="width: {{ pct }}%"></div>
+    </div>
+    <span class="likelihood-label">{{ label }} · {{ pct }}%</span>
+  </div>
+{% endmacro %}

@@ -1,0 +1,95 @@
+{# Add/edit capability modal (HTMX-loaded into #modal-mount).
+   Quotes the docs-sourced role guidance + links the wynnvets.org anchors
+   (spec). The form swaps the #capacity fragment on success; dashboard.html
+   clears this mount on that swap. #}
+<div class="modal-overlay" role="dialog" aria-modal="true"
+     aria-labelledby="modal-h">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-h">
+        {{ "Add" if mode == "new" else "Edit" }} role capability
+      </h2>
+      <button class="btn-sm" type="button"
+              onclick="document.getElementById('modal-mount').innerHTML=''">✕</button>
+    </div>
+
+    {% if mode == "new" and available_roles %}
+      <label for="role-pick">Role</label>
+      <select id="role-pick" name="role"
+              hx-get="/me/capability/new" hx-target="#modal-mount"
+              hx-swap="innerHTML" hx-trigger="change"
+              hx-params="role">
+        {% for r in available_roles %}
+          <option value="{{ r.value }}" {{ "selected" if r == role }}>
+            {{ r.value | capitalize }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+
+    {% if guidance %}
+      <div class="guidance">
+        <h3>{{ guidance.title }}</h3>
+        <p>{{ guidance.purpose }}</p>
+        <p class="muted"><strong>Requirements:</strong> {{ guidance.requirements }}</p>
+        <p>
+          <a href="{{ guidance.gameplay_url }}" target="_blank" rel="noopener">Gameplay guide ↗</a>
+          &nbsp;·&nbsp;
+          <a href="{{ guidance.builds_url }}" target="_blank" rel="noopener">Builds ↗</a>
+        </p>
+      </div>
+    {% endif %}
+
+    <form {% if mode == "new" %}hx-post="/me/capability"
+          {% else %}hx-post="/me/capability/{{ cap.id }}"{% endif %}
+          hx-target="#capacity" hx-swap="outerHTML">
+      {% if mode == "new" %}
+        <input type="hidden" name="role" value="{{ role.value if role }}">
+      {% endif %}
+
+      <label for="confidence">Confidence / preference</label>
+      <select id="confidence" name="confidence">
+        {% for lv in ["high", "moderate", "low"] %}
+          <option value="{{ lv }}"
+            {{ "selected" if cap and cap.confidence == lv or (not cap and lv == "moderate") }}>
+            {{ lv | capitalize }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label for="build_quality">Build quality (self-assessed)</label>
+      <select id="build_quality" name="build_quality">
+        {% for lv in ["high", "moderate", "low"] %}
+          <option value="{{ lv }}"
+            {{ "selected" if cap and cap.build_quality == lv or (not cap and lv == "moderate") }}>
+            {{ lv | capitalize }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label for="weapons">Weapons (one per line or comma-separated, max {{ max_weapons }})</label>
+      <textarea id="weapons" name="weapons" rows="3"
+                placeholder="e.g. Labyrinth, Revolution">{{ cap.weapons if cap }}</textarea>
+      <input type="search" placeholder="Search the validated catalog…"
+             name="q" hx-get="/me/capability/weapons"
+             hx-trigger="keyup changed delay:250ms" hx-target="#weapon-list"
+             hx-swap="innerHTML" list="weapon-list" autocomplete="off">
+      <datalist id="weapon-list"></datalist>
+      <p class="muted" style="font-size:.75rem">
+        Weapons are checked against the live Wynncraft catalog. Unknown names
+        are flagged; ≤{{ max_weapons }} per role.
+      </p>
+
+      {% if cap %}
+        <p class="muted">Successful annihilations in this role:
+          <strong>{{ cap.success_count }}</strong> (set automatically — not editable).</p>
+      {% endif %}
+
+      <div class="modal-actions">
+        <button type="submit">{{ "Add capability" if mode == "new" else "Save changes" }}</button>
+        <button type="button" class="btn-sm"
+                onclick="document.getElementById('modal-mount').innerHTML=''">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>

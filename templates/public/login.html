@@ -12,7 +12,8 @@
       {% if error %}<p class="bar bar-danger">{{ error }}</p>{% endif %}
       <form method="post" action="/login">
         <label for="username">Username</label>
-        <input id="username" name="username" autocomplete="off" placeholder="Please enter your IGN (in-game name)" required>
+        <input id="username" name="username" autocomplete="off" value="{{ prefill or '' }}"
+               placeholder="Please enter your IGN (in-game name)" required>
         <label for="password">Password (optional)</label>
         <input id="password" name="password" type="password" autocomplete="off"
                placeholder="Leave blank for if you don't want to set one!">
