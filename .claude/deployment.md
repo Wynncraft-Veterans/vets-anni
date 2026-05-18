@@ -37,6 +37,28 @@ python -m venv .venv
 python-dotenv. Without a `FISHBOT_TOKEN` the bot is skipped and the web app
 still runs fully.
 
+## Tests (`tests/`, pytest — in-memory, no Aerich/Discord/network)
+
+Rudimentary Phase-0 scaffold; run with `.venv\Scripts\pytest`:
+
+- `conftest.py` — fixtures: **`db`** (`lifecycle.init_for_tests()`: in-memory
+  SQLite + `generate_schemas`, no Aerich), **`seeded`** (loads the dev dataset
+  via `scripts/seed_dev.py:populate()`), **`client`** (httpx `ASGITransport`
+  over the real `main:app` — lifespan is skipped, so the file DB / fishbot
+  never start; routes use the in-memory `db`).
+- `test_web_smoke.py` — `/health`, `/`, `/overview`, `/toggle-cb` render
+  (empty shell **and** the seeded-event branch).
+- `test_seed_invariants.py` — the hard rules the dev data exists to show:
+  single-instance-per-person, epoch API-disabled sentinel, rename-desync,
+  one-active-event / `ensure_single_active`.
+- `test_settings.py` — `ALLY_GUILD_TAGS` parsing + `db_url`.
+
+`seed_dev.py` exposes a build-only `populate()` (assumes a connected DB; does
+NOT init/close) so the suite and the "seed dev data" launch share one code
+path; the script's `main()` (init → schema → populate → close → print) is
+unchanged. Phase-1+ functional tests (attendance table, identity resolution,
+presence machine, …) build on this scaffold.
+
 ## VS Code Run & Debug (Ctrl+Shift+D)
 
 `.vscode/launch.json` ships two configs (and a compound):

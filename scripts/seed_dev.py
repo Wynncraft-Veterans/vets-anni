@@ -108,10 +108,15 @@ async def _wipe() -> None:
         await model.all().delete()
 
 
-async def main() -> None:
-    await lifecycle.init()
-    # Safety net for a fresh clone where `aerich upgrade` hasn't run yet.
-    await Tortoise.generate_schemas(safe=True)
+async def populate() -> dict[str, object]:
+    """Build the dev dataset into the already-connected Tortoise DB.
+
+    Assumes Tortoise is initialized and the schema exists; wipes the
+    anni-domain rows first so re-running is idempotent. Returns handles
+    (``{"players": {name: AnniPlayer}, "event": AnniEvent}``) so callers —
+    notably the test-suite — can assert against the created rows without
+    re-querying. Does NOT init or close connections; that is the caller's job
+    (the script wraps it in :func:`main`, tests in the ``db`` fixture)."""
     await _wipe()
 
     now = datetime.now(UTC)
@@ -210,6 +215,14 @@ async def main() -> None:
     ):
         await Rsvp.create(event=event, player=p[name], notice=notice)
 
+    return {"players": p, "event": event}
+
+
+async def main() -> None:
+    await lifecycle.init()
+    # Safety net for a fresh clone where `aerich upgrade` hasn't run yet.
+    await Tortoise.generate_schemas(safe=True)
+    await populate()
     await Tortoise.close_connections()
     print(
         f"Seeded dev data: 1 active event (anni ~93m, organiser Holidaze), "
