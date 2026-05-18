@@ -5,8 +5,12 @@
    (2) shape/pattern channels (driven by data-pattern + glyphs from the
    macros, Phase 2) become the primary signal so colour is never load-bearing.
    This satisfies the spec's hard "usable colourblind variant" requirement.
-   --c-*-light/-dark (text-bearing surfaces) are intentionally NOT swapped —
-   CB mode leans on the glyph/label/pattern, not those tints. */
+   The raw --c-*-light/-dark tints are not swapped, but the role-chip BODY
+   aliases (--role-*-dark) ARE remapped to *darkened* Okabe-Ito shades under
+   body.cb (see below) so the user dashboard — whose only palette element is
+   the role chip — actually changes in cb, not just the staff board, while
+   keeping plain white text legible. CB still leans on glyph/label/pattern,
+   never colour alone. */
 
 body.cb {
   --c-red:     #D55E00;  /* vermillion */
@@ -16,6 +20,20 @@ body.cb {
   --c-cyan:    #56B4E9;  /* sky blue */
   --c-magenta: #CC79A7;  /* reddish purple */
   --c-grey:    #999999;
+
+  /* Role-chip BODIES adopt CVD-safe hues here too (the user dashboard's only
+     palette element is the role chip, so cb must visibly change it). These
+     are *darkened* Okabe-Ito shades — same hue family as the bright `--c-*`
+     swatch above, but dark enough that the chip keeps plain **white** text
+     (exactly like normal mode; no fragile outlined-text trick). White-on-bg
+     contrast is ≥ ~4.7:1 for every one. */
+  --role-primary-dark:    #8f3f00;  /* dark vermillion */
+  --role-secondary-dark:  #5c5200;  /* dark gold (Okabe-Ito yellow) */
+  --role-tertiary-dark:   #8a4e72;  /* dark reddish-purple */
+  --role-healer-dark:     #00684c;  /* dark bluish-green */
+  --role-tank-dark:       #00598c;  /* dark blue */
+  --role-fill-dark:       #1b6088;  /* dark sky blue */
+  --role-unassigned-dark: #4d4d4d;  /* dark grey */
 }
 
 /* In CB mode, lean on text weight + the always-present glyph/label. */

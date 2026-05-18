@@ -37,12 +37,15 @@ is verified by DOM inspection in the Phase 1/2 checks (the glyph + aria-label +
 data-pattern must be present regardless of `cb`).
 
 ## Role-chip rendering (legibility)
-A role chip's **body** uses the `--role-*-dark` shade (white text is legible
-on it for *every* role; the bright base hues like green/yellow are not). The
-small **glyph swatch** keeps the *raw* `--role-*` hue — and that swatch is the
-part that still CB-swaps under `body.cb` (the `-dark` shades are intentionally
-not swapped). Role identity therefore survives via swatch-hue + glyph + label
-in both modes; nothing is colour-only. The **status** border/glyph/pattern is
+In **normal** mode a role chip's **body** uses the `--role-*-dark` shade
+(white text is legible on it for *every* role; the bright base hues like
+green/yellow are not); the small **glyph swatch** keeps the *raw* `--role-*`
+hue. Under **`body.cb`** the chip body alias `--role-*-dark` is *also*
+remapped — to **darkened** Okabe-Ito shades (same hue family as the bright
+swatch, dark enough to keep plain white text legible, ≥~4.7:1) — otherwise
+the user dashboard, whose only palette element is the role chip, looked
+identical in cb. Role identity survives via hue + glyph + label in both
+modes; nothing is colour-only. The **status** border/glyph/pattern is
 a **staff-board** device (Phase 2): the Phase-1 user dashboard deliberately
 shows presence as plain words + the escalating warning bar instead (no
 staff-style indicator for end users).
