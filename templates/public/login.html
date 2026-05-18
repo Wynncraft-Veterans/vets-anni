@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/chips.html" import host_pill %}
 {% block title %}Sign in · Wynnvets Annihilation{% endblock %}
 {% block content %}
   <h1>Wynnvets Annihilation Participant Dashboard</h1>
@@ -33,13 +34,13 @@
         <p><strong>Anni returns in:</strong>
           <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span></p>
         <p><strong>Lead organiser:</strong>
-          {{ event.organizer.mc_username if event.organizer else "Unclaimed" }}</p>
+          {% if organizer %}{{ host_pill(organizer.name, organizer.avatar) }}
+          {% else %}<span class="muted">Unclaimed</span>{% endif %}</p>
       {% else %}
         <p><strong>Event status:</strong>
           <span class="pill pill-muted">Not yet announced</span></p>
         <p class="muted">The next anni has not been announced. Check back later.</p>
       {% endif %}
-      <p><a href="/overview">See the full overview →</a></p>
     </section>
   </div>
 

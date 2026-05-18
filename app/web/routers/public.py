@@ -34,6 +34,17 @@ def _state(request: Request):
     return request.app.state.appstate
 
 
+def _organizer(event) -> dict | None:
+    """``{name, avatar}`` for the event's lead organiser, or ``None``.
+    Shared by the landing page + overview so the avatar pill is identical."""
+    if event is None or not event.organizer:
+        return None
+    return {
+        "name": event.organizer.mc_username,
+        "avatar": _avatar(event.organizer.mc_uuid, 24),
+    }
+
+
 @router.get("/health", include_in_schema=False)
 async def health() -> JSONResponse:
     """Liveness probe used by the deploy verification + Traefik checks."""
@@ -46,7 +57,8 @@ async def login_screen(request: Request):
     if (await auth.current_user(request)) is not None:
         return RedirectResponse("/me", status_code=303)
     event = await get_active_event()
-    return render(request, "public/login.html", event=event)
+    return render(request, "public/login.html", event=event,
+                  organizer=_organizer(event))
 
 
 @router.post("/login")
@@ -64,8 +76,8 @@ async def login_submit(
     if not outcome.ok:
         event = await get_active_event()
         return render(
-            request, "public/login.html", event=event, error=outcome.error,
-            prefill=username,
+            request, "public/login.html", event=event,
+            organizer=_organizer(event), error=outcome.error, prefill=username,
         )
     resp = RedirectResponse("/me", status_code=303)
     write_session(resp, {"kind": "user", "mc_uuid": outcome.player.mc_uuid,
@@ -90,14 +102,9 @@ async def overview(request: Request):
         return RedirectResponse("/", status_code=303)
 
     event = await get_active_event()
-    organizer = None
+    organizer = _organizer(event)
     parties: list[dict] = []
     if event is not None:
-        if event.organizer:
-            organizer = {
-                "name": event.organizer.mc_username,
-                "avatar": _avatar(event.organizer.mc_uuid, 24),
-            }
         rows = await Party.filter(event=event).select_related("host").order_by("ordinal")
         parties = [
             {
