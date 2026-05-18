@@ -39,3 +39,17 @@
     ★ {{ count }} win{{ '' if count == 1 else 's' }}
   </span>
 {% endmacro %}
+
+{# Preferred play region(s) — MaxMind GeoIP2 continent codes. Textual (no
+   colour dependence): the compact code is the label, the full continent name
+   is the title/aria so it stays readable on the tight staff person card. #}
+{% macro regions(items) %}
+  {% if items %}
+    {% for r in items %}
+      <span class="pill pill-region" title="{{ r.label }}"
+            aria-label="Preferred region: {{ r.label }}">{{ r.glyph }} {{ r.code }}</span>
+    {% endfor %}
+  {% else %}
+    <span class="pill pill-muted" title="No preferred play region set">🌐 Any region</span>
+  {% endif %}
+{% endmacro %}

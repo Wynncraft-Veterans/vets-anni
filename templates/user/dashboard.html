@@ -20,13 +20,22 @@
   {# ===================== GENERAL MODULE (any anni) ===================== #}
   <section class="card" aria-labelledby="gen-h">
     <h2 id="gen-h">Your Registration Status</h2>
-    <p>
-      Membership: {{ membership_pill(membership.label) }}
-      Eligibility: {{ eligibility_pill(is_core) }}
-      {% if player.has_password %}
-        <span class="pill pill-muted" title="A password is set for this IGN">🔒 password set</span>
-      {% endif %}
-    </p>
+    {# Membership line on the left, the region bubbles on its right (same
+       line). The picker is a popup (#modal-mount) — nothing here expands —
+       so the page never warps. .reg-line carries the h2→content gap so it
+       matches the other cards; only #regions swaps (on modal save). #}
+    <div class="reg-line">
+      <p class="reg-status">
+        Membership: {{ membership_pill(membership.label) }}
+        Eligibility: {{ eligibility_pill(is_core) }}
+        {% if player.has_password %}
+          <span class="pill pill-muted" title="A password is set for this IGN">🔒 password set</span>
+        {% endif %}
+      </p>
+      <div class="reg-aside">
+        {% include "user/_regions.html" %}
+      </div>
+    </div>
     <p class="muted">
       Because <strong>{{ attendance.notice_phrase }}</strong>, with your
       <strong>{{ membership.label }}</strong> / <strong>{{ eligibility }}</strong>
@@ -98,9 +107,11 @@
   armCountdowns();
   // Re-arm after any HTMX swap (the Specific module refreshes itself).
   document.body.addEventListener('htmx:afterSwap', armCountdowns);
-  // Close the modal after a successful capability mutation.
+  // Close the modal after a successful capability OR region mutation
+  // (both swap their own read fragment back in, then we clear the mount).
   document.body.addEventListener('htmx:afterSwap', (e) => {
-    if (e.detail.target && e.detail.target.id === 'capacity') {
+    const id = e.detail.target && e.detail.target.id;
+    if (id === 'capacity' || id === 'regions') {
       document.getElementById('modal-mount').innerHTML = '';
     }
   });

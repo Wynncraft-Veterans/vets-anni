@@ -98,6 +98,19 @@ PLAYERS: tuple[tuple, ...] = (
     (_synth("baz"), "baz", C, None, None, None),
 )
 
+#: name -> AnniPlayer.preferred_regions CSV (MaxMind GeoIP2 continent codes).
+#: A realistic spread incl. a multi-region player + several with no
+#: preference (absent => "" => "Any region" in the UI).
+PREFERRED_REGIONS: dict[str, str] = {
+    "Wenweia": "EU,NA",      # plays both EU and NA worlds
+    "Holidaze": "NA",
+    "Nazzae": "EU",
+    "_akaPasta": "EU",
+    "Trixomaniac": "OC",
+    "Salted": "AS",
+    "Paradrex": "NA,SA",
+}
+
 
 async def _wipe() -> None:
     """Clear anni-domain rows (children first to respect FKs)."""
@@ -127,6 +140,7 @@ async def populate() -> dict[str, object]:
             wynn_username=wynn or name,
             guild=guild, membership_tier=tier,
             last_online=last if last is not None else now,
+            preferred_regions=PREFERRED_REGIONS.get(name, ""),
         )
 
     # Concept-art shows "anni in 93 minutes" — match it so the countdown looks real.
@@ -220,10 +234,35 @@ async def populate() -> dict[str, object]:
     return {"players": p, "event": event}
 
 
+async def _reset_schema() -> None:
+    """Drop every table then recreate it from the *current* models.
+
+    ``generate_schemas(safe=True)`` only CREATEs missing tables — it never
+    ALTERs an existing one, so after any model change (e.g. a new column) a
+    stale ``data/anni.db`` makes ``populate()`` fail on the first insert
+    ("no such column"). We rebuild over the seeder's own connection rather
+    than deleting the file: the file approach dies with a Windows
+    ``PermissionError`` whenever the dev server / a paused debug session
+    still holds ``data/anni.db`` open. This is a dev-only script (module
+    docstring: *NEVER point it at production*) and debug DBs are disposable.
+    """
+    conn = Tortoise.get_connection("default")
+    await conn.execute_script("PRAGMA foreign_keys=OFF;")
+    rows = await conn.execute_query_dict(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name NOT LIKE 'sqlite_%';"
+    )
+    for r in rows:
+        await conn.execute_script(f'DROP TABLE IF EXISTS "{r["name"]}";')
+    await conn.execute_script("PRAGMA foreign_keys=ON;")
+    await Tortoise.generate_schemas(safe=True)
+
+
 async def main() -> None:
     await lifecycle.init()
-    # Safety net for a fresh clone where `aerich upgrade` hasn't run yet.
-    await Tortoise.generate_schemas(safe=True)
+    # Rebuild the schema fresh from the models every run (see _reset_schema);
+    # also covers a fresh clone where `aerich upgrade` hasn't run yet.
+    await _reset_schema()
     await populate()
     await Tortoise.close_connections()
     print(

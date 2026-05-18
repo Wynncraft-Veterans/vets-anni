@@ -1,0 +1,17 @@
+{# Preferred-region read block: just the bubbles + an "Edit Regions." button
+   (the button label is the only affordance text — no caption, so the block
+   adds no height above the Membership line). Root id="regions" so the modal's
+   save can `hx-target="#regions" hx-swap="outerHTML"` and replace it in
+   place; the edit UI itself is a popup (user/_regions_modal.html) loaded
+   into #modal-mount, so opening it never reflows the page. #}
+{% from "macros/pills.html" import regions as region_pills %}
+<div id="regions">
+  {% if region_saved %}
+    <p class="bar bar-ok" role="status">Preferred region(s) updated.</p>
+  {% endif %}
+  <div class="regions">
+    {{ region_pills(region_items) }}
+    <button class="btn-sm" hx-get="/me/regions/edit"
+            hx-target="#modal-mount" hx-swap="innerHTML">Edit Regions.</button>
+  </div>
+</div>

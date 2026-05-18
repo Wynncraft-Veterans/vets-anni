@@ -19,6 +19,8 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.constants import DEFAULT_ENABLED_REGIONS
+
 
 class Settings(BaseSettings):
     """Process configuration. Instantiate via :func:`get_settings`."""
@@ -66,6 +68,17 @@ class Settings(BaseSettings):
     )
     returners_guild_name: str = Field(default="Returners")
 
+    enabled_regions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [c.value for c in DEFAULT_ENABLED_REGIONS],
+        description="MaxMind GeoIP2 continent codes offered in the "
+        "preferred-region picker (ENABLED_REGIONS, comma-separated). Wynn "
+        "currently only runs AS/EU/NA proxies, so those are the default — "
+        "offering regions Wynn can't host just confuses users. Widen this "
+        "(e.g. ENABLED_REGIONS=AS,EU,NA,OC) as Wynn adds proxies; codes "
+        "outside the set stay valid and still display if already stored, "
+        "they're simply not offered or saved. Empty => no picker.",
+    )
+
     @field_validator("ally_guild_tags", mode="before")
     @classmethod
     def _split_tags(cls, v: object) -> object:
@@ -79,6 +92,18 @@ class Settings(BaseSettings):
         items = v.split(",") if isinstance(v, str) else v
         if isinstance(items, (list, tuple)):
             return [s for t in items if (s := str(t).strip())]
+        return v
+
+    @field_validator("enabled_regions", mode="before")
+    @classmethod
+    def _split_regions(cls, v: object) -> object:
+        """Accept ``ENABLED_REGIONS`` as a comma string or a list; trim and
+        UPPER-case each code (MaxMind continent codes are upper-case). Unknown
+        tokens are tolerated here and dropped by ``app.domain.regions`` so a
+        typo in env can't crash boot."""
+        items = v.split(",") if isinstance(v, str) else v
+        if isinstance(items, (list, tuple)):
+            return [s for t in items if (s := str(t).strip().upper())]
         return v
 
     # --- Sibling service integration ----------------------------------------

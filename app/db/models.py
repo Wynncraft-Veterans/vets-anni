@@ -45,6 +45,13 @@ class AnniPlayer(Model):
         MembershipTier, max_length=16, default=MembershipTier.OTHER
     )
 
+    # User-set preferred play region(s): a CSV of MaxMind GeoIP2 continent
+    # codes (``app.constants.ContinentCode``; "" = no preference). Stored as a
+    # readable CSV — not a child table — because it is a tiny fixed-vocabulary
+    # preference; parsed/formatted via ``app.domain.regions``. Shown on the
+    # user's General module and (Phase 2) the staff board person card.
+    preferred_regions = fields.CharField(max_length=32, default="")
+
     # Epoch-sentinel == API disabled (see app.constants.API_DISABLED_*).
     last_online = fields.DatetimeField(null=True)
     last_seen_server = fields.CharField(max_length=16, null=True)   # e.g. "EU37"

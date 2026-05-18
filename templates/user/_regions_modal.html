@@ -1,0 +1,40 @@
+{# Preferred-region picker, HTMX-loaded into #modal-mount (same popup pattern
+   as the add/edit capability modal — keeps the edit OFF the page so opening
+   it never warps the layout). The form swaps the inline #regions read block
+   on success; dashboard.html clears this mount on that swap. #}
+<div class="modal-overlay" role="dialog" aria-modal="true"
+     aria-labelledby="reg-modal-h">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="reg-modal-h">Preferred region(s)</h2>
+      <button class="btn-sm" type="button"
+              onclick="document.getElementById('modal-mount').innerHTML=''">✕</button>
+    </div>
+
+    <form hx-post="/me/regions" hx-target="#regions" hx-swap="outerHTML">
+      {% if region_all %}
+        <p class="field-help">
+          Pick the continent(s) you'd rather play anni on.<br>
+          Ctrl/⌘-click to choose more than one — or none for "any region".<br>
+          Only regions Wynn currently runs proxies for are shown.
+        </p>
+        <select id="reg-sel" name="regions" multiple size="7"
+                aria-label="Preferred play regions (MaxMind GeoIP2 continents)">
+          {% for opt in region_all %}
+            <option value="{{ opt.code }}" {{ 'selected' if opt.selected }}>
+              {{ opt.glyph }} {{ opt.code }} — {{ opt.label }}
+            </option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <p class="muted">No play regions are currently enabled.</p>
+      {% endif %}
+
+      <div class="modal-actions">
+        {% if region_all %}<button type="submit">Save changes</button>{% endif %}
+        <button type="button" class="btn-secondary"
+                onclick="document.getElementById('modal-mount').innerHTML=''">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>

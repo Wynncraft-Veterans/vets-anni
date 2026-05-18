@@ -35,8 +35,24 @@ def test_db_url_is_derived_from_the_path():
     assert _s(anni_db_path="./data/x.db").db_url == "sqlite://./data/x.db"
 
 
+def test_enabled_regions_default_is_wynns_current_proxies():
+    # Wynn only runs AS/EU/NA today — that's the default offer set.
+    assert _s().enabled_regions == ["AS", "EU", "NA"]
+
+
+def test_enabled_regions_split_trims_and_uppercases():
+    s = _s(enabled_regions=" as , eu ,NA, ")
+    assert s.enabled_regions == ["AS", "EU", "NA"]
+    assert _s(enabled_regions=["oc", " sa "]).enabled_regions == ["OC", "SA"]
+
+
+def test_empty_enabled_regions_means_no_picker():
+    assert _s(enabled_regions="").enabled_regions == []
+
+
 def test_defaults():
     s = _s()
     assert s.ally_guild_tags == ["SSNE", "TCM", "VSI", "BELL"]
     assert s.returners_guild_name == "Returners"
+    assert s.enabled_regions == ["AS", "EU", "NA"]
     assert s.debug is False

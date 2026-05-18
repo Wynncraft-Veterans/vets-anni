@@ -17,15 +17,17 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from app.constants import BUCKET_LABEL, PARTY_STAGE_LABELS, AttendanceNotice
 from app.db.lifecycle import get_active_event
 from app.db.models import BoardPlacement, RoleCapability, Rsvp
 from app.domain import attendance, capability, identity, membership, presence
+from app.domain import regions as regions_domain
 from app.domain.colourblind import role_chip, status_chip
 from app.domain.roles import guidance
+from app.settings import get_settings
 from app.web import auth
 from app.web.deps import render
 
@@ -68,6 +70,28 @@ async def _capability_rows(player) -> list[dict]:
             }
         )
     return rows
+
+
+def _enabled_regions():
+    """Continents Wynn currently proxies — the picker's offer set
+    (``ENABLED_REGIONS``; default AS/EU/NA). Read per call so a runtime
+    settings change needs no code path of its own."""
+    return regions_domain.coerce(get_settings().enabled_regions)
+
+
+def _regions_ctx(player, *, saved: bool = False) -> dict:
+    """Context for the region read fragment (``user/_regions.html``) and the
+    edit modal (``user/_regions_modal.html``). ``region_items`` = the
+    player's chosen regions for the read pills (every stored one renders,
+    even a now-disabled one); ``region_all`` = only the *enabled* continents
+    for the picker, each flagged selected — so users aren't offered regions
+    Wynn can't host."""
+    selected = regions_domain.parse(player.preferred_regions)
+    return {
+        "region_items": regions_domain.labelled(player.preferred_regions),
+        "region_all": regions_domain.options(selected, _enabled_regions()),
+        "region_saved": saved,
+    }
 
 
 def _build_specific(player, event, rsvp, placement, st) -> dict | None:
@@ -259,6 +283,7 @@ async def build_dashboard(request: Request, player) -> dict:
             "notice_phrase": _GEN_NOTICE_PHRASE.get(notice, _NO_NOTICE_PHRASE),
         },
         "capabilities": cap_rows,
+        **_regions_ctx(player),
         "specific": specific,
         "has_event": event is not None,
     }
@@ -281,3 +306,44 @@ async def specific_fragment(request: Request):
         return RedirectResponse("/", status_code=303)
     ctx = await build_dashboard(request, player)
     return render(request, "user/_specific.html", **ctx)
+
+
+# --- Preferred region(s): read fragment + popup picker (#regions) ----------
+@router.get("/me/regions", include_in_schema=False)
+async def regions_read(request: Request):
+    """The inline read block (pills + caption). Re-rendered standalone after
+    a save; also a safe direct-hit target."""
+    player = await auth.current_user(request)
+    if player is None:
+        return RedirectResponse("/", status_code=303)
+    return render(request, "user/_regions.html", **_regions_ctx(player))
+
+
+@router.get("/me/regions/edit", include_in_schema=False)
+async def regions_edit(request: Request):
+    """The picker as a popup modal (HTMX-mounted into #modal-mount, same
+    pattern as the capability modal) — kept off the page so opening it never
+    warps the layout."""
+    player = await auth.current_user(request)
+    if player is None:
+        return RedirectResponse("/", status_code=303)
+    return render(request, "user/_regions_modal.html", **_regions_ctx(player))
+
+
+@router.post("/me/regions", include_in_schema=False)
+async def regions_save(request: Request, regions: list[str] = Form(default=[])):
+    """Persist the chosen continents (empty selection = "any region"). The
+    domain helpers validate/de-dupe/order the CSV and drop anything outside
+    the enabled set, so a crafted POST can't store a region Wynn can't host."""
+    player = await auth.current_user(request)
+    if player is None:
+        return RedirectResponse("/", status_code=303)
+    codes = regions_domain.restrict(
+        regions_domain.parse(",".join(regions)), _enabled_regions()
+    )
+    player.preferred_regions = regions_domain.to_csv(codes)
+    await player.save(update_fields=["preferred_regions", "updated_at"])
+    logger.info("regions updated: %s -> %s", player.mc_username,
+                player.preferred_regions or "(any)")
+    return render(request, "user/_regions.html",
+                  **_regions_ctx(player, saved=True))

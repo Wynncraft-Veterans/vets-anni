@@ -234,6 +234,36 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .cap-levels { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
 .cap-actions { display:flex; gap:.4rem; }
 .pill-weapon { background:#e0e7ff; color:#3730a3; }
+.pill-region { background:#cffafe; color:#155e75; }
+
+/* Preferred regions ------------------------------------------------------
+   Read view only (the picker is the #modal-mount popup, styled by .modal*).
+   Just the bubbles + an "Edit Regions." button on the right of the
+   Membership line — no caption, so it adds no height above that line.
+   Nothing here expands in place, so the card never warps. */
+.regions { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
+
+/* Membership line + region block, one row. margin-top reproduces the
+   h2→first-paragraph gap the other cards get from the <p> (a flex row's
+   own top margin still collapses with the h2; its children's don't — so we
+   zero .reg-status and put the gap here) → spacing matches the other cards. */
+.reg-line {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:.4rem 1.5rem; flex-wrap:wrap; margin-top:1rem;
+}
+.reg-status { margin:0; flex:1 1 16rem; }
+.reg-aside { text-align:right; }
+.reg-aside .regions { justify-content:flex-end; }
+/* The popup's multi-select: a real, full-height dropdown box (not shrunk). */
+.modal select[multiple] {
+  width:100%; min-height:10rem; padding:.3rem;
+  border-radius:.5rem; border:1px solid #cbd5e1;
+}
+@media (max-width:760px){
+  /* Narrow: the region block wraps below the membership line, left-aligned. */
+  .reg-aside { text-align:left; }
+  .reg-aside .regions { justify-content:flex-start; }
+}
 
 /* High/Moderate/Low meter — count of filled bars carries the level, not hue */
 .level {

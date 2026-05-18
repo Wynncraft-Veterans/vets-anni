@@ -126,6 +126,79 @@ class ConfidenceLevel(StrEnum):
 BuildQuality = ConfidenceLevel
 
 
+class ContinentCode(StrEnum):
+    """A user's preferred play region(s) — the canonical **MaxMind GeoIP2
+    continent codes** (https://dev.maxmind.com/geoip — the ``continent.code``
+    field). All seven are included verbatim so the vocabulary stays faithful
+    to MaxMind even though AN is, in practice, never picked.
+
+    Stored on ``AnniPlayer.preferred_regions`` as a CSV of these codes
+    (human-readable, multi-value, migration-light — same rationale as the
+    string-stored enums above). Parsed/formatted by ``app.domain.regions``."""
+
+    AF = "AF"  # Africa
+    AN = "AN"  # Antarctica
+    AS = "AS"  # Asia
+    EU = "EU"  # Europe
+    NA = "NA"  # North America
+    OC = "OC"  # Oceania
+    SA = "SA"  # South America
+
+
+#: Full continent name for each code (the picker label + the pill ``title``).
+CONTINENT_LABEL: dict[ContinentCode, str] = {
+    ContinentCode.AF: "Africa",
+    ContinentCode.AN: "Antarctica",
+    ContinentCode.AS: "Asia",
+    ContinentCode.EU: "Europe",
+    ContinentCode.NA: "North America",
+    ContinentCode.OC: "Oceania",
+    ContinentCode.SA: "South America",
+}
+
+#: Per-continent globe glyph (the user's chosen emoji). Earth faces roughly
+#: the continent: 🌍 Africa/Europe, 🌎 the Americas, 🌏 Asia/Oceania; 🇦🇶 for
+#: Antarctica. Paired in the pill with the code text + full-name title, so
+#: colour/glyph is never the only signal (the colourblind hard-rule).
+CONTINENT_GLYPH: dict[ContinentCode, str] = {
+    ContinentCode.AF: "🌍",
+    ContinentCode.EU: "🌍",
+    ContinentCode.NA: "🌎",
+    ContinentCode.SA: "🌎",
+    ContinentCode.AS: "🌏",
+    ContinentCode.OC: "🌏",
+    ContinentCode.AN: "🇦🇶",
+}
+
+#: Glyph for the "no preference / any region" pill (a generic globe, distinct
+#: from the continent faces above so it doesn't read as a specific region).
+ANY_REGION_GLYPH = "🌐"
+
+#: Regions Wynn currently runs server proxies for — the picker's default
+#: offer set. Wynn has only implemented AS/EU/NA so far; offering the others
+#: would just confuse users. They stay in the vocabulary (so a stored value
+#: still parses + displays) and the offer set is widened via the
+#: ``ENABLED_REGIONS`` setting as Wynn adds proxies — see ``app.settings`` /
+#: ``app.domain.regions``.
+DEFAULT_ENABLED_REGIONS: tuple[ContinentCode, ...] = (
+    ContinentCode.AS,
+    ContinentCode.EU,
+    ContinentCode.NA,
+)
+
+#: Canonical display/storage order (MaxMind documents the codes alphabetically;
+#: parse/format normalise to this so the stored CSV is order-stable).
+CONTINENT_ORDER: tuple[ContinentCode, ...] = (
+    ContinentCode.AF,
+    ContinentCode.AN,
+    ContinentCode.AS,
+    ContinentCode.EU,
+    ContinentCode.NA,
+    ContinentCode.OC,
+    ContinentCode.SA,
+)
+
+
 class BucketKind(StrEnum):
     """Non-party containers on the organizer board."""
 

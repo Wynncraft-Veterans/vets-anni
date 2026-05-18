@@ -52,6 +52,50 @@ A capability holds **multiple weapons** (e.g. a primary-capable user on both
 primary and a separate 3 for secondary is fine. Modelled as N
 `RoleCapabilityWeapon` rows under one `(player, role)` `RoleCapability`.
 
+## Preferred regions (`domain/regions.py`)
+A user's preferred play region(s): a self-set multi-select over the **MaxMind
+GeoIP2 continent codes** — `ContinentCode` in `constants.py` holds all seven
+verbatim (`AF`/`AN`/`AS`/`EU`/`NA`/`OC`/`SA`); `CONTINENT_LABEL` is the
+full-name display map, `CONTINENT_GLYPH` the per-code globe emoji and
+`CONTINENT_ORDER` the canonical order. Stored on `AnniPlayer.preferred_regions`
+as a CSV of codes ("" = no preference → shown as "Any region"), the same
+readable-string rationale as the other string-stored enums. `domain/regions.py`
+is the only place that parses it: `parse()` is deliberately tolerant
+(trims/upcases, drops unknown tokens, never raises — a hand-edited/stale/
+since-disabled value can't break a dashboard), `to_csv()` re-emits the
+canonical de-duped, order-stable CSV, `coerce()` turns an iterable of code
+strings (e.g. the setting) into codes, `choices(enabled)`/`options()` feed the
+picker, `restrict()` clamps a save to the enabled set, `labelled()` shapes
+`[{code,label,glyph}]` for the read pills. It is **not** an
+eligibility/priority input — purely informational context for the user and for
+organisers balancing parties across regions.
+
+**Enabled set (the "toggle").** Wynn only runs server proxies for some
+continents (today AS/EU/NA). The picker offers **only the enabled set** —
+`settings.enabled_regions` (`ENABLED_REGIONS` env, default
+`DEFAULT_ENABLED_REGIONS` = AS/EU/NA) — so users aren't offered regions Wynn
+can't host, and a save is `restrict()`-clamped to it (a crafted POST can't
+store a disabled region). It's config-only: widen `ENABLED_REGIONS` as Wynn
+adds proxies, no redeploy/code change (the capability is in place; there's no
+in-app staff UI for it in Phase 1 by scope). A region **outside** the enabled
+set is still a valid `ContinentCode`: an already-stored one keeps parsing and
+**still renders** in the read pills (it just won't be re-offered, and the next
+save drops it). Empty `ENABLED_REGIONS` ⇒ no options ⇒ the picker degrades to
+a "no play regions enabled" note.
+
+Each region renders as `CONTINENT_GLYPH` + code + full-name `title` (🌍
+EU/AF, 🌎 NA/SA, 🌏 AS/OC, 🇦🇶 AN; `ANY_REGION_GLYPH` 🌐 for the no-preference
+pill). Surfaced on the user General module — read pills + an "Edit Regions."
+button on the Membership line (`user/_regions.html`, root `#regions`; no
+caption — the button label is the only affordance text); editing is a
+**popup modal**
+(`user/_regions_modal.html` → `#modal-mount`, mirroring the capability
+modal) whose save swaps the `#regions` block back in (dashboard JS then
+clears the mount). Keeping the picker off-page is deliberate: an inline
+expander reflowed the card. Also on the Phase-2 staff board person card
+(`macros/pills.html` `regions`) — textual (glyph + code + title), so it
+needs no colourblind handling.
+
 ## Attendance likelihood (`domain/attendance.py`)
 `ATTENDANCE_TABLE` is the published priority table as ordered rules
 (membership × Core/Fill × notice → an **exact `pct`**). First match wins; an

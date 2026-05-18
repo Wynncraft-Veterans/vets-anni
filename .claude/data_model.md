@@ -4,7 +4,7 @@ Tortoise-ORM models in `app/db/models.py`. Identity anchor = `AnniPlayer.mc_uuid
 
 | Model | Purpose / key points |
 |-------|----------------------|
-| `AnniPlayer` | UUID-keyed person cache. `mc_username` (resolved) vs `wynn_username` (possibly-stale in-game) for rename desync. `last_online` epoch sentinel == API-disabled. `password_hash` null = zero-friction login (first set sticks; staff-resettable). |
+| `AnniPlayer` | UUID-keyed person cache. `mc_username` (resolved) vs `wynn_username` (possibly-stale in-game) for rename desync. `last_online` epoch sentinel == API-disabled. `password_hash` null = zero-friction login (first set sticks; staff-resettable). `preferred_regions` = user-set CSV of MaxMind GeoIP2 continent codes (`ContinentCode`; "" = any) — parsed via `app/domain/regions.py`; shown on the General module + the staff person card. |
 | `RoleCapability` | One per (player, role); `confidence`, `build_quality`, `success_count`. `unique_together(player, role)`. |
 | `RoleCapabilityWeapon` | Weapons for a capability — **1–3, API-validated** (`MAX_WEAPONS_PER_CAPABILITY`); e.g. primary on Labyrinth + Revolution. |
 | `AnniEvent` | One announced anni. Exactly one `is_active` (enforced in `lifecycle.py`). `stamp_epoch` drives the 2 h grace + wipe. `organizer` FK. |
@@ -37,3 +37,17 @@ aerich upgrade                                # apply (Docker entrypoint runs th
 `migrations/` is **committed** (not gitignored) so prod applies the exact
 reviewed set via `manage update vets-anni`. Tests use in-memory SQLite +
 `generate_schemas` (no Aerich) via `lifecycle.init_for_tests`.
+
+**Aerich-on-SQLite gotcha:** `aerich migrate`'s auto-diff aborts with
+`NotSupportError: Alter column comment is unsupported in SQLite` whenever the
+diff touches a field whose *description* drifted from the last migration's
+`MODELS_STATE` snapshot (SQLite can't `ALTER … COMMENT`). When that happens,
+generate the migration deterministically instead: write the `ALTER TABLE`
+upgrade/downgrade by hand into a `N_<ts>_<name>.py` file using
+`aerich.migrate.MIGRATE_TEMPLATE`, with `MODELS_STATE =
+aerich.utils.get_formatted_compressed_data(get_models_describe("models"))`
+computed against the *current* models (init Tortoise with an in-memory
+connection so `data/` is never touched). Refreshing `MODELS_STATE` to match
+reality also realigns the baseline so the *next* `aerich migrate` diffs
+cleanly. This is phase-1 greenfield: there is no production data, so a stale
+local `data/anni.db` can simply be deleted and re-seeded rather than migrated.
