@@ -1,0 +1,37 @@
+/* Colourblind variant. Activated by <body class="cb">. Two things happen:
+   (1) the role/status palette swaps to an Okabe-Ito-derived, CVD-safe set;
+   (2) shape/pattern channels (driven by data-pattern + glyphs from the
+   macros, Phase 2) become the primary signal so colour is never load-bearing.
+   This satisfies the spec's hard "usable colourblind variant" requirement. */
+
+body.cb {
+  --role-primary:   #D55E00;  /* vermillion */
+  --role-secondary: #F0E442;  /* yellow */
+  --role-tertiary:  #CC79A7;  /* reddish purple */
+  --role-healer:    #009E73;  /* bluish green */
+  --role-tank:      #0072B2;  /* blue */
+  --role-fill:      #56B4E9;  /* sky blue */
+  --role-unassigned:#999999;
+
+  --st-gone:        #D55E00;
+  --st-offhard:     #009E73;
+  --st-offsoft:     #F0E442;
+  --st-elsewhere:   #0072B2;
+  --st-world:       #56B4E9;
+  --st-party:       #CC79A7;
+  --st-unknown:     #777777;
+}
+
+/* In CB mode, lean on text weight + the always-present glyph/label. */
+body.cb .pill { font-weight: 700; }
+body.cb .cb-toggle { text-decoration: underline; }
+
+/* Non-colour border patterns for person objects (Phase 2 sets data-pattern;
+   declared here so the channel exists from the start). */
+.status-border { border-width: 3px; border-style: solid; }
+.status-border[data-pattern="dashed"]   { border-style: dashed; }
+.status-border[data-pattern="dotted"]   { border-style: dotted; }
+.status-border[data-pattern="double"]   { border-style: double; border-width: 5px; }
+.status-border[data-pattern="dash-dot"] { border-style: dashed; }
+.status-border[data-pattern="thick"]    { border-width: 5px; }
+body.cb .status-border { border-width: 4px; }

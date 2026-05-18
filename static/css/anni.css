@@ -1,0 +1,134 @@
+/* vets-anni — glassmorphism, adapted from website/public/returns/56/style.css.
+   Anni additions: grid-2, bars, pill variants, countdown, and the role/status
+   colour custom-properties (overridden by colourblind.css when body.cb). */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  /* Default role palette — see .claude/spec.md [^5] / concept-art legend. */
+  --role-primary:   #dc2626;
+  --role-secondary: #eab308;
+  --role-tertiary:  #9333ea;
+  --role-healer:    #16a34a;
+  --role-tank:      #4f46e5;
+  --role-fill:      #06b6d4;
+  --role-unassigned:#9ca3af;
+  /* Default status palette — see .claude/spec.md [^6]. */
+  --st-gone:        #dc2626;
+  --st-offhard:     #16a34a;
+  --st-offsoft:     #eab308;
+  --st-elsewhere:   #2563eb;
+  --st-world:       #4f46e5;
+  --st-party:       #9333ea;
+  --st-unknown:     #6b7280;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #111827;
+  min-height: 100vh;
+}
+/* Background + soft dark overlay so text stays readable (reference parity;
+   the reference's webp asset isn't shipped here, so we use a gradient). */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -2;
+  background: linear-gradient(135deg, #1e293b, #0f172a 60%, #312e81);
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: -1;
+  background: radial-gradient(circle at top, rgba(255,255,255,.18), rgba(15,23,42,.9));
+}
+
+.page {
+  max-width: 1400px; margin: 1.5rem auto; padding: 1.5rem;
+  border-radius: 24px; background: rgba(249,250,251,.82);
+  backdrop-filter: blur(10px); box-shadow: 0 18px 40px rgba(15,23,42,.5);
+  opacity: 0; animation: fadeInUpSoft .6s ease-out forwards;
+}
+h1 { margin: 0 0 .25rem; }
+h2 { margin: 0 0 .5rem; }
+.muted { font-size: .9rem; color: #6b7280; }
+
+.card {
+  background: rgba(255,255,255,.95); border-radius: 18px;
+  padding: 1rem 1.25rem; margin-top: 1rem; border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 26px rgba(15,23,42,.15);
+  opacity: 0; animation: fadeInUpSoft .6s ease-out forwards;
+}
+.card:nth-of-type(1) { animation-delay: .10s; }
+.card:nth-of-type(2) { animation-delay: .18s; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+label { display:block; font-size:.85rem; margin: .6rem 0 .2rem; }
+input, textarea, select, button {
+  font: inherit; border-radius: 8px; border: 1px solid #d1d5db;
+  background: #f9fafb; color: #111827; padding: .45rem .6rem; width: 100%;
+}
+button {
+  cursor: pointer; border: none; background: #2563eb; color: #fff;
+  padding: .5rem 1.1rem; font-weight: 500; width: auto; margin-top: .6rem;
+  border-radius: 999px;
+}
+button:hover { filter: brightness(1.05); }
+
+/* Pills + status/role chips ------------------------------------------------ */
+.pill {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.15rem .65rem; border-radius:999px; font-size:.75rem; font-weight:600;
+}
+.pill-ok      { background:#bbf7d0; color:#166534; }
+.pill-muted   { background:#e5e7eb; color:#374151; }
+.pill-danger  { background:#fecaca; color:#b91c1c; }
+
+/* Bottom "bars" used across dashboards (status/likelihood/warnings). */
+.bar {
+  margin-top:.6rem; padding:.5rem .75rem; border-radius:10px;
+  font-size:.85rem; font-weight:500;
+}
+.bar-ok      { background:#dcfce7; color:#166534; }
+.bar-info    { background:#cffafe; color:#0369a1; }
+.bar-warn    { background:#fef9c3; color:#854d0e; }
+.bar-danger  { background:#fee2e2; color:#b91c1c; }
+.bar-flash   { animation: barFlash 1s steps(1) infinite; }
+
+.countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* Navbar (reference parity) ------------------------------------------------ */
+.navbar {
+  position: sticky; top: 0; z-index: 20; backdrop-filter: blur(16px);
+  background: linear-gradient(to right, rgba(187,98,47,.77), rgba(39,72,184,.71));
+  border-bottom: 1px solid rgba(148,163,184,.4);
+}
+.nav-inner {
+  max-width: 1400px; margin: 0 auto; padding: 1rem 1.5rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+a { color: inherit; text-decoration: none; }
+.nav-brand {
+  font-weight: 700; font-size: 1.3rem; letter-spacing: .14em;
+  text-transform: uppercase; color: #e5e7eb; white-space: nowrap;
+}
+.nav-links { display:flex; align-items:center; gap:.75rem; font-size:1.05rem; }
+.nav-links a {
+  color:#e5e7eb; opacity:.85; padding:.25rem .7rem; border-radius:999px;
+  transition: background .15s, opacity .15s, transform .15s;
+}
+.nav-links a:hover {
+  opacity:1; background: rgba(191,219,254,.16); transform: translateY(-1px);
+}
+.cb-toggle { border: 1px solid rgba(229,231,235,.5); }
+
+@keyframes fadeInUpSoft {
+  from { opacity:0; transform: translateY(12px); filter: blur(4px); }
+  to   { opacity:1; transform: translateY(0);    filter: blur(0); }
+}
+@keyframes barFlash { 0%{opacity:1} 50%{opacity:.35} 100%{opacity:1} }
+
+/* Respect reduced-motion (reference parity). */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:.01ms !important; animation-iteration-count:1 !important;
+      transition-duration:.01ms !important; }
+}

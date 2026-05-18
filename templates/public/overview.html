@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Overview · Wynnvets Annihilation{% endblock %}
+{% block content %}
+  <h1>Annihilation Overview</h1>
+  <p class="muted">General information relevant to everyone — no personal assignments.</p>
+
+  <section class="card">
+    <h2>Today's Annihilation</h2>
+    {% if event %}
+      <p><strong>Status:</strong> <span class="pill pill-ok">Announced</span></p>
+      <p><strong>Returns in:</strong>
+        <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span></p>
+      <p><strong>Lead organiser:</strong>
+        {{ event.organizer.mc_username if event.organizer else "Unclaimed" }}</p>
+      <p class="muted">Party-formation status and the live legend arrive in Phase 1/2.</p>
+    {% else %}
+      <p><span class="pill pill-muted">No anni announced</span></p>
+      <p class="muted">When an anni is announced, its countdown and party status show here.</p>
+    {% endif %}
+  </section>
+
+  <script>
+    for (const el of document.querySelectorAll('.countdown')) {
+      const target = Number(el.dataset.target) * 1000;
+      const tick = () => {
+        let s = Math.floor((target - Date.now()) / 1000);
+        if (s <= 0) { el.textContent = 'now / in progress'; return; }
+        const h = Math.floor(s / 3600); s %= 3600;
+        const m = Math.floor(s / 60); s %= 60;
+        el.textContent = `${h}h ${m}m ${s}s`;
+      };
+      tick(); setInterval(tick, 1000);
+    }
+  </script>
+{% endblock %}

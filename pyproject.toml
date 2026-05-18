@@ -1,0 +1,61 @@
+# vets-anni — Wynnvets Annihilation coordination stack.
+#
+# Single source of truth for dependencies. `uv` is intentionally NOT required
+# (it is not installed on the build/dev hosts); plain pip understands PEP 621:
+#
+#   python -m venv .venv
+#   .venv/Scripts/pip install -e .[dev]      (Windows)
+#   .venv/bin/pip install -e .[dev]          (Linux/Docker)
+#
+# The Docker image mirrors the runtime dependency list explicitly (see
+# docker/Dockerfile) so a code-only change does not bust the pip layer.
+
+[project]
+name = "vets-anni"
+version = "0.1.0"
+description = "Wynnvets Annihilation coordination stack: user dashboard, staff organizer board, fishbot."
+requires-python = ">=3.13"
+readme = "README.md"
+
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "jinja2>=3.1,<4",
+    "python-multipart>=0.0.9",        # form posts (login, capability edits)
+    "itsdangerous>=2.2,<3",           # signed-cookie sessions (no session table)
+    "tortoise-orm>=0.21,<1",
+    "aerich>=0.7,<1",                 # schema migrations (spec requires this)
+    "aiosqlite>=0.20,<1",             # async SQLite driver
+    "aiohttp>=3.10,<4",               # outbound clients (WAPI / vets-api / dazebot)
+    "discord.py>=2.5,<3",             # fishbot
+    "passlib[bcrypt]>=1.7,<2",        # user/staff password hashing
+    "pydantic>=2.8,<3",
+    "pydantic-settings>=2.4,<3",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.24,<1",
+    "httpx>=0.27,<1",                 # ASGI test client
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+# Aerich reads its config from here (modern Aerich uses pyproject, not
+# aerich.ini). TORTOISE_ORM is derived from app.settings so the same path
+# serves dev + Docker.
+[tool.aerich]
+tortoise_orm = "app.db.config.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

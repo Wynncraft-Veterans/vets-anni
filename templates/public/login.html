@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Wynnvets Annihilation{% endblock %}
+{% block content %}
+  <h1>Wynnvets Annihilation Participant Dashboard</h1>
+  <p class="muted">Check your roles, party assignment, RSVP status, and more.</p>
+
+  <div class="grid-2">
+    {# --- Sign In card (concept art p.1) --- #}
+    <section class="card" aria-labelledby="signin-h">
+      <h2 id="signin-h">Sign In</h2>
+      <p class="muted">See information tailored to you.</p>
+      {% if error %}<p class="bar bar-danger">{{ error }}</p>{% endif %}
+      <form method="post" action="/login">
+        <label for="username">In-game name (IGN)</label>
+        <input id="username" name="username" autocomplete="off" required>
+        <label for="password">Password (optional)</label>
+        <input id="password" name="password" type="password" autocomplete="off"
+               placeholder="Leave blank for zero-friction sign-in">
+        <p class="muted" style="font-size:.75rem">
+          The first password you set sticks and is required next time. No
+          password? You go straight in. Staff can reset passwords.
+        </p>
+        <button type="submit">Login</button>
+      </form>
+    </section>
+
+    {# --- Annihilation status card --- #}
+    <section class="card" aria-labelledby="status-h">
+      <h2 id="status-h">Annihilation Status</h2>
+      <p class="muted">General information about the current annihilation.</p>
+      {% if event %}
+        <p><strong>Event status:</strong> <span class="pill pill-ok">Announced</span></p>
+        <p><strong>Anni returns in:</strong>
+          <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span></p>
+        <p><strong>Lead organiser:</strong>
+          {{ event.organizer.mc_username if event.organizer else "Unclaimed" }}</p>
+      {% else %}
+        <p><strong>Event status:</strong>
+          <span class="pill pill-muted">Not yet announced</span></p>
+        <p class="muted">The next anni has not been announced. Check back later.</p>
+      {% endif %}
+      <p><a href="/overview">See the full overview →</a></p>
+    </section>
+  </div>
+
+  <script>
+    // Tiny live countdown (no library needed). Phase 1 enriches the wording.
+    for (const el of document.querySelectorAll('.countdown')) {
+      const target = Number(el.dataset.target) * 1000;
+      const tick = () => {
+        let s = Math.floor((target - Date.now()) / 1000);
+        if (s <= 0) { el.textContent = 'now / in progress'; return; }
+        const h = Math.floor(s / 3600); s %= 3600;
+        const m = Math.floor(s / 60); s %= 60;
+        el.textContent = `${h}h ${m}m ${s}s`;
+      };
+      tick(); setInterval(tick, 1000);
+    }
+  </script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{# Base layout — glassmorphism, adapted from the returns/56 reference.
+   Colour is never the only signal: the colourblind variant is a body class
+   ("cb") that swaps CSS custom properties; role/status glyphs + aria-labels
+   come from app.constants and are emitted by the macros. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Wynnvets Annihilation{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/anni.css">
+  <link rel="stylesheet" href="/static/css/colourblind.css">
+  <script defer src="/static/js/alpine.min.js"></script>
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="{% if cb %}cb{% endif %}">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a class="nav-brand" href="/">WYNNVETS · ANNI</a>
+      <div class="nav-links">
+        <a href="/overview">Overview</a>
+        {% if user_uuid %}<a href="/me">My Dashboard</a>{% endif %}
+        <a href="/staff">Staff</a>
+        {# Colourblind toggle — present on EVERY interface (spec requirement) #}
+        <a class="cb-toggle" href="/toggle-cb?next={{ request.url.path | urlencode }}"
+           aria-label="Toggle colourblind-friendly colours"
+           title="Toggle colourblind-friendly colours">
+          {% if cb %}◑ CB: on{% else %}◐ CB: off{% endif %}
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

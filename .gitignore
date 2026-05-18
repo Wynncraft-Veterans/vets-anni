@@ -399,3 +399,26 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# ---------------------------------------------------------------------------
+# vets-anni (Python) — added for this project
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & local runtime state (never commit)
+.env
+.env.local
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# User-created session artefacts: at-risk, gitignored per the spec.
+# Anything worth keeping is promoted to .claude/*.md and linked in CLAUDE.md.
+.claude/ephemeral/
+

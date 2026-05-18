@@ -1,0 +1,30 @@
+{
+  // Ctrl+Shift+D → pick a config. "dev server" runs the site locally so you
+  // can confirm design/rendering; "seed dev data" loads realistic dummy data
+  // into ./data/anni.db first. Typical loop: seed once, then run dev server,
+  // then refresh the browser. Requires the .venv (see .claude/deployment.md).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "vets-anni: dev server",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": { "DEBUG": "true", "PORT": "8000" }
+    },
+    {
+      "name": "vets-anni: seed dev data",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/seed_dev.py",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

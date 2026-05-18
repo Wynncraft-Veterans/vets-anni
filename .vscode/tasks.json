@@ -1,0 +1,16 @@
+{
+  // Terminal → Run Task → "seed dev data" (same as the launch config, handy
+  // as a one-off or as a preLaunchTask if you want a fresh DB every run).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "seed dev data",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["${workspaceFolder}/scripts/seed_dev.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}
