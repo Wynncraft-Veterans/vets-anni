@@ -172,6 +172,26 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   cursor:pointer;
 }
 .btn-sm.btn-danger { background:#fecaca; color:#b91c1c; }
+/* Secondary action — same base `button` box as the primary (identical
+   height/shape), just a neutral palette. */
+.btn-secondary { background:#e5e7eb; color:#111827; }
+/* Small muted explainer under a form label. */
+.field-help { font-size:.78rem; color:#6b7280; line-height:1.4;
+  margin:.1rem 0 .4rem; }
+
+/* Optional weapon lookup — deliberately NOT styled like the boxed (required-
+   looking) inputs. Recessed: no box, faint dashed underline, muted/small,
+   so it reads as a "search helper", not a field you must fill. */
+.weapon-search {
+  width:100%; border:none; border-bottom:1px dashed #cbd5e1;
+  border-radius:0; background:transparent; color:#6b7280;
+  font-size:.8rem; padding:.25rem .15rem; margin-top:.25rem;
+}
+.weapon-search::placeholder { color:#9ca3af; }
+.weapon-search:focus {
+  outline:none; border-bottom-style:solid; border-bottom-color:#9ca3af;
+  color:#111827;
+}
 .add-cap {
   width:auto; margin-top:.8rem; background:#1d4ed8; color:#fff;
   border:none; border-radius:999px; padding:.45rem 1rem; cursor:pointer;
@@ -310,7 +330,13 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px;
   padding:.6rem .8rem; margin:.6rem 0;
 }
-.modal-actions { display:flex; gap:.6rem; margin-top:.9rem; }
+/* align-items:center (NOT the default stretch) + zeroing the global button
+   margin-top is what stops Cancel rendering ~40% taller: stretch was
+   inflating the small button to the row height, and the primary's inherited
+   margin-top:.6rem ate into its own stretched height. Both buttons now share
+   the base `button` box and sit at their natural, equal height. */
+.modal-actions { display:flex; gap:.6rem; margin-top:.9rem; align-items:center; }
+.modal-actions button { margin-top:0; }
 
 /* Respect reduced-motion (reference parity). Covers the new flash/anim too. */
 @media (prefers-reduced-motion: reduce) {

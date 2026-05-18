@@ -120,7 +120,7 @@ async def edit_modal(request: Request, cap_id: str):
             "confidence": cap.confidence,
             "build_quality": cap.build_quality,
             "success_count": cap.success_count,
-            "weapons": "\n".join(w.weapon_name for w in cap.weapons),
+            "weapons": ", ".join(w.weapon_name for w in cap.weapons),
         },
         role=cap.role,
         guidance=guidance(cap.role),

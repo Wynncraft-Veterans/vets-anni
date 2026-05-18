@@ -9,7 +9,6 @@ reachable here — the auth model is intentionally low-trust (see
 from __future__ import annotations
 
 import logging
-import time
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -17,6 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from app.db.lifecycle import get_active_event
 from app.db.models import Party
 from app.web import auth
+from app.web.routers.user import _avatar
 from app.web.deps import (
     clear_session,
     colourblind,
@@ -82,30 +82,39 @@ async def logout():
 
 @router.get("/overview")
 async def overview(request: Request):
-    """Generic anni info for everyone — no per-user assignments. Countdown
-    derives from the stamp poller, so it matches ``/v1/outbound/stamp``."""
+    """Generic anni status (no per-user assignments) for *logged-in* users.
+    Anonymous visitors are bounced to ``/`` — the landing page already shows
+    the same generic anni status. Countdown derives from the stamp poller, so
+    it matches ``/v1/outbound/stamp``."""
+    if (await auth.current_user(request)) is None:
+        return RedirectResponse("/", status_code=303)
+
     event = await get_active_event()
+    organizer = None
     parties: list[dict] = []
     if event is not None:
+        if event.organizer:
+            organizer = {
+                "name": event.organizer.mc_username,
+                "avatar": _avatar(event.organizer.mc_uuid, 24),
+            }
         rows = await Party.filter(event=event).select_related("host").order_by("ordinal")
         parties = [
             {
                 "ordinal": p.ordinal,
                 "host": p.host.mc_username if p.host else None,
+                "host_avatar": _avatar(p.host.mc_uuid, 24) if p.host else None,
                 "world": p.world,
                 "stage": p.stage,
             }
             for p in rows
         ]
-    st = _state(request)
     return render(
         request,
         "public/overview.html",
         event=event,
+        organizer=organizer,
         parties=parties,
-        staff_online=len(st.online_staff),
-        online_count=len(st.online_by_uuid),
-        now=int(time.time()),
     )
 
 

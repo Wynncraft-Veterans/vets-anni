@@ -31,3 +31,16 @@
     <span class="glyph">{{ chip.glyph }}</span>
   </span>
 {% endmacro %}
+
+{% macro host_pill(name, avatar) %}
+  {# Avatar+name bubble for a host/organiser. Shared by the user dashboard's
+     Tentative card and the Overview page so they stay identical. Degrades to
+     just the name if the face render fails (img onerror-removes itself). #}
+  {% if name %}
+    <span class="host-pill">
+      {% if avatar %}<img src="{{ avatar }}" alt="" width="20" height="20"
+           loading="lazy" onerror="this.remove()">{% endif %}
+      {{ name }}
+    </span>
+  {% else %}—{% endif %}
+{% endmacro %}

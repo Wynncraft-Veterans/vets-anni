@@ -47,7 +47,12 @@
         <input type="hidden" name="role" value="{{ role.value if role }}">
       {% endif %}
 
-      <label for="confidence">Confidence / preference</label>
+      <label for="confidence">Confidence</label>
+      <p class="field-help">
+        How comfortable are you in the selected role?<br>
+        High = confident you could carry a party, alone, in that role.<br>
+        Low = prefer not being in this role, or prefer a backup to support you.
+      </p>
       <select id="confidence" name="confidence">
         {% for lv in ["high", "moderate", "low"] %}
           <option value="{{ lv }}"
@@ -57,7 +62,12 @@
         {% endfor %}
       </select>
 
-      <label for="build_quality">Build quality (self-assessed)</label>
+      <label for="build_quality">Build quality</label>
+      <p class="field-help">
+        How much have you invested into this role/build?<br>
+        High = crafted/tailored builds, maximum% rolls.<br>
+        Low = generic builds, minimum% rolls.
+      </p>
       <select id="build_quality" name="build_quality">
         {% for lv in ["high", "moderate", "low"] %}
           <option value="{{ lv }}"
@@ -67,18 +77,21 @@
         {% endfor %}
       </select>
 
-      <label for="weapons">Weapons (one per line or comma-separated, max {{ max_weapons }})</label>
-      <textarea id="weapons" name="weapons" rows="3"
-                placeholder="e.g. Labyrinth, Revolution">{{ cap.weapons if cap }}</textarea>
-      <input type="search" placeholder="Search the validated catalog…"
+      <label for="weapons">Weapons</label>
+      <p class="field-help">
+        What weapons do you plan to use to fulfil this role?<br>
+        Please indicate weapons that you already have built.<br>
+        Comma separated, max {{ max_weapons }}.
+      </p>
+      <input type="text" id="weapons" name="weapons"
+             placeholder="e.g. Labyrinth, Revolution"
+             value="{{ cap.weapons if cap }}">
+      <input type="search" class="weapon-search"
+             placeholder="🔍 Search Wynn's list of weapons…"
              name="q" hx-get="/me/capability/weapons"
              hx-trigger="keyup changed delay:250ms" hx-target="#weapon-list"
              hx-swap="innerHTML" list="weapon-list" autocomplete="off">
       <datalist id="weapon-list"></datalist>
-      <p class="muted" style="font-size:.75rem">
-        Weapons are checked against the live Wynncraft catalog. Unknown names
-        are flagged; ≤{{ max_weapons }} per role.
-      </p>
 
       {% if cap %}
         <p class="muted">Successful annihilations in this role:
@@ -87,7 +100,7 @@
 
       <div class="modal-actions">
         <button type="submit">{{ "Add capability" if mode == "new" else "Save changes" }}</button>
-        <button type="button" class="btn-sm"
+        <button type="button" class="btn-secondary"
                 onclick="document.getElementById('modal-mount').innerHTML=''">Cancel</button>
       </div>
     </form>

@@ -1,57 +1,58 @@
 {% extends "base.html" %}
+{% from "macros/chips.html" import host_pill %}
 {% block title %}Overview · Wynnvets Annihilation{% endblock %}
 {% block content %}
   <h1>Annihilation Overview</h1>
-  <p class="muted">General information relevant to everyone — no personal assignments.</p>
+  <p class="muted">
+    For information relevant to you specifically,
+    <a href="/me">see your dashboard</a>.
+  </p>
 
-  <section class="card">
-    <h2>Today's Annihilation</h2>
-    {% if event %}
-      <p><strong>Status:</strong> <span class="pill pill-ok">Announced</span></p>
-      <p><strong>Returns in:</strong>
-        <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span></p>
-      <p><strong>Lead organiser:</strong>
-        {{ event.organizer.mc_username if event.organizer else "Unclaimed" }}</p>
-    {% else %}
-      <p><span class="pill pill-muted">No anni announced</span></p>
-      <p class="muted">When an anni is announced, its countdown and party
-        status show here. (The countdown derives from the same
-        <code>/v1/outbound/stamp</code> the in-game tools use.)</p>
-    {% endif %}
-  </section>
+  <div class="grid-2">
+    {# ---- LEFT: Annihilation Status ---- #}
+    <section class="card" aria-labelledby="ov-status-h">
+      <h2 id="ov-status-h">Annihilation Status</h2>
+      {% if event %}
+        <table class="kv">
+          <tr><th>Status</th><td><span class="pill pill-ok">Announced</span></td></tr>
+          <tr><th>Returns in</th><td>
+            <span class="countdown" data-target="{{ event.stamp_epoch }}">…</span>
+          </td></tr>
+          <tr><th>Lead organiser</th><td>
+            {% if organizer %}{{ host_pill(organizer.name, organizer.avatar) }}
+            {% else %}<span class="muted">Unclaimed</span>{% endif %}
+          </td></tr>
+        </table>
+      {% else %}
+        <p><span class="pill pill-muted">No anni announced</span></p>
+        <p class="muted">When an anni is announced its countdown and party
+          status show here. (The countdown derives from the same
+          <code>/v1/outbound/stamp</code> the in-game tools use.)</p>
+      {% endif %}
+    </section>
 
-  <section class="card">
-    <h2>Right now</h2>
-    <p>
-      <span class="pill pill-muted">{{ staff_online }} staff online</span>
-      <span class="pill pill-muted">{{ online_count }} guild online</span>
-    </p>
-    <p class="muted">
-      Online truth mirrors vetsmod <code>`wv list</code> (queued players
-      count as connecting, not offline).
-    </p>
-  </section>
-
-  {% if event %}
-  <section class="card">
-    <h2>Party formation</h2>
-    {% if parties %}
-      <table class="kv">
-        <tr><th>Party</th><th>Host</th><th>World</th><th>Stage</th></tr>
-        {% for p in parties %}
-          <tr>
-            <td>Party {{ p.ordinal }}</td>
-            <td>{{ p.host or "—" }}</td>
-            <td>{{ p.world or "TBD" }}</td>
-            <td>{{ p.stage }} / 5</td>
-          </tr>
-        {% endfor %}
-      </table>
-    {% else %}
-      <p class="muted">No parties formed yet — the organiser hasn't started.</p>
-    {% endif %}
-  </section>
-  {% endif %}
+    {# ---- RIGHT: Party formation ---- #}
+    <section class="card" aria-labelledby="ov-parties-h">
+      <h2 id="ov-parties-h">Party formation</h2>
+      {% if event and parties %}
+        <table class="kv">
+          <tr><th>Party</th><th>Host</th><th>World</th><th>Stage</th></tr>
+          {% for p in parties %}
+            <tr>
+              <td>Party {{ p.ordinal }}</td>
+              <td>{{ host_pill(p.host, p.host_avatar) }}</td>
+              <td>{{ p.world or "TBD" }}</td>
+              <td>{{ p.stage }} / 5</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% elif event %}
+        <p class="muted">No parties formed yet — the organiser hasn't started.</p>
+      {% else %}
+        <p class="muted">Nothing to show until an anni is announced.</p>
+      {% endif %}
+    </section>
+  </div>
 
   <script>
     for (const el of document.querySelectorAll('.countdown[data-target]')) {

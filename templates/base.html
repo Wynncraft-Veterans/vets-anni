@@ -18,7 +18,7 @@
     <div class="nav-inner">
       <a class="nav-brand" href="/">WYNNVETS · ANNI</a>
       <div class="nav-links">
-        <a href="/overview">Overview</a>
+        {% if user_uuid %}<a href="/overview">Overview</a>{% endif %}
         {% if user_uuid %}<a href="/me">My Dashboard</a>{% endif %}
         <a href="/staff">Staff</a>
         {% if user_uuid %}<a href="/logout">Log out</a>{% endif %}
