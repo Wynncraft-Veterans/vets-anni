@@ -44,9 +44,10 @@ _STATUS_VAR: dict[PresenceStatus, str] = {
 
 
 class RoleChip(TypedDict):
-    css_var: str   # e.g. "--role-tank"
-    glyph: str     # e.g. "TANK"
-    label: str     # aria-label / title
+    css_var: str       # raw identifying hue (e.g. "--role-tank") — glyph swatch
+    css_var_dark: str  # legible dark shade (e.g. "--role-tank-dark") — chip body
+    glyph: str         # e.g. "TANK"
+    label: str         # aria-label / title
 
 
 class StatusChip(TypedDict):
@@ -57,12 +58,22 @@ class StatusChip(TypedDict):
 
 
 def role_chip(role: Role | None) -> RoleChip:
-    """Background chip for an assigned role (``None`` => grey 'unassigned')."""
+    """Background chip for an assigned role (``None`` => grey 'unassigned').
+
+    The chip *body* uses the legible ``-dark`` shade (white text is readable
+    on it for every role — the bright base hues like green/yellow are not);
+    the small glyph swatch keeps the *raw* identifying hue (and that one still
+    CB-swaps under ``body.cb``). Colour is never load-bearing anyway — the
+    glyph + label carry the meaning.
+    """
     if role is None:
-        return RoleChip(css_var="--role-unassigned",
-                         glyph=UNASSIGNED_STYLE.glyph, label=UNASSIGNED_STYLE.label)
+        var = "--role-unassigned"
+        return RoleChip(css_var=var, css_var_dark=f"{var}-dark",
+                        glyph=UNASSIGNED_STYLE.glyph, label=UNASSIGNED_STYLE.label)
     s = ROLE_STYLES[role]
-    return RoleChip(css_var=_ROLE_VAR[role], glyph=s.glyph, label=s.label)
+    var = _ROLE_VAR[role]
+    return RoleChip(css_var=var, css_var_dark=f"{var}-dark",
+                    glyph=s.glyph, label=s.label)
 
 
 def status_chip(status: PresenceStatus) -> StatusChip:

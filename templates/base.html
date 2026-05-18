@@ -21,6 +21,8 @@
         <a href="/overview">Overview</a>
         {% if user_uuid %}<a href="/me">My Dashboard</a>{% endif %}
         <a href="/staff">Staff</a>
+        {% if user_uuid %}<a href="/logout">Log out</a>{% endif %}
+        {% if is_staff %}<a href="/staff/logout">Log out</a>{% endif %}
         {# Colourblind toggle — present on EVERY interface (spec requirement) #}
         <a class="cb-toggle" href="/toggle-cb?next={{ request.url.path | urlencode }}"
            aria-label="Toggle colourblind-friendly colours"

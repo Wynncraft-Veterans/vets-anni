@@ -5,24 +5,21 @@
 {% block content %}
   <div class="dash-head">
     <img class="avatar" src="{{ player.avatar }}" alt=""
-         width="48" height="48" loading="lazy">
+         width="48" height="48" loading="lazy"
+         onerror="this.remove()">
     <div>
-      <h1>
-        {% if player.desynced %}
-          <span title="In-game name">{{ player.wynn_username }}</span><span
-            class="muted">|</span><span title="Current Minecraft name">{{ player.mc_username }}</span>
-        {% else %}{{ player.mc_username }}{% endif %}
-      </h1>
-      <p class="muted">
-        {{ player.guild or "No guild" }} ·
-        <a href="/logout">log out</a>
-      </p>
+      <h1>{{ player.mc_username }}'s Dashboard</h1>
+      {% if player.desynced %}
+        <p class="muted" title="Your in-game name differs from your current Minecraft name">
+          in-game: {{ player.wynn_username }}
+        </p>
+      {% endif %}
     </div>
   </div>
 
   {# ===================== GENERAL MODULE (any anni) ===================== #}
   <section class="card" aria-labelledby="gen-h">
-    <h2 id="gen-h">General — Registration Status</h2>
+    <h2 id="gen-h">Your Registration Status</h2>
     <p>
       Membership: {{ membership_pill(membership.label) }}
       Eligibility: {{ eligibility_pill(is_core) }}
@@ -31,30 +28,50 @@
       {% endif %}
     </p>
     <p class="muted">
-      {% if attendance.projected_early %}
-        Assuming you log on now you'd be <strong>~1 hr early</strong>.
-      {% else %}
-        Assuming you log on now you'd be <strong>late</strong> ({{ attendance.notice_label }}).
-      {% endif %}
-      With your <strong>{{ membership.label }}</strong> /
-      <strong>{{ eligibility }}</strong> status, the published
-      attendance-priority table puts you at:
+      Because <strong>{{ attendance.notice_phrase }}</strong>, with your
+      <strong>{{ membership.label }}</strong> / <strong>{{ eligibility }}</strong>
+      status the published attendance-priority table puts you at:
     </p>
     {{ likelihood(attendance.pct, attendance.label) }}
   </section>
 
   {# ----- Role Capacity (HTMX-swappable fragment) ----- #}
   <section class="card" aria-labelledby="cap-h">
-    <h2 id="cap-h">General — Role Capacity</h2>
+    <h2 id="cap-h">Your Indicated Capabilities</h2>
     <p class="muted">
-      Up to five core roles. Editing here is what staff use to build parties —
-      keep your weapons, confidence and build quality honest.
+      There are five core roles that help support Wynnvets annihilations!
+      Please list the ones you are able to do by clicking add (or edit) a
+      role capability.
     </p>
     {% include "user/_capacity.html" %}
   </section>
 
-  {# ===================== SPECIFIC MODULE (current anni) ===================== #}
-  {% include "user/_specific.html" %}
+  {# ============== TODAY'S ANNIHILATION — page-level divider ==============
+     The heading lives OUTSIDE the white boxes (on the frosted page panel),
+     promoted to a section title. Its two boxes below are independent, stable
+     cards: only their inner #participation / #tentative swap every 15 s, so
+     the fadeInUpSoft entry animation runs once and nothing jumps. One poll
+     (#participation) refreshes both — the right box rides an HTMX
+     out-of-band swap (see user/_specific.html). #}
+  <h1 class="section-title">Today's Annihilation{% if specific %}
+    <span class="section-when">(in
+      <span class="countdown" data-target="{{ specific.stamp_epoch }}">…</span>)</span>
+  {% endif %}</h1>
+  <div class="grid-2">
+    <section class="card spec-card" aria-labelledby="part-h">
+      <h2 id="part-h">Participation Status</h2>
+      <div id="participation" class="spec-col"
+           hx-get="/me/specific" hx-trigger="every 15s" hx-swap="innerHTML">
+        {% include "user/_participation.html" %}
+      </div>
+    </section>
+    <section class="card spec-card" aria-labelledby="tent-h">
+      <h2 id="tent-h">Tentative Information</h2>
+      <div id="tentative" class="spec-col">
+        {% include "user/_tentative.html" %}
+      </div>
+    </section>
+  </div>
 
   {# Modal mount: the add/edit capability modal is HTMX-loaded into here. #}
   <div id="modal-mount"></div>

@@ -15,7 +15,8 @@
     </p>
   {% endif %}
   {% if fill_warning %}
-    <p class="bar bar-danger" role="alert">{{ fill_warning }}</p>
+    {% set _fw = fill_warning.split('\n', 1) %}
+    <p class="bar bar-danger preline" role="alert"><strong>{{ _fw[0] }}</strong>{{ ('\n' ~ _fw[1]) if _fw|length > 1 else '' }}</p>
   {% endif %}
 
   {% if capabilities %}

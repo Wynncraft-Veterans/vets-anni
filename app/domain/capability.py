@@ -31,10 +31,14 @@ def is_core(capability_count: int) -> bool:
     return capability_count >= 1
 
 
+# First line is the headline (the template bolds it); the `\n` splits it from
+# the body (rendered with white-space:pre-line — see _capacity.html). Plain
+# text only — emphasis is a presentation concern, applied in the template.
 FILL_WARNING = (
     "You have not indicated any role capabilities and, as such, are set to "
-    "attend as a fill. Fill slots are unfortunately in limited supply, and "
-    "not guaranteed. If you can fill a role, please add one below!"
+    "attend as a fill!\n"
+    "Fill slots are unfortunately in limited supply and high demand! "
+    "If you are able to fulfil a role, please add it!"
 )
 
 

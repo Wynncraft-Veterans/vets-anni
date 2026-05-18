@@ -12,7 +12,14 @@
 {# Attendance-likelihood meter: a labelled progress bar (width = %, but the
    number + label are always shown so it never depends on the bar visual). #}
 {% macro likelihood(pct, label) %}
-  <div class="bar bar-info likelihood" role="img"
+  {# Colour tracks the value, worst->best: red < orange < yellow < green <
+     blue. Light tinted background + dark same-hue text (always legible); the
+     number + label are always shown so colour is never the only signal. #}
+  {% set lvl = "lk-red" if pct < 15
+               else ("lk-orange" if pct < 35
+               else ("lk-yellow" if pct < 55
+               else ("lk-green" if pct < 75 else "lk-blue"))) %}
+  <div class="bar likelihood {{ lvl }}" role="img"
        aria-label="Attendance likelihood: {{ label }} ({{ pct }}%)">
     <div class="likelihood-track">
       <div class="likelihood-fill" style="width: {{ pct }}%"></div>

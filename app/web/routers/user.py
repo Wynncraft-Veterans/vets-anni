@@ -20,7 +20,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-from app.constants import PARTY_STAGE_LABELS, AttendanceNotice
+from app.constants import BUCKET_LABEL, PARTY_STAGE_LABELS, AttendanceNotice
 from app.db.lifecycle import get_active_event
 from app.db.models import BoardPlacement, RoleCapability, Rsvp
 from app.domain import attendance, capability, identity, membership, presence
@@ -37,9 +37,11 @@ def _state(request: Request):
     return request.app.state.appstate
 
 
-def _avatar(uuid: str) -> str:
-    """Face render for the person object (degrades to a broken img offline)."""
-    return f"https://crafatar.com/avatars/{uuid}?size=64&overlay"
+def _avatar(uuid: str, size: int = 48) -> str:
+    """Face render for a person. mc-heads is the most reliable free renderer
+    (crafatar is frequently down/ratelimited); templates also ``onerror``-
+    remove it so a miss degrades cleanly, no broken-image box."""
+    return f"https://mc-heads.net/avatar/{uuid}/{size}"
 
 
 async def _capability_rows(player) -> list[dict]:
@@ -94,11 +96,37 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
         )
     )
 
+    # Where are you *right now* (separate from RSVP). online_merge rarely
+    # knows a non-staff player's server in Phase 1, so we show what we can
+    # truthfully say: online / in-queue / offline / API-disabled.
+    if online is None:
+        if identity.is_api_disabled(player.last_online):
+            online_state = {"kind": "unknown",
+                            "text": "Status unknown — your Wynncraft API is disabled"}
+        else:
+            online_state = {"kind": "off", "text": "Offline"}
+    elif online.queued:
+        online_state = {"kind": "queue", "text": "Online — connecting (in queue)"}
+    elif online.server:
+        online_state = {"kind": "on", "text": f"Online — {online.server}"}
+    else:
+        online_state = {"kind": "on", "text": "Online"}
+
     tentative: dict | None = None
     if placement is not None:
+        # Tentative only cares *where* they sit (party vs bucket). Lateness is
+        # a participation status, surfaced via "Given Notice" below — not here.
+        if party is not None:
+            party_label = f"Party {party.ordinal}"
+        else:
+            party_label = BUCKET_LABEL.get(placement.bucket, "Unassigned")
         tentative = {
+            "party_label": party_label,
             "party_ordinal": party.ordinal if party else None,
             "party_host": party.host.mc_username if party and party.host else None,
+            "party_host_avatar": (
+                _avatar(party.host.mc_uuid, 24) if party and party.host else None
+            ),
             "world": party.world if party else None,
             "stage": party.stage if party else None,
             "stage_label": PARTY_STAGE_LABELS.get(party.stage) if party else None,
@@ -109,16 +137,36 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
             "bucket": placement.bucket,
         }
 
-    notice = stored or attendance.project_notice(seconds)
+    # "Given Notice" precedence: a staff LATE flag is an *observed fact* and
+    # overrides the rosy countdown projection (otherwise a late joiner reads
+    # "you showed up on time!" AND is in the LATE bucket — contradictory).
+    # Then a stored RSVP; otherwise the on-time/late countdown projection.
+    if placement is not None and placement.is_late:
+        notice = AttendanceNotice.ATTEND_LATE
+    else:
+        notice = stored or attendance.project_notice(seconds)
     return {
         "stamp_epoch": event.stamp_epoch,
         "seconds": seconds,
         "rsvp_notice": stored,
         "rsvp_label": _NOTICE_LABEL.get(notice, notice.value),
+        # Joined-late is a participation status, so it surfaces here in
+        # "Given Notice" — never in Tentative Information (which only cares
+        # that they're unassigned).
+        "rsvp_phrase": _RSVP_PHRASE.get(notice, notice.value),
+        "online_state": online_state,
         "presence": pv,
         "status_chip": status_chip(pv.status),
         "tentative": tentative,
     }
+
+
+_RSVP_PHRASE = {
+    AttendanceNotice.ATTEND_EARLY: "You showed up on time!",
+    AttendanceNotice.RSVP_HARD: "You have hard-RSVP'd!",
+    AttendanceNotice.RSVP_SOFT: "You have soft-RSVP'd!",
+    AttendanceNotice.ATTEND_LATE: "You showed up late",
+}
 
 
 _NOTICE_LABEL = {
@@ -126,6 +174,17 @@ _NOTICE_LABEL = {
     AttendanceNotice.RSVP_HARD: "Hard RSVP",
     AttendanceNotice.RSVP_SOFT: "Soft RSVP",
     AttendanceNotice.ATTEND_LATE: "Late (projected)",
+}
+
+#: One clean clause per effective notice for the General-module sentence.
+#: ``effective_notice`` never yields ATTEND_LATE for an RSVP'd user (a stored
+#: RSVP outranks the late projection), so an RSVP'd user is never called
+#: "late" — their RSVP is an intention to attend, even if a little late.
+_GEN_NOTICE_PHRASE = {
+    AttendanceNotice.ATTEND_EARLY: "you'd log on about an hour early",
+    AttendanceNotice.RSVP_HARD: "you've hard-RSVP'd",
+    AttendanceNotice.RSVP_SOFT: "you've soft-RSVP'd",
+    AttendanceNotice.ATTEND_LATE: "you'd log on late (no RSVP, under an hour's notice)",
 }
 
 
@@ -190,8 +249,7 @@ async def build_dashboard(request: Request, player) -> dict:
         "attendance": {
             "pct": pct,
             "label": like_label,
-            "projected_early": notice == AttendanceNotice.ATTEND_EARLY,
-            "notice_label": _NOTICE_LABEL.get(notice, notice.value),
+            "notice_phrase": _GEN_NOTICE_PHRASE.get(notice, notice.value),
         },
         "capabilities": cap_rows,
         "specific": specific,

@@ -1,0 +1,43 @@
+{# "Tentative Information" — INNER content of the right card (#tentative).
+   Rendered on first load by dashboard.html and refreshed every 15 s via an
+   HTMX out-of-band swap from GET /me/specific. Party stage is a plain field
+   (it was a permanently-yellow bar that conveyed nothing by colour). #}
+{% from "macros/chips.html" import role_bg %}
+{% if not specific %}
+  <p class="muted">No party yet — nothing to show until an anni is announced.</p>
+{% elif specific.tentative %}
+  {% set t = specific.tentative %}
+  <table class="kv">
+    <tr><th>Party</th><td>
+      {% if t.party_ordinal %}{{ t.party_label }}
+      {% else %}<span class="muted">{{ t.party_label }}</span>{% endif %}
+    </td></tr>
+    <tr><th>Host</th><td>
+      {% if t.party_host %}
+        <span class="host-pill">
+          <img src="{{ t.party_host_avatar }}" alt="" width="20" height="20"
+               loading="lazy" onerror="this.remove()">
+          {{ t.party_host }}
+        </span>
+      {% else %}—{% endif %}
+    </td></tr>
+    <tr><th>Likely world</th><td>{{ t.world or "TBD" }}</td></tr>
+    <tr><th>Assigned role</th><td>
+      {% if t.assigned_role %}{{ role_bg(t.role_chip, t.assigned_role | capitalize) }}
+      {% else %}<span class="muted">Not yet assigned</span>{% endif %}
+    </td></tr>
+    <tr><th>Party stage</th><td>
+      {% if t.stage_finalised %}
+        {{ t.stage or 5 }}/5 <span class="muted">— finalised, join now</span>
+      {% else %}
+        {{ t.stage or 1 }}/5
+        <span class="muted">— {{ t.stage_label or "early; assignments can still change." }}</span>
+      {% endif %}
+    </td></tr>
+  </table>
+{% else %}
+  <p class="muted">
+    You're not on the board yet. RSVP via <code>`rsvp</code> in Discord
+    (or just log on ~1 hr early) and staff will place you.
+  </p>
+{% endif %}

@@ -142,24 +142,26 @@ async def populate() -> dict[str, object]:
         confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.HIGH,
         success_count=12,
     )
+    # Subtypes are the real Wynncraft v3 `subType` values (verified against
+    # POST /v3/item/search) so the seeded display matches the live catalog.
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Labyrinth",
-                                      weapon_subtype="relik")
+                                      weapon_subtype="bow")
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Revolution",
-                                      weapon_subtype="relik")
+                                      weapon_subtype="bow")
     cap = await RoleCapability.create(
         player=p["Wenweia"], role=Role.HEALER,
         confidence=ConfidenceLevel.MODERATE, build_quality=ConfidenceLevel.MODERATE,
         success_count=3,
     )
-    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Idol",
+    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Lament",
                                       weapon_subtype="wand")
     cap = await RoleCapability.create(
         player=p["Nazzae"], role=Role.HEALER,
         confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.HIGH,
         success_count=8,
     )
-    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Fantasia",
-                                      weapon_subtype="wand")
+    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Absolution",
+                                      weapon_subtype="relik")
     cap = await RoleCapability.create(
         player=p["_akaPasta"], role=Role.TANK,
         confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.MODERATE,
@@ -172,8 +174,8 @@ async def populate() -> dict[str, object]:
         confidence=ConfidenceLevel.MODERATE, build_quality=ConfidenceLevel.LOW,
         success_count=1,
     )
-    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Stratiformis",
-                                      weapon_subtype="bow")
+    await RoleCapabilityWeapon.create(capability=cap, weapon_name="Idol",
+                                      weapon_subtype="spear")
 
     # --- parties -------------------------------------------------------------
     p1 = await Party.create(event=event, ordinal=1, host=p["Holidaze"],

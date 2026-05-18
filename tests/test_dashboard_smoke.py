@@ -33,20 +33,27 @@ async def test_me_dashboard_renders_general_and_specific(as_user):
     r = await as_user.get("/me")
     assert r.status_code == 200
     body = r.text
-    assert "Wenweia" in body
-    assert "Role Capacity" in body
-    assert "Registration Status" in body
-    # Seeded event is ~93 min out (future) -> Specific module is NOT blank.
-    assert "Specific — This Annihilation" in body
-    assert "RSVP Status" in body
+    assert "Wenweia's Dashboard" in body
+    assert "Your Indicated Capabilities" in body
+    assert "Your Registration Status" in body
+    # Seeded event is ~93 min out (future) -> Today's-anni module NOT blank.
+    assert "Today's Annihilation" in body
+    assert "RSVP" in body and "Tentative Information" in body
+    # The 15 s refresh lives on the STABLE wrapper (card animates once, the
+    # fragment swaps inside it) — not on the fragment itself.
+    assert 'hx-get="/me/specific"' in body
     # Role chip emits its glyph + aria-label regardless of colour (CB rule).
     assert "aria-label" in body and "PRIM" in body
 
 
-async def test_specific_fragment_is_self_refreshing(as_user):
+async def test_specific_fragment_is_inner_only(as_user):
+    """GET /me/specific returns just the inner content (no card/hx) so the
+    innerHTML swap can't re-fade or duplicate the card."""
     r = await as_user.get("/me/specific")
     assert r.status_code == 200
-    assert 'hx-get="/me/specific"' in r.text  # re-arms after each swap
+    assert "RSVP" in r.text
+    assert 'hx-get="/me/specific"' not in r.text  # hx lives on the wrapper
+    assert 'class="card"' not in r.text            # wrapper owns the card
 
 
 async def test_capability_modal_quotes_guidance_and_links(as_user):

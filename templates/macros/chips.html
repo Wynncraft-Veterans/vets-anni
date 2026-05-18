@@ -11,10 +11,12 @@
    {css_var, glyph, label[, pattern]}. #}
 
 {% macro role_bg(chip, text=None) %}
+  {# Body = legible dark shade (white text reads on every role); the glyph
+     swatch keeps the raw identifying hue (still CB-swapped under body.cb). #}
   <span class="role-chip" role="img" aria-label="{{ chip.label }}"
         title="{{ chip.label }}"
-        style="background-color: var({{ chip.css_var }})">
-    <span class="glyph">{{ chip.glyph }}</span>
+        style="background-color: var({{ chip.css_var_dark }})">
+    <span class="glyph" style="background-color: var({{ chip.css_var }})">{{ chip.glyph }}</span>
     {% if text %}<span class="chip-text">{{ text }}</span>{% endif %}
   </span>
 {% endmacro %}

@@ -1,0 +1,27 @@
+{# "Participation Status" — INNER content of the left card (#participation).
+   Rendered on first load by dashboard.html and re-rendered every 15 s by
+   GET /me/specific (the card itself is stable, so no re-fade/jump). The
+   countdown now lives in the "Today's Annihilation (in …)" section title;
+   this box is just your online state + RSVP, with the presence bar pinned
+   to the card foot by CSS so it lines up with the tentative card's bar. #}
+{% from "macros/bars.html" import status_bar %}
+{% if not specific %}
+  <p class="muted">
+    No upcoming annihilation right now. When one is announced your online
+    state and RSVP status appear here automatically.
+  </p>
+{% else %}
+  {# Field/value layout mirroring the Tentative Information card. #}
+  <table class="kv">
+    <tr><th>Presence</th><td>
+      <span class="online-line online-{{ specific.online_state.kind }}">
+        <span class="online-dot" aria-hidden="true"></span>
+        <span>{{ specific.online_state.text }}</span>
+      </span>
+    </td></tr>
+    <tr><th>Given Notice</th><td>{{ specific.rsvp_phrase }}</td></tr>
+  </table>
+
+  {{ status_bar(specific.presence.bar_class, specific.presence.message,
+                specific.presence.flash) }}
+{% endif %}

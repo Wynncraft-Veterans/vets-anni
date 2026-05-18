@@ -134,6 +134,14 @@ class BucketKind(StrEnum):
     VOLUNTEERS = "volunteers"   # here, but confirmed willingness to sit out *if absolutely needed*.
 
 
+#: User-facing bucket label (the raw enum values read badly in the UI).
+BUCKET_LABEL: dict[BucketKind, str] = {
+    BucketKind.UNASSIGNED: "Unassigned",
+    BucketKind.WONTASSIGN: "Sitting out",
+    BucketKind.VOLUNTEERS: "Volunteering (will sit out if needed)",
+}
+
+
 class PartyResult(StrEnum):
     TBD = "tbd" # This party is either about to fight, or is still fighting, anni. We don't know the result yet.
     LOSS = "loss" # This party lost.

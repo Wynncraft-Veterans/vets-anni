@@ -100,16 +100,32 @@ class WapiClient:
             self._session = None
 
     # --- public API ----------------------------------------------------------
-    async def get_json(self, path: str, *, priority: int = PRIO_NORMAL) -> dict[str, Any]:
-        """GET ``/v3/{path}`` and return decoded JSON.
+    async def get_json(self, path: str, *, priority: int = PRIO_NORMAL) -> Any:
+        """GET ``/v3/{path}`` and return decoded JSON (dict *or* list).
 
         Blocks until the worker services this request (FIFO within a
         priority). Raises :class:`WapiError` on a hard failure; the caller
         (a poller / route) is expected to catch and fall back to last-good.
         """
+        return await self._enqueue("GET", path, None, priority)
+
+    async def post_json(
+        self, path: str, body: Any, *, priority: int = PRIO_NORMAL
+    ) -> Any:
+        """POST ``body`` as JSON to ``/v3/{path}`` and return decoded JSON.
+
+        Used for the v3 advanced item search (``POST /v3/item/search`` with a
+        ``{"type": [...]}`` filter) — the only correct way to *enumerate* the
+        weapon catalog; ``GET /v3/item/search/{q}`` is a name search.
+        """
+        return await self._enqueue("POST", path, body, priority)
+
+    async def _enqueue(self, method: str, path: str, body: Any, priority: int) -> Any:
         queue = await self._ensure_worker()
-        fut: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
-        await queue.put((priority, next(self._seq), path, fut))
+        fut: asyncio.Future[Any] = asyncio.get_event_loop().create_future()
+        # seq (unique, monotonic) is the priority tiebreaker, so the trailing
+        # request fields are never compared by the PriorityQueue.
+        await queue.put((priority, next(self._seq), method, path, body, fut))
         return await fut
 
     # --- worker --------------------------------------------------------------
@@ -117,9 +133,9 @@ class WapiClient:
         """Drain the priority queue one request at a time, honouring limits."""
         assert self._queue is not None
         while True:
-            priority, _seq, path, fut = await self._queue.get()
+            priority, _seq, method, path, body, fut = await self._queue.get()
             try:
-                result = await self._do(path)
+                result = await self._do(method, path, body)
                 if not fut.done():
                     fut.set_result(result)
             except asyncio.CancelledError:
@@ -132,7 +148,9 @@ class WapiClient:
             finally:
                 self._queue.task_done()
 
-    async def _do(self, path: str, _retries: int = 3) -> dict[str, Any]:
+    async def _do(
+        self, method: str, path: str, body: Any, _retries: int = 3
+    ) -> Any:
         # Respect the ratelimit gate learned from the previous response.
         delay = self._not_before - time.monotonic()
         if delay > 0:
@@ -141,22 +159,28 @@ class WapiClient:
 
         session = await self._get_session()
         url = f"/v3/{path.lstrip('/')}"
-        logger.debug("WAPI GET %s", url)
-        async with session.get(url) as res:
+        logger.debug("WAPI %s %s", method, url)
+        ctx = (
+            session.post(url, json=body)
+            if method == "POST"
+            else session.get(url)
+        )
+        async with ctx as res:
             self._update_ratelimit(res.headers)
-            logger.debug("WAPI %s -> %d", url, res.status)
+            logger.debug("WAPI %s %s -> %d", method, url, res.status)
             if res.status == 429:
                 retry = _header_seconds(res.headers, default=2.0)
                 logger.warning("WAPI 429 on %s — backing off %.1fs", path, retry)
                 self._not_before = time.monotonic() + retry
                 if _retries > 0:
-                    return await self._do(path, _retries - 1)
+                    return await self._do(method, path, body, _retries - 1)
                 raise WapiError(f"WAPI ratelimited (429) for {path}")
             if res.status == 404:
                 raise WapiError(f"WAPI 404 for {path}")
             if res.status >= 400:
                 raise WapiError(f"WAPI {res.status} for {path}")
-            return await res.json()
+            # WAPI sometimes serves JSON as text/plain — don't enforce mime.
+            return await res.json(content_type=None)
 
     def _update_ratelimit(self, headers: Any) -> None:
         """Pre-emptively throttle: if we're near the limit, hold until reset.

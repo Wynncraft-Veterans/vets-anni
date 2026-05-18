@@ -9,7 +9,8 @@ from __future__ import annotations
 from app.constants import MAX_WEAPONS_PER_CAPABILITY
 from app.domain import capability as cap
 
-CATALOG = {"idol": "wand", "labyrinth": "relik", "stratiformis": "bow"}
+# Real Wynncraft v3 `subType` values (verified via POST /v3/item/search).
+CATALOG = {"idol": "spear", "labyrinth": "bow", "stratiformis": "bow"}
 
 
 def test_core_vs_fill():
@@ -21,7 +22,7 @@ def test_core_vs_fill():
 
 def test_validate_weapon_against_a_populated_catalog():
     r = cap.validate_weapon("Idol", CATALOG)
-    assert r.check is cap.WeaponCheck.VALID and r.subtype == "wand"
+    assert r.check is cap.WeaponCheck.VALID and r.subtype == "spear"
     assert cap.validate_weapon("Totally Fake", CATALOG).check is cap.WeaponCheck.INVALID
     assert cap.validate_weapon("", CATALOG).check is cap.WeaponCheck.INVALID
 

@@ -1,15 +1,20 @@
 """weapons_poller — the validated weapons catalog (hourly, OWN token).
 
 Feeds the add-capability autocomplete + write-time validation: a capability
-weapon must be a real Wynncraft weapon (``app/domain/capability.py``). We hit
-WAPI ``/v3/item/search/{query}`` once per weapon subtype (low priority — it
-must never delay an interactive player lookup) and fold the results into
-``state.weapons_by_name`` (``name_lower -> subtype``).
+weapon must be a real Wynncraft weapon (``app/domain/capability.py``).
 
-Resilience over completeness: if the catalog cannot be (re)built this tick the
-*last-good* one stays; if it has never built, validation degrades to
-"accepted but unverified" rather than blocking every capability edit (see
-``app/domain/capability.py``). The ~1 h cadence keeps token spend negligible.
+We use the v3 **advanced** item search — ``POST /v3/item/search?fullResult``
+with ``{"type": ["weapon"]}`` — which is the only correct way to *enumerate*
+the catalog. (``GET /v3/item/search/{q}`` is a fuzzy *name* search and the
+field is ``subType``, not ``weaponType`` — getting either wrong is why an
+earlier attempt produced an empty/garbage catalog and weapons displayed with
+the wrong subtype.) The response is a JSON **array** of item objects; we map
+both the display and internal names (lower-cased) to ``subType``.
+
+Resilience over completeness: a failed/odd tick keeps the last-good catalog;
+a never-built catalog degrades validation to "accepted, unverified" rather
+than blocking every capability edit (see ``app/domain/capability.py``). The
+~1 h cadence keeps token spend negligible.
 """
 
 from __future__ import annotations
@@ -25,43 +30,46 @@ from app.settings import Settings
 logger = logging.getLogger("anni.weapons")
 
 
-def _harvest(payload: dict, want: str, into: dict[str, str]) -> None:
-    """Record ``name_lower -> subtype`` for weapon entries of subtype ``want``.
+def _harvest(payload: object) -> dict[str, str]:
+    """``payload`` is the v3 search array -> ``{name_lower: subType}``.
 
-    v3 item search returns ``{<ItemName>: {type, weaponType, ...}, ...}``.
-    Only weapons whose ``weaponType`` is in our subtype set are kept; anything
-    else (armour, ingredients, the odd shape change) is ignored.
+    Maps both ``displayName`` and ``internalName`` so a user can type either
+    (they usually type the display name, e.g. "Idol"). Non-weapons / unknown
+    subtypes are skipped defensively.
     """
-    if not isinstance(payload, dict):
-        return
-    for name, info in payload.items():
-        if not isinstance(info, dict):
+    catalog: dict[str, str] = {}
+    if not isinstance(payload, list):
+        return catalog
+    for item in payload:
+        if not isinstance(item, dict) or item.get("type") != "weapon":
             continue
-        if str(info.get("type", "")).lower() != "weapon":
+        subtype = str(item.get("subType", "")).lower()
+        if subtype not in WEAPON_SUBTYPES:
             continue
-        subtype = str(info.get("weaponType", "")).lower()
-        if subtype in WEAPON_SUBTYPES and subtype == want:
-            into[str(name).strip().lower()] = subtype
+        for key in ("displayName", "internalName"):
+            name = item.get(key)
+            if isinstance(name, str) and name.strip():
+                catalog[name.strip().lower()] = subtype
+    return catalog
 
 
 async def _tick(state: AppState, settings: Settings) -> None:
-    catalog: dict[str, str] = {}
-    for subtype in WEAPON_SUBTYPES:
-        try:
-            payload = await get_wapi().get_json(
-                f"item/search/{subtype}", priority=PRIO_LOW
-            )
-        except WapiError as exc:
-            logger.info("weapons: %s search skipped (%s)", subtype, exc)
-            continue
-        before = len(catalog)
-        _harvest(payload, subtype, catalog)
-        logger.debug("weapons: %s -> +%d", subtype, len(catalog) - before)
+    try:
+        payload = await get_wapi().post_json(
+            "item/search?fullResult", {"type": ["weapon"]}, priority=PRIO_LOW
+        )
+    except WapiError as exc:
+        logger.info("weapons: catalog fetch skipped (%s) — keeping last-good", exc)
+        return
 
+    catalog = _harvest(payload)
     if catalog:
         state.weapons_by_name = catalog
         state.touch("weapons_fetched_at")
-        logger.info("weapons catalog rebuilt: %d entries", len(catalog))
+        logger.info(
+            "weapons catalog rebuilt: %d names across %d subtypes",
+            len(catalog), len(set(catalog.values())),
+        )
     else:
         logger.warning("weapons catalog empty this tick — keeping last-good")
 

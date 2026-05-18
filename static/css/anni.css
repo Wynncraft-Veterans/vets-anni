@@ -24,6 +24,16 @@
   --role-tank:      var(--c-blue);
   --role-fill:      var(--c-cyan);
   --role-unassigned:var(--c-grey);
+  /* Legible dark shades — chip BODIES use these (white text is readable on
+     them for every role; the bright base hues above are not). Not CB-swapped
+     by design: CB leans on the glyph swatch (raw hue, swapped) + glyph/label.*/
+  --role-primary-dark:   var(--c-red-dark);
+  --role-secondary-dark: var(--c-yellow-dark);
+  --role-tertiary-dark:  var(--c-magenta-dark);
+  --role-healer-dark:    var(--c-green-dark);
+  --role-tank-dark:      var(--c-blue-dark);
+  --role-fill-dark:      var(--c-cyan-dark);
+  --role-unassigned-dark:var(--c-grey-dark);
   /* Status → the SAME shared colour as its paired role (spec.md [^6];
      see STATUS_STYLES). */
   --st-gone:        var(--c-red);
@@ -104,7 +114,11 @@ button:hover { filter: brightness(1.05); }
 .bar-info    { background:#cffafe; color:#0369a1; }
 .bar-warn    { background:#fef9c3; color:#854d0e; }
 .bar-danger  { background:#fee2e2; color:#b91c1c; }
-.bar-flash   { animation: barFlash 1s steps(1) infinite; }
+/* Flash = a pulsing focus RING, never an opacity dip — the text stays fully
+   readable at every moment (the old opacity flash made the off-tick
+   illegible). Disabled under prefers-reduced-motion by the global rule. */
+.bar-flash   { animation: barPulse 1.15s ease-in-out infinite; }
+.preline     { white-space: pre-line; }  /* honour \n in server text */
 
 .countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
 
@@ -137,7 +151,14 @@ a { color: inherit; text-decoration: none; }
   from { opacity:0; transform: translateY(12px); filter: blur(4px); }
   to   { opacity:1; transform: translateY(0);    filter: blur(0); }
 }
-@keyframes barFlash { 0%{opacity:1} 50%{opacity:.35} 100%{opacity:1} }
+/* Border/ring pulse — content opacity is untouched so the bar is always
+   legible; only the surrounding ring breathes to draw the eye. */
+@keyframes barPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0);
+             outline: 2px solid rgba(220,38,38,0); outline-offset: 1px; }
+  50%      { box-shadow: 0 0 0 4px rgba(220,38,38,.30);
+             outline: 2px solid rgba(220,38,38,.65); outline-offset: 1px; }
+}
 
 /* ===== Phase 1 — user dashboard ========================================= */
 .dash-head { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
@@ -160,12 +181,16 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
    Glyph + aria-label are emitted regardless of colour (CB hard rule). */
 .role-chip {
   display:inline-flex; align-items:center; gap:.4rem;
-  padding:.2rem .6rem; border-radius:8px; font-weight:700; color:#fff;
-  text-shadow:0 1px 2px rgba(0,0,0,.55);
+  padding:.2rem .55rem .2rem .25rem; border-radius:8px;
+  font-weight:700; color:#fff;            /* legible on the -dark body */
 }
+/* Glyph swatch carries the raw identifying hue; white text with a thin
+   black outline (no shadow) stays crisp on any hue — bright green/yellow
+   AND dark blue/red. `paint-order` keeps the white fill from being eaten. */
 .role-chip .glyph {
-  font-size:.7rem; letter-spacing:.06em; background:rgba(0,0,0,.28);
-  padding:.05rem .35rem; border-radius:5px;
+  font-size:.7rem; letter-spacing:.04em; color:#fff;
+  -webkit-text-stroke:.6px #000; paint-order:stroke fill; text-shadow:none;
+  padding:.1rem .4rem; border-radius:6px;
 }
 .status-dot {
   display:inline-flex; align-items:center; justify-content:center;
@@ -200,18 +225,72 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .level-label { color:#6b7280; }
 .level-word { font-weight:700; }
 
-/* Attendance likelihood meter */
-.likelihood { display:flex; align-items:center; gap:.6rem; }
+/* Attendance likelihood meter. The whole bar gets a LIGHT tint of the
+   value's colour (worst->best red<orange<yellow<green<blue) with DARK
+   same-hue text so it's always legible (e.g. dark-red on light-red at 0%).
+   The % + label are always shown, so colour is never the only signal. */
+.likelihood { display:flex; align-items:center; gap:.6rem;
+  background:#f1f5f9; color:#0f172a; }
 .likelihood-track {
-  flex:1; height:.6rem; background:#e5e7eb; border-radius:999px; overflow:hidden;
+  flex:1; height:.6rem; border-radius:999px; overflow:hidden;
+  background:rgba(0,0,0,.10);            /* hairline track on any tint */
 }
-.likelihood-fill { height:100%; background:#0369a1; border-radius:999px; }
-.likelihood-label { font-weight:700; white-space:nowrap; }
+.likelihood-fill { height:100%; border-radius:999px; background:currentColor; }
+.likelihood-label { font-weight:700; white-space:nowrap; color:inherit; }
 
-.countdown-big { font-size:1.15rem; }
+/* light background · dark same-hue text+fill (combined selector beats the
+   neutral default above) */
+.likelihood.lk-red    { background:#fee2e2; color:#991b1b; }
+.likelihood.lk-orange { background:#ffedd5; color:#9a3412; }
+.likelihood.lk-yellow { background:#fef9c3; color:#854d0e; }
+.likelihood.lk-green  { background:#dcfce7; color:#166534; }
+.likelihood.lk-blue   { background:#e0f2fe; color:#075985; }
+
+/* Page-level section divider — lives OUTSIDE the white cards, on the frosted
+   .page panel. Plain heading (no underline) to match the page title. The
+   live countdown now rides in the title itself, in a fancy gradient. */
+.section-title { margin: 1.7rem 0 .4rem; font-size: 1.9rem; letter-spacing:.01em; }
+.section-when { font-size:.62em; font-weight:700; color:#475569; }
+.section-when .countdown {
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(180deg,#1d4ed8,#7c3aed);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+/* Today's-anni: two INDEPENDENT stable cards (Your Participation |
+   Tentative Information) in the existing .grid-2. Cards are flex columns
+   and grid-2 stretches them to equal height. Tentative is all fields now
+   (the uninformative always-yellow stage bar was demoted to a "Party stage"
+   row), so only Participation has a trailing .bar; pinning it to the card
+   foot keeps it at the bottom of its stretched card. */
+.spec-card { display:flex; flex-direction:column; }
+.spec-col { display:flex; flex-direction:column; flex:1; }
+.spec-col > .bar:last-child { margin-top:auto; }
+.spec-col .kv { max-width:none; }
+
+/* Current online/world state — colour is backed by the word too (CB-safe). */
+.online-line { display:flex; align-items:center; gap:.5rem; margin:.2rem 0 .6rem; }
+.kv td .online-line { margin:0; }   /* sit flush like any other kv row */
+.online-dot {
+  width:.7rem; height:.7rem; border-radius:50%; flex:none;
+  background:#9ca3af; box-shadow:0 0 0 3px rgba(156,163,175,.25);
+}
+.online-on     .online-dot { background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.25); }
+.online-queue  .online-dot { background:#d97706; box-shadow:0 0 0 3px rgba(217,119,6,.25); }
+.online-off    .online-dot { background:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,.22); }
+.online-unknown .online-dot{ background:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.22); }
+
 .kv { border-collapse:collapse; width:100%; max-width:560px; }
 .kv th, .kv td { text-align:left; padding:.35rem .6rem; border-bottom:1px solid #e5e7eb; }
 .kv th { color:#6b7280; font-weight:600; width:9rem; }
+/* Host shown as an avatar+name bubble (degrades to just the name if the
+   face render fails — the <img> onerror-removes itself). */
+.host-pill {
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.1rem .6rem .1rem .15rem; border-radius:999px;
+  background:#e5e7eb; color:#374151; font-weight:600; font-size:.85rem;
+}
+.host-pill img { border-radius:50%; image-rendering:pixelated; background:#0002; }
 .staff-users { max-width:none; }
 .staff-users form { display:inline; }
 
