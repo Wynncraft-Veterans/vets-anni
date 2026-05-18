@@ -145,7 +145,7 @@ class Party(Model):
     )
     world = fields.CharField(max_length=16, null=True)
     stage = fields.IntField(default=1)
-    result = fields.CharEnumField(PartyResult, max_length=8, default=PartyResult.PENDING)
+    result = fields.CharEnumField(PartyResult, max_length=8, default=PartyResult.TBD)
 
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
@@ -216,8 +216,11 @@ class Rsvp(Model):
 class AppConfig(Model):
     """Key/value runtime config + admin-rotatable secrets (mirrors dazebot's
     ``BotConfigOverride``). Holds the hashed staff password, ally-guild
-    override, board colourblind default, escalation-timing overrides, etc.
-    Sessions are signed cookies, so no session table is needed."""
+    override, escalation-timing overrides, etc. **No colourblind key** — CB is
+    purely a per-user ``cb`` cookie with no global/event/admin default (the
+    world default is always full colour); see ``app/web/deps.py`` and
+    ``.claude/colourblind.md``. Sessions are signed cookies, so no session
+    table is needed."""
 
     key = fields.CharField(max_length=64, primary_key=True)
     value_json = fields.TextField()

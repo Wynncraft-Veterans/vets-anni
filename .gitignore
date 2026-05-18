@@ -422,3 +422,4 @@ venv/
 # Anything worth keeping is promoted to .claude/*.md and linked in CLAUDE.md.
 .claude/ephemeral/
 
+.claude/deployment.md

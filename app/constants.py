@@ -29,12 +29,12 @@ class Role(StrEnum):
     """The six annihilation roles. FILL is assignable/colourable but is *not*
     a capability a user 'indicates' — it is the absence of core capability."""
 
-    PRIMARY = "primary"      # boss killer
-    SECONDARY = "secondary"  # sun killer
-    TERTIARY = "tertiary"    # healing-mob killer
-    HEALER = "healer"
-    TANK = "tank"
-    FILL = "fill"
+    PRIMARY = "primary"      # Handles damaging the boss
+    SECONDARY = "secondary"  # Handles damaging the sun mob
+    TERTIARY = "tertiary"    # Clears out mobs that heal the boss
+    HEALER = "healer"        # Heals the party's members
+    TANK = "tank"            # Protects the party from the boss' damage
+    FILL = "fill"            # No indicated roles.
 
 
 #: Roles a user can register a capability for (the five core roles).
@@ -52,7 +52,8 @@ ASSIGNABLE_ROLES: tuple[Role, ...] = CAPABILITY_ROLES + (Role.FILL,)
 class MembershipTier(StrEnum):
     """How aggressively we prioritise a user. Order = priority (see
     ``MEMBERSHIP_PRIORITY``). MEMBER = in the Returners guild; COMMUNITY =
-    guildless; ALLY = the configured allied guild; OTHER = any other guild.
+    guildless; ALLY = guild tag in the configured ally-tag list
+    (``settings.ally_guild_tags``); OTHER = any other guild.
     WAITLIST/HONOURARY come from dazebot's tier resolution."""
 
     MEMBER = "member"
@@ -75,44 +76,40 @@ MEMBERSHIP_PRIORITY: dict[MembershipTier, int] = {
 
 
 class AttendanceNotice(StrEnum):
-    """How much warning we have that a user intends to attend. ONE_HR_EARLY is
-    derived from presence (they showed up), not stored; HARD/SOFT come from
-    ``/rsvp``; LATE = online within 60 min with no RSVP; NONE = nothing."""
+    """How much warning we have that a user intends to attend.
 
-    ONE_HR_EARLY = "one_hr_early"
-    HARD_RSVP = "hard_rsvp"
-    SOFT_RSVP = "soft_rsvp"
-    LATE = "late"
-    NONE = "none"
+    RSVP_HARD/RSVP_SOFT come from ``/rsvp`` and are the only values ever
+    *stored* (on ``Rsvp.notice``). ATTEND_EARLY/ATTEND_LATE are *derived* and
+    never stored: a no-RSVP user counts as early if they are online — or, on
+    their own dashboard, *would* be online — at least
+    ``EARLY_NOTICE_CUTOFF_SECONDS`` before the anni, else late."""
+
+    ATTEND_EARLY = "attend_early"  # online/projected ≥cutoff before anni, no RSVP
+    RSVP_HARD = "rsvp_hard"        # hard RSVP via /rsvp (stored on Rsvp.notice)
+    RSVP_SOFT = "rsvp_soft"        # soft RSVP via /rsvp (stored on Rsvp.notice)
+    ATTEND_LATE = "attend_late"    # online/projected within the late window, no RSVP
+
+
+#: Boundary between ATTEND_EARLY and ATTEND_LATE. A no-RSVP user who is (or,
+#: on their dashboard, projects to be) online at least this long before the
+#: anni counts as "1 hr early"; closer than this is "late".
+EARLY_NOTICE_CUTOFF_SECONDS = 3600
 
 
 class PresenceStatus(StrEnum):
-    """How we see a user *right now* for the active anni (maps to the spec's
-    user states + footnote [^6] colours).
+    """How we see a user *right now* for the active anni."""
 
-    An offline person is exactly one of OFFLINE_GONE / OFFLINE_HARD /
-    OFFLINE_SOFT — there is no "offline, no RSVP" state: being on the list with
-    no RSVP means they are *here*, and once someone is offline the 1hr-early
-    vs late distinction is tracked elsewhere and irrelevant (they're just
-    gone). UNKNOWN = API-disabled and unconfirmable (never fabricated as
-    online)."""
-
-    OFFLINE_GONE = "offline_gone"          # offline (was here / never showed)
+    OFFLINE_GONE = "offline_gone"          # was here <=60 mins before, now offline.
     OFFLINE_HARD = "offline_hard"          # offline, hard RSVP
     OFFLINE_SOFT = "offline_soft"          # offline, soft RSVP
     ONLINE_ELSEWHERE = "online_elsewhere"  # online, wrong world
     ONLINE_WORLD = "online_world"          # online, party world, not in party
     ONLINE_PARTY = "online_party"          # online, in the party
-    UNKNOWN = "unknown"                    # API-disabled / unconfirmable
+    UNKNOWN = "unknown"                    # API disabled, not confident in world-change workaround or vetsmod-workaround guesses.
 
 
-#: Queue rule (anni is *very* queue-intensive — a large fraction of players sit
-#: in a Wynncraft server queue near event time). A player the online-merge
-#: source reports as ``queued`` is *connecting*, NOT gone: presence logic must
-#: NEVER mark a queued player ``OFFLINE_GONE``. vetsmod's ``/wv list`` already
-#: surfaces queued users from the same source (``/v1/outbound/list`` ``queued``
-#: flag), so mirroring that source keeps us correct — verify the flag is
-#: actually populated when wiring presence (Phase 2).
+#: Anni has big queues, and players in queues are connecting: not gone.
+#  Players in the online-merge source report as ``queued`` and should be considered ONLINE_ELSEWHERE.
 QUEUE_NEVER_OFFLINE_GONE = True
 
 
@@ -132,16 +129,16 @@ BuildQuality = ConfidenceLevel
 class BucketKind(StrEnum):
     """Non-party containers on the organizer board."""
 
-    UNASSIGNED = "unassigned"                       # rsvp'd / 1hr-early, not placed
-    CONFIRMED_NONATTENDANCE = "confirmed_nonattendance"
-    WILLING_TO_SIT_OUT = "willing_to_sit_out"
+    UNASSIGNED = "unassigned"   # rsvp'd / 1hr-early, not placed. Sub-bucket for late users.
+    WONTASSIGN = "wontassign"   # here, but confirmed intention to sit this one out.
+    VOLUNTEERS = "volunteers"   # here, but confirmed willingness to sit out *if absolutely needed*.
 
 
 class PartyResult(StrEnum):
-    PENDING = "pending"
-    LOSS = "loss"
-    LAG = "lag"
-    WIN = "win"
+    TBD = "tbd" # This party is either about to fight, or is still fighting, anni. We don't know the result yet.
+    LOSS = "loss" # This party lost.
+    LAG = "lag" # This party's experience was so broken that, despite technically being a loss, we refuse to count it as such.
+    WIN = "win" # This party won.
 
 
 #: Party stage 1..5 with the organiser-facing label (spec "Stages").
@@ -149,7 +146,7 @@ PARTY_STAGE_LABELS: dict[int, str] = {
     1: "The organiser hasn't started.",
     2: "Determining how many parties we can support.",
     3: "Determining which core users go in which parties.",
-    4: "Determining everyone's roles.",
+    4: "Finalising everyone's roles.",
     5: "Parties finalised — fill slots added/ready.",
 }
 MIN_PARTY_STAGE, MAX_PARTY_STAGE = 1, 5
@@ -160,68 +157,132 @@ PARTY_CAPACITY = 10
 # Colour palettes + non-colour encodings
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
+class Style:
+    """One palette entry — the four colour channels every chip uses. Defined
+    ONCE in ``STYLES`` and shared by both ROLE_STYLES and STATUS_STYLES so a
+    colour has a single source of truth. Mirrored by name in
+    static/css/anni.css (``--c-*``) and swapped under ``body.cb`` by
+    static/css/colourblind.css. ``light``/``dark`` are hand-tuned for legible
+    text — they are NOT a uniform tint/shade; don't regenerate them."""
+
+    color: str   # default palette (hex)
+    light: str   # tint — legible surface for BLACK text
+    dark: str    # shade — legible surface for WHITE text
+    cb: str       # colourblind-safe (canonical Okabe-Ito); body.cb swaps to this
+
+
+class PaletteColor(StrEnum):
+    """The shared colour vocabulary. Each role is paired with exactly one
+    status on the same entry (see ROLE_STYLES / STATUS_STYLES); GREY is the
+    neutral for 'no role' / 'unknown'."""
+
+    RED = "red"
+    YELLOW = "yellow"
+    GREEN = "green"
+    BLUE = "blue"
+    CYAN = "cyan"
+    MAGENTA = "magenta"
+    GREY = "grey"
+
+
+#: THE single source of truth for every chip colour. Keep in lockstep with
+#: static/css/anni.css (:root ``--c-*``) and colourblind.css (``body.cb``).
+#: Values are hand-tuned for legibility — do not "uniformly" regenerate them.
+STYLES: dict[PaletteColor, Style] = {
+    PaletteColor.RED:    Style("#ff0000", "#ff9292", "#990000", "#D55E00"),
+    PaletteColor.YELLOW: Style("#fffb00", "#f5f36e", "#696800", "#F0E442"),
+    PaletteColor.GREEN:  Style("#15ff00", "#83ff78", "#0a7700", "#009E73"),
+    PaletteColor.BLUE:   Style("#0400ff", "#9290ff", "#0300AC", "#0072B2"),
+    PaletteColor.CYAN: Style("#00e1ff", "#4aeaff", "#007E8F", "#56B4E9"),
+    PaletteColor.MAGENTA: Style("#ff00dd", "#ff7aff", "#6000b9", "#CC79A7"),
+    PaletteColor.GREY:   Style("#888888", "#d6d6d6", "#3d3d3d", "#999999"),
+}
+
+
+@dataclass(frozen=True)
 class RoleStyle:
-    """Visual encoding for a role *background*. ``glyph``/``label`` make it
-    readable without colour; ``cb`` is the colourblind-safe fill."""
+    """A role *background* chip: a shared ``STYLES`` colour spread flat (so
+    templates keep ``.color``/``.cb`` access) + the role's ``glyph``/``label``
+    which make it readable without colour."""
 
     color: str        # default palette (hex)
-    cb: str           # colourblind-safe palette (Okabe-Ito derived)
-    glyph: str        # short letters shown on the pill/person object
+    light: str        # tint — surface for BLACK text
+    dark: str         # shade — surface for WHITE text
+    cb: str           # colourblind-safe palette (canonical Okabe-Ito)
+    glyph: str        # short code shown on the pill/person object
     label: str        # accessible label (aria)
-
-
-# Default role colours — spec.md [^5] + concept-art legend.
-ROLE_STYLES: dict[Role, RoleStyle] = {
-    Role.PRIMARY:   RoleStyle("#dc2626", "#D55E00", "PRI", "Primary (boss killer)"),
-    Role.SECONDARY: RoleStyle("#eab308", "#F0E442", "SEC", "Secondary (sun killer)"),
-    Role.TERTIARY:  RoleStyle("#9333ea", "#CC79A7", "TER", "Tertiary (mob killer)"),
-    Role.HEALER:    RoleStyle("#16a34a", "#009E73", "HEA", "Healer"),
-    Role.TANK:      RoleStyle("#4f46e5", "#0072B2", "TAN", "Tank"),
-    Role.FILL:      RoleStyle("#06b6d4", "#56B4E9", "FIL", "Fill"),
-}
-#: Unassigned person object background (no role yet).
-UNASSIGNED_STYLE = RoleStyle("#9ca3af", "#999999", "—", "Unassigned")
 
 
 @dataclass(frozen=True)
 class StatusStyle:
-    """Visual encoding for a person's *status border*. ``pattern`` (solid /
-    dashed / dotted / double / thick) is a non-colour channel; ``glyph`` +
-    ``label`` carry meaning for the colourblind variant and screen readers.
-    Borders are steady — there is no pulsing/flashing border for any status
-    (the spec's escalation "flashing" is a bottom-*bar* affordance, not the
-    border; see ``.bar-flash`` and ``app.domain.presence``)."""
+    """A person's *status border* chip. Same four shared colour channels as
+    RoleStyle, plus ``pattern`` — a non-colour channel — and ``glyph`` +
+    ``label`` for the colourblind variant and screen readers.
+
+    ``pattern`` encodes online-ness by family so the border alone reads
+    online vs offline. ONLINE = unbroken, escalating with presence:
+    ``solid`` (elsewhere) → ``double`` (world) → ``triple`` (in party).
+    OFFLINE = broken, degrading with risk: ``long-dash`` (hard RSVP) →
+    ``short-dash`` (soft RSVP) → ``dotted`` (gone). ``wavy`` = UNKNOWN
+    (neither — unconfirmable). Rendered by static/css/colourblind.css
+    ``.status-border[data-pattern=…]``."""
 
     color: str
+    light: str
+    dark: str
     cb: str
     pattern: str
     glyph: str
     label: str
 
 
-# Status border colours — spec.md [^6].
+def _role(s: Style, glyph: str, label: str) -> RoleStyle:
+    return RoleStyle(s.color, s.light, s.dark, s.cb, glyph, label)
+
+
+def _status(s: Style, pattern: str, glyph: str, label: str) -> StatusStyle:
+    return StatusStyle(s.color, s.light, s.dark, s.cb, pattern, glyph, label)
+
+
+# Role → shared colour (spec.md [^5]). A role and its paired status share the
+# SAME STYLES entry — see STATUS_STYLES.
+ROLE_STYLES: dict[Role, RoleStyle] = {
+    Role.PRIMARY:   _role(STYLES[PaletteColor.RED],    "PRIM", "Primary (boss killer)"),
+    Role.SECONDARY: _role(STYLES[PaletteColor.YELLOW], "SUNK", "Secondary (sun killer)"),
+    Role.TERTIARY:  _role(STYLES[PaletteColor.MAGENTA], "HDMG", "Tertiary (mob killer)"),
+    Role.HEALER:    _role(STYLES[PaletteColor.GREEN],  "HEAL", "Healer"),
+    Role.TANK:      _role(STYLES[PaletteColor.BLUE],   "TANK", "Tank"),
+    Role.FILL:      _role(STYLES[PaletteColor.CYAN], "FILL", "Fill"),
+}
+#: Unassigned person object background (no role yet).
+UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "Unassigned")
+
+
+# Status border → the SAME shared colour as its paired role (spec.md [^6]):
+# GONE↔PRIMARY(red), SOFT↔SECONDARY(yellow), HARD↔HEALER(green),
+# ELSEWHERE↔TANK(blue), WORLD↔FILL(cyan), PARTY↔TERTIARY(magenta).
 STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
-    PresenceStatus.OFFLINE_GONE: StatusStyle(
-        "#dc2626", "#D55E00", "solid", "!", "Offline — gone (at risk)"
-    ),
-    PresenceStatus.OFFLINE_HARD: StatusStyle(
-        "#16a34a", "#009E73", "double", "✓", "Offline — hard RSVP (safe for now)"
-    ),
-    PresenceStatus.OFFLINE_SOFT: StatusStyle(
-        "#eab308", "#F0E442", "dashed", "~", "Offline — soft RSVP"
-    ),
-    PresenceStatus.ONLINE_ELSEWHERE: StatusStyle(
-        "#2563eb", "#0072B2", "dotted", "→", "Online — wrong world"
-    ),
-    PresenceStatus.ONLINE_WORLD: StatusStyle(
-        "#4f46e5", "#56B4E9", "dash-dot", "◐", "Online — party world, not in party"
-    ),
-    PresenceStatus.ONLINE_PARTY: StatusStyle(
-        "#9333ea", "#CC79A7", "thick", "●", "Online — in party"
-    ),
-    PresenceStatus.UNKNOWN: StatusStyle(
-        "#6b7280", "#777777", "dotted", "?", "Unknown — API disabled / unconfirmable"
-    ),
+    PresenceStatus.OFFLINE_GONE: _status(
+        STYLES[PaletteColor.RED], "dotted", "!",
+        "A user who was here but has since logged out"),
+    PresenceStatus.OFFLINE_HARD: _status(
+        STYLES[PaletteColor.GREEN], "long-dash", "✓",
+        "A hard RSVP'd user who is not here yet"),
+    PresenceStatus.OFFLINE_SOFT: _status(
+        STYLES[PaletteColor.YELLOW], "short-dash", "~",
+        "A soft RSVP'd user who is not here yet"),
+    PresenceStatus.ONLINE_ELSEWHERE: _status(
+        STYLES[PaletteColor.BLUE], "solid", "→",
+        "An online user not on their party's world"),
+    PresenceStatus.ONLINE_WORLD: _status(
+        STYLES[PaletteColor.CYAN], "double", "◐",
+        "An on-world online user who has not joined their party yet."),
+    PresenceStatus.ONLINE_PARTY: _status(
+        STYLES[PaletteColor.MAGENTA], "triple", "●",
+        "An online user who has joined their party."),
+    PresenceStatus.UNKNOWN: _status(
+        STYLES[PaletteColor.GREY], "wavy", "?",
+        "Unknown — API disabled / unconfirmable"),
 }
 
 
@@ -272,28 +333,28 @@ _OTHER = frozenset({MembershipTier.OTHER})
 
 #: Ordered exactly as the published table (top = highest priority).
 ATTENDANCE_TABLE: tuple[AttendanceRule, ...] = (
-    AttendanceRule(_MEMBER, None, AttendanceNotice.ONE_HR_EARLY,
+    AttendanceRule(_MEMBER, None, AttendanceNotice.ATTEND_EARLY,
                    Likelihood.VIRTUALLY_GUARANTEED),
-    AttendanceRule(_GUILD_WL, True, AttendanceNotice.HARD_RSVP,
+    AttendanceRule(_GUILD_WL, True, AttendanceNotice.RSVP_HARD,
                    Likelihood.VIRTUALLY_GUARANTEED),
-    AttendanceRule(_GUILD_WL, False, AttendanceNotice.HARD_RSVP,
+    AttendanceRule(_GUILD_WL, False, AttendanceNotice.RSVP_HARD,
                    Likelihood.MORE_OFTEN_THAN_NOT),
-    AttendanceRule(_GUILD_WL, True, AttendanceNotice.SOFT_RSVP,
+    AttendanceRule(_GUILD_WL, True, AttendanceNotice.RSVP_SOFT,
                    Likelihood.MORE_OFTEN_THAN_NOT),
-    AttendanceRule(_GUILD_WL, False, AttendanceNotice.SOFT_RSVP,
+    AttendanceRule(_GUILD_WL, False, AttendanceNotice.RSVP_SOFT,
                    Likelihood.FREQUENTLY),
-    AttendanceRule(_COMMUNITY, True, AttendanceNotice.HARD_RSVP,
+    AttendanceRule(_COMMUNITY, True, AttendanceNotice.RSVP_HARD,
                    Likelihood.FREQUENTLY),
-    AttendanceRule(_COMMUNITY, False, AttendanceNotice.HARD_RSVP,
+    AttendanceRule(_COMMUNITY, False, AttendanceNotice.RSVP_HARD,
                    Likelihood.OFTEN),
-    AttendanceRule(_COMMUNITY, True, AttendanceNotice.SOFT_RSVP,
+    AttendanceRule(_COMMUNITY, True, AttendanceNotice.RSVP_SOFT,
                    Likelihood.OFTEN),
-    AttendanceRule(_ALLY, True, AttendanceNotice.HARD_RSVP, Likelihood.OFTEN),
-    AttendanceRule(_ALLY, True, AttendanceNotice.SOFT_RSVP, Likelihood.SOMETIMES),
-    AttendanceRule(_COMMUNITY, False, AttendanceNotice.SOFT_RSVP,
+    AttendanceRule(_ALLY, True, AttendanceNotice.RSVP_HARD, Likelihood.OFTEN),
+    AttendanceRule(_ALLY, True, AttendanceNotice.RSVP_SOFT, Likelihood.SOMETIMES),
+    AttendanceRule(_COMMUNITY, False, AttendanceNotice.RSVP_SOFT,
                    Likelihood.SOMETIMES),
-    AttendanceRule(_ALLY, False, AttendanceNotice.SOFT_RSVP, Likelihood.RARELY),
-    AttendanceRule(_OTHER, True, AttendanceNotice.HARD_RSVP, Likelihood.RARELY),
+    AttendanceRule(_ALLY, False, AttendanceNotice.RSVP_SOFT, Likelihood.RARELY),
+    AttendanceRule(_OTHER, True, AttendanceNotice.RSVP_HARD, Likelihood.RARELY),
 )
 
 
@@ -328,7 +389,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
     Role.TERTIARY: RoleGuidance(
         "Tertiary DPS (Healing-Mob Killer)",
         "Players who eliminate the mobs that regenerate the boss' health.",
-        "100k+ mobile DPS and reliable movement to cross a 15+ block lava pit. "
+        "100k+ DPS and reliable movement to cross a 15+ block lava pit. "
         "Mobs are low-HP but spawn in inconvenient places.",
         f"{DOCS_BASE}/#tertiary-dps", f"{DOCS_BASE}/#tertiary-builds",
     ),

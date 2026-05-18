@@ -13,7 +13,7 @@ single asyncio loop.
 
 | Doc | What |
 |-----|------|
-| [spec.md](spec.md) | **Authoritative product spec** for this application. |
+| [spec.md](spec.md) | **Authoritative design spec** for this application. |
 | [architecture.md](architecture.md) | Process model, stack, package map, data flow. |
 | [data_model.md](data_model.md) | Tortoise schema, the single-instance invariant, Aerich migrations. |
 | [domain_rules.md](domain_rules.md) | Roles/colours, membership, attendance table, presence state machine, lifecycle/grace-wipe. |
@@ -33,6 +33,7 @@ progresses. Phasing/status is at the bottom of this file.
 - **Online truth = mirror vetsmod `/wv list`** (merge `api.wynnvets.org`
   `/v1/outbound/{list,roster,aliases}` + WAPI guild online + grace cache).
   Never trust the bare Wynncraft server API alone.
+  - **In-queue players are not offline** (see the queue state in the above)
 - **Auth is intentionally low-trust** (IGN + optional password) — a
   coordination tool, not a security boundary. Documented in integration.md.
 - **Colourblind variant is mandatory on every interface** — colour is never
@@ -47,7 +48,7 @@ progresses. Phasing/status is at the bottom of this file.
 - One cross-repo addition to dazebot only: secret-gated
   `POST /api/internal/anni-identity` (reuses `verify_keys.resolve_tier`).
 - Durable docs live in `.claude/*.md` (indexed above) and stay in version
-  control; link new ones here.
+  control; link new ones here. Use `.claude/ephemeral` for temporary work.
 - Tasteful comments throughout; every package has a one-responsibility
   docstring. Modular & migratable — future expansion is expected.
 

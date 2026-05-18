@@ -11,14 +11,13 @@
       <p class="muted">See information tailored to you.</p>
       {% if error %}<p class="bar bar-danger">{{ error }}</p>{% endif %}
       <form method="post" action="/login">
-        <label for="username">In-game name (IGN)</label>
-        <input id="username" name="username" autocomplete="off" required>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="off" placeholder="Please enter your IGN (in-game name)" required>
         <label for="password">Password (optional)</label>
         <input id="password" name="password" type="password" autocomplete="off"
-               placeholder="Leave blank for zero-friction sign-in">
+               placeholder="Leave blank for if you don't want to set one!">
         <p class="muted" style="font-size:.75rem">
-          The first password you set sticks and is required next time. No
-          password? You go straight in. Staff can reset passwords.
+          If you set a password, it will stick! We can reset them if needed.
         </p>
         <button type="submit">Login</button>
       </form>

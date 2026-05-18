@@ -16,7 +16,7 @@ pollers as lifespan tasks. We follow both.
 ## Stack
 FastAPI + Jinja2 SSR + HTMX + Alpine.js + SortableJS (vendored, **no build
 step**) + one WebSocket for the live board. Tortoise-ORM + **Aerich** + SQLite
-(`./data` volume, no DB sidecar). CSS mimics `returns/56/style.css`
+(`./data` volume, no DB sidecar). CSS mimics Alvin's `returns/56/style.css`
 (glassmorphism). `uv` is intentionally not required — plain venv+pip.
 
 ## Package map (`app/`)

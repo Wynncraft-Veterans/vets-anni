@@ -15,7 +15,7 @@ from fastapi import Request, Response
 from itsdangerous import BadSignature, URLSafeSerializer
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.constants import ROLE_STYLES, STATUS_STYLES, UNASSIGNED_STYLE
+from app.constants import ROLE_STYLES, STATUS_STYLES, STYLES, UNASSIGNED_STYLE
 from app.settings import get_settings
 
 _settings = get_settings()
@@ -31,6 +31,7 @@ env = Environment(
 )
 # Expose the palettes to every template so macros can render role/status chips.
 env.globals.update(
+    STYLES=STYLES,
     ROLE_STYLES=ROLE_STYLES,
     STATUS_STYLES=STATUS_STYLES,
     UNASSIGNED_STYLE=UNASSIGNED_STYLE,

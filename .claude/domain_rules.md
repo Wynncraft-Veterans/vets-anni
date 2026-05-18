@@ -4,19 +4,41 @@ All encoded in `app/constants.py` (data) + `app/domain/*` (logic, pure &
 unit-tested). No FastAPI/discord imports in either.
 
 ## Roles & colours (spec.md [^5]/[^6])
-Roles: primary=red, secondary=yellow, tertiary=purple, healer=green,
-tank=indigo, fill=cyan, unassigned=gray. Status borders: offline-gone=red,
-offline-hard=green, offline-soft=yellow, online-elsewhere=blue,
-online-world=indigo, online-party=purple, unknown=gray. Each role/status ALSO
-carries a glyph + label (+ border pattern for statuses) so colour is never
-load-bearing — see `colourblind.md`.
-Capability rows use the 5 core roles; FILL is assignable/colourable only.
+ONE shared palette (`constants.STYLES`, keyed by `PaletteColor`) backs **both**
+the role background and the status border — a role and its paired status are
+the *same* colour entry:
+
+| Colour | Role      | Status border    |
+|--------|-----------|------------------|
+| RED    | primary   | offline-gone     |
+| YELLOW | secondary | offline-soft     |
+| GREEN  | healer    | offline-hard     |
+| BLUE   | tank      | online-elsewhere |
+| CYAN   | fill      | online-world     |
+| MAGENTA| tertiary  | online-party     |
+| GREY   | unassigned| unknown          |
+
+Each `STYLES` entry has `color` (default), `light`/`dark` (legible surfaces
+for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`).
+`ROLE_STYLES`/`STATUS_STYLES` only attach the glyph + label (+ border pattern
+for statuses) to a `STYLES` entry, so colour is never load-bearing — see
+`colourblind.md`. Capability rows use the 5 core roles; FILL is
+assignable/colourable only.
 
 ## Membership (`domain/membership.py`)
 `MEMBER` = in guild `RETURNERS_GUILD_NAME`; `COMMUNITY` = guildless; `ALLY` =
-configured `ALLY_GUILD_ID`; `OTHER` = any other guild. `WAITLIST`/`HONOURARY`
+guild whose **tag** is in the configured `ALLY_GUILD_TAGS` list (matched
+**exactly** — Wynncraft guild tags are case-sensitive; seeded
+`SSNE,TCM,VSI,BELL`); `OTHER` = any other guild. `WAITLIST`/`HONOURARY`
 come from dazebot tier resolution (via the anni-identity endpoint). Priority
 order MEMBER>WAITLIST>HONOURARY>COMMUNITY>ALLY>OTHER (`MEMBERSHIP_PRIORITY`).
+
+Wynncraft guild **tags _and_ names are NOT unique** (old-API quirk; e.g. `TCM`
+= our ally *Team CM* **and** the inactive *Moments*). Tag-keying is accepted
+anyway because COMMUNITY/ALLY/OTHER are only evaluated for **RSVP'd** players
+and the colliding guilds are inactive, so an active player's resolved guild is
+the right one. **Guild UUID is the only definitive disambiguator** — if a
+collision ever goes active, re-key `ALLY_GUILD_TAGS` to UUIDs (not names).
 
 ## Capability (`domain/capability.py`)
 Core = ≥1 `RoleCapability`; Fill = none → red warning bar. The add-capability
@@ -33,8 +55,16 @@ primary and a separate 3 for secondary is fine. Modelled as N
 ## Attendance likelihood (`domain/attendance.py`)
 `ATTENDANCE_TABLE` is the published priority table as ordered rules
 (membership-set × Core/Fill × notice → `Likelihood`). First match wins;
-`LIKELIHOOD_META` gives the bar % + label. Notice precedence:
-ONE_HR_EARLY > HARD_RSVP > SOFT_RSVP > LATE/NONE.
+`LIKELIHOOD_META` gives the bar % + label. `AttendanceNotice` precedence:
+`ATTEND_EARLY` > `RSVP_HARD` > `RSVP_SOFT` > `ATTEND_LATE`. Only
+`RSVP_HARD`/`RSVP_SOFT` are stored (on `Rsvp.notice`); `ATTEND_EARLY`/
+`ATTEND_LATE` are derived.
+
+For a user with no RSVP, the effective notice is **projected from the
+countdown**: if `anni − now ≥ EARLY_NOTICE_CUTOFF_SECONDS` (60 min) → treat as
+`ATTEND_EARLY`, else `ATTEND_LATE`. The dashboard frames it conditionally
+("assuming you log on now, you'd be EARLY/LATE → likelihood X").
+Board members always have a real notice.
 
 ## Presence state machine (`domain/presence.py`)
 Inputs: online-merge membership, assigned `Party.world` vs current server,
@@ -42,28 +72,30 @@ Inputs: online-merge membership, assigned `Party.world` vs current server,
 Outputs a `PresenceStatus` + escalating bottom-bar text:
 
 An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE_HARD` /
-`OFFLINE_SOFT` (no "offline, no RSVP" state — on-list-without-RSVP means
-*here*; once gone, 1hr-early vs late is tracked elsewhere and irrelevant).
-Borders are **always steady** — no status ever has a pulsing/flashing border
-(e.g. on the staff board a gone user is a steady red border). The "flashing"
-affordance is the **bottom bar** only.
-- OFFLINE_GONE (offline — was here / never showed): steady red border;
-  **bottom bar flashes "at risk" immediately**.
-- OFFLINE_HARD: steady green border; safe until T-20m, then the bottom bar
-  flashes "at risk".
-- OFFLINE_SOFT: steady yellow border; safe until T-45m, then the bottom bar
-  flashes "at risk".
-- ONLINE_ELSEWHERE (wrong world): "move to world X" if announced, else green.
-- ONLINE_WORLD (party world, not in party): "join party" if created, else green.
-- ONLINE_PARTY (in the party): always green.
-- UNKNOWN: API-disabled & unconfirmable — surfaced honestly, never "online".
+`OFFLINE_SOFT`; once gone, 1hr-early vs late is tracked elsewhere and irrelevant).
+- OFFLINE_GONE (was here <= T-60m, no longer here):
+  - Staff see: RED border outlining user object in staff dashboard.
+  - Users see: subtly flashing bar under relevant module in user dashboard.
+- OFFLINE_HARD: (hard rsvp'd, but is not here (yet)):
+  - Staff see: GREEN border outlining user object in staff dashboard.
+  - Users see: Red bar under relevant module in user dashboard, starts flashing T-20m.
+- OFFLINE_SOFT: (soft rsvp'd, is not here (yet)):
+  - Staff see: YELLOW border outlining user object in staff dashboard.
+  - Users see: Red bar under relevant module in user dashboard, starts flashing T-45m.
+- ONLINE_ELSEWHERE (online, but in a queue or otherwise not on their assigned party's world. Or, they haven't been assigned to a party yet):
+  - Staff see: BLUE border outlining user object in staff dashboard.
+  - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their world has been announced.
+- ONLINE_WORLD (online, in the correct world, but not in their assigned party)
+  - Staff see: CYAN border outlining user object in staff dashboard.
+  - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their party has been created.
+- ONLINE_PARTY (online, in the correct world, in their assigned party)
+  - Staff see: MAGENTA border outlining user object in staff dashboard.
+  - Users see: Green bar under relevant module in user dashboard.
+- UNKNOWN: (The user has their API disabled and we are not comfortable in our aproximations of if they are online or offline. We have several sources (world shift and vetsmod reporting -- see wv list), but if we are unsure, we can use this list their status as unconfirmable).
+  - Staff see: GREY border outlining user object in staff dashboard.
+  - Users see: Yellow bar under relevant object in user dashboard indicating that their API settings prevent us from knowing their status and we are unable to surmise it.
 
-**Queue rule (important — anni is queue-intensive):** a player the
-online-merge source reports as `queued` (stuck in a Wynncraft server queue) is
-*connecting*, not gone. Presence MUST NOT mark a queued player `OFFLINE_GONE`;
-treat them as online/connecting. `/wv list` already shows queued users from the
-same `/v1/outbound/list` `queued` flag, so mirroring that source keeps us
-correct — see `constants.QUEUE_NEVER_OFFLINE_GONE`.
+**NOTE THAT** users in queues (reported as `queued` in online-merge, see the /wv list implementation for reference (i.e. queued on /v1/outbound/list)) are `ONLINE_ELSEWHERE`, not `OFFLINE_*`. Anni is a very queue-intensive event, so this will likely be encountered *a lot*
 
 ## Lifecycle & grace-wipe (`services/lifecycle_task.py`)
 `stamp` future → active event. now>stamp & ≤stamp+2h → grace (board read-only
@@ -76,5 +108,5 @@ future stamp updates the active event (re-announcement), not a duplicate.
 ## API-disabled inference (`services/api_disabled.py`)
 Epoch `last_online` ⇒ disabled. Confirm presence via the online-merge source
 first (vetsmod connection shows them regardless of WAPI privacy), then a slow
-between-tick `/v3/player` `lastSeen`-server-change probe (purgelist-style).
-Unconfirmable ⇒ `UNKNOWN`.
+between-tick `/v3/player` `lastSeen`-server-change probe (dazebot purgelist-style).
+Neither style is fully reliable though: Unconfirmable ⇒ `UNKNOWN`.

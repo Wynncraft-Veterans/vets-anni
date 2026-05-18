@@ -18,7 +18,7 @@
 
 - This application will run on the vets-deploy timasca server.
 - This application will include its own database and its own web app.
-- This application will include its own discord bot.
+- This application will include its own discord bot named fishbot with prefix `\`.
 - This application will integrate with the temporary-server, dazebot, and vetsmod codebases where and as needed.
 - This application will run as anni.wynnvets.org, and will have its own vets-deploy stack.
 - This application will be serviced with the vets-deploy manage tool
@@ -73,7 +73,7 @@
 **General Dashboard → Overview Screen:** generic info for all users (no personal assignments): time until anni, party status, etc.
 
 **User Dashboard (logged in) → General Module** (any anni, not just current):
-- *Registration Status:* membership type (Member/Community/Ally/Other) + eligibility (Core/Fill). Member = guild `Returners`; Community = guildless; Ally = a hardcoded guild id; Other = any other guild. Bottom bar = attendance likelihood from the attendance priority table.
+- *Registration Status:* membership type (Member/Community/Ally/Other) + eligibility (Core/Fill). Member = guild `Returners`; Community = guildless; Ally = guild whose tag is in the configured `ALLY_GUILD_TAGS` list (exact match — tags are case-sensitive); Other = any other guild. Bottom bar = attendance likelihood from the attendance priority table.
 - *Role Capacity:* up to five rows (primary/secondary/tertiary/healer/tank). Each row: weapons indicated; a High/Moderate/Low confidence/preference slider; a High/Moderate/Low build-quality slider; number of times assigned that role in a successful party. Editable. A button to add a new capability (with role guidance quoted/linked from the docs). Fill users get a red warning bar.
 
 **User Dashboard → Specific Module** (blank if anni timestamp is in the past; else current anni; prominent countdown at top):
@@ -107,5 +107,5 @@ Eventually (as soon as practical): a `/anni` command showing key rsvp status, ta
 - Staff list: temporary-server `staff_poller.py`; online subset served by the vets api (`/v1/outbound/staff`).
 - Weapons: WAPI items endpoint (`/v3/item/search/{query}`).
 - Anni timestamp: `api.wynnvets.org/v1/outbound/stamp` (plain text; past = next anni not yet announced).
-- Role colours: red (primary), yellow (secondary), green (healer), cyan (fill), indigo (tank), purple (tertiary).
-- Status colours: offline disappearance = red, offline weak rsvp = yellow, offline strong rsvp = green, online wrong world = blue, online correct world = indigo, online in party = purple.
+- Role colours: red (primary), yellow (secondary), green (healer), cyan (fill), blue (tank), magenta (tertiary); grey = unassigned. One shared palette (`constants.STYLES`).
+- Status colours: each status border is the SAME shared colour as its paired role — offline disappearance = red (primary), offline weak rsvp = yellow (secondary), offline strong rsvp = green (healer), online wrong world = blue (tank), online correct world = cyan (fill), online in party = magenta (tertiary); grey = unknown.

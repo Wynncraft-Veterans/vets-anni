@@ -5,22 +5,34 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  /* Default role palette — see .claude/spec.md [^5] / concept-art legend. */
-  --role-primary:   #dc2626;
-  --role-secondary: #eab308;
-  --role-tertiary:  #9333ea;
-  --role-healer:    #16a34a;
-  --role-tank:      #4f46e5;
-  --role-fill:      #06b6d4;
-  --role-unassigned:#9ca3af;
-  /* Default status palette — see .claude/spec.md [^6]. */
-  --st-gone:        #dc2626;
-  --st-offhard:     #16a34a;
-  --st-offsoft:     #eab308;
-  --st-elsewhere:   #2563eb;
-  --st-world:       #4f46e5;
-  --st-party:       #9333ea;
-  --st-unknown:     #6b7280;
+  /* Canonical chip palette — the single source mirrors STYLES in
+     app/constants.py. body.cb (colourblind.css) overrides ONLY the --c-*
+     base hue; the role/status aliases below follow automatically. */
+  --c-red:     #ff0000; --c-red-light:     #ff9292; --c-red-dark:     #990000;
+  --c-yellow:  #fffb00; --c-yellow-light:  #f5f36e; --c-yellow-dark:  #696800;
+  --c-green:   #15ff00; --c-green-light:   #83ff78; --c-green-dark:   #0a7700;
+  --c-blue:    #0400ff; --c-blue-light:    #9290ff; --c-blue-dark:    #0300ac;
+  --c-cyan:    #00e1ff; --c-cyan-light:    #4aeaff; --c-cyan-dark:    #007e8f;
+  --c-magenta: #ff00dd; --c-magenta-light: #ff7aff; --c-magenta-dark: #6000b9;
+  --c-grey:    #888888; --c-grey-light:    #d6d6d6; --c-grey-dark:    #3d3d3d;
+
+  /* Role → shared colour (spec.md [^5]; see ROLE_STYLES). */
+  --role-primary:   var(--c-red);
+  --role-secondary: var(--c-yellow);
+  --role-tertiary:  var(--c-magenta);
+  --role-healer:    var(--c-green);
+  --role-tank:      var(--c-blue);
+  --role-fill:      var(--c-cyan);
+  --role-unassigned:var(--c-grey);
+  /* Status → the SAME shared colour as its paired role (spec.md [^6];
+     see STATUS_STYLES). */
+  --st-gone:        var(--c-red);
+  --st-offhard:     var(--c-green);
+  --st-offsoft:     var(--c-yellow);
+  --st-elsewhere:   var(--c-blue);
+  --st-world:       var(--c-cyan);
+  --st-party:       var(--c-magenta);
+  --st-unknown:     var(--c-grey);
 }
 
 body {
@@ -29,15 +41,15 @@ body {
   color: #111827;
   min-height: 100vh;
 }
-/* Background + soft dark overlay so text stays readable (reference parity;
-   the reference's webp asset isn't shipped here, so we use a gradient). */
+/* Background image + soft dark overlay so text stays readable — reference
+   parity with website/public/returns/56/ vendored into static/img/. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -2;
-  background: linear-gradient(135deg, #1e293b, #0f172a 60%, #312e81);
+  background: url("/static/img/vets_background.webp") center/cover no-repeat fixed;
 }
 body::after {
   content: ""; position: fixed; inset: 0; z-index: -1;
-  background: radial-gradient(circle at top, rgba(255,255,255,.18), rgba(15,23,42,.9));
+  background: radial-gradient(circle at top, rgba(255,255,255,.25), rgba(15,23,42,.9));
 }
 
 .page {

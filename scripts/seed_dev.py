@@ -9,7 +9,8 @@ Real usernames are used so the UI looks authentic:
 
 * MEMBER  — real Returners staff (from WAPI ``/v3/guild/Returners``).
 * HONOURARY — Paradrex, Sevisoup, Minethuselah.
-* ALLY    — real members of guild ``SSNE`` (NewEridu).
+* ALLY    — real members of an ally-tagged guild (here ``Team CM``/TCM; any
+  guild whose tag is in ``settings.ally_guild_tags`` qualifies).
 * OTHER   — real members of guild ``Wynn``.
 * COMMUNITY — foo / bar / baz (guildless placeholders).
 
@@ -77,20 +78,20 @@ PLAYERS: tuple[tuple, ...] = (
     # API-disabled staff: never online, last_online == unix epoch sentinel.
     ("bb171c68-7080-4d02-be7b-cc2d5dcbcd82", "Metrafish", M, "Returners", None, EPOCH),
     # Rename desync: in-game (wynn) name differs from resolved mc name.
-    ("e506ee83-3131-43f6-830b-606ea9dfd822", "EenRandomG", M, "Returners",
-     "EenRandomGuyOldIGN", None),
+    ("94f0627c-bf74-4988-b741-5da7adbf99c2", "_akaPasta", M, "Returners",
+     "ISnortPasta", None),
     ("c55a4c65-8486-4004-a70e-8c7b03ea86c1", "Faulischlumpf", M, "Returners",
      None, None),
     # Honourary
     (_synth("Paradrex"), "Paradrex", H, None, None, None),
     (_synth("Sevisoup"), "Sevisoup", H, None, None, None),
     (_synth("Minethuselah"), "Minethuselah", H, None, None, None),
-    # Ally — guild SSNE (NewEridu)
-    ("36f75366-e506-4868-a575-c7ab1aa8657f", "AnneeChovies", A, "NewEridu", None, None),
-    ("7a7f7fc4-c7ce-4ce4-8a53-db343756f057", "Saicro_", A, "NewEridu", None, None),
+    # Ally — guild TCM (Team CM)
+    ("a411f463-d32f-477f-b821-03fdea70a0d9", "Trixomaniac", A, "Team CM", None, None),
+    ("4fbf7838-f795-4545-8bdb-f39c2a0a0835", "ThinKing", A, "Team CM", None, None),
     # Other — guild Wynn
-    ("247efcab-2a9d-4887-a161-db62018270de", "Vcraft", O, "Wynn", None, None),
-    ("e53bb912-294c-4229-9158-003f06986a55", "SchwitzerMirko", O, "Wynn", None, None),
+    ("1ed075fc-5aa9-42e0-a29f-640326c1d80c", "Salted", O, "WYNN", None, None),
+    ("b10436a1-bb7d-4894-b27a-983ec9f782dd", "Jumla", O, "WYNN", None, None),
     # Community (guildless)
     (_synth("foo"), "foo", C, None, None, None),
     (_synth("bar"), "bar", C, None, None, None),
@@ -155,7 +156,7 @@ async def main() -> None:
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Fantasia",
                                       weapon_subtype="wand")
     cap = await RoleCapability.create(
-        player=p["EenRandomG"], role=Role.TANK,
+        player=p["_akaPasta"], role=Role.TANK,
         confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.MODERATE,
         success_count=5,
     )
@@ -183,29 +184,29 @@ async def main() -> None:
 
     await place("Wenweia", party=p1, role=Role.PRIMARY, i=0)
     await place("Nazzae", party=p1, role=Role.HEALER, i=1)
-    await place("EenRandomG", party=p1, role=Role.TANK, i=2)        # rename-desync
+    await place("_akaPasta", party=p1, role=Role.TANK, i=2)         # rename-desync
     await place("Minethuselah", party=p2, i=0)                       # no role -> gray
     await place("Faulischlumpf", bucket=BucketKind.UNASSIGNED, i=0)
     await place("Metrafish", bucket=BucketKind.UNASSIGNED, i=1)      # API-disabled
     await place("Paradrex", bucket=BucketKind.UNASSIGNED, i=2)
-    await place("AnneeChovies", bucket=BucketKind.UNASSIGNED, i=3)
+    await place("Trixomaniac", bucket=BucketKind.UNASSIGNED, i=3)
     await place("foo", bucket=BucketKind.UNASSIGNED, i=4)
     await place("baz", bucket=BucketKind.UNASSIGNED, i=5)             # Fill, no caps
-    await place("Vcraft", bucket=BucketKind.UNASSIGNED, late=True, i=6)   # LATE
-    await place("SchwitzerMirko", bucket=BucketKind.UNASSIGNED, late=True, i=7)
-    await place("Sevisoup", bucket=BucketKind.WILLING_TO_SIT_OUT, i=0)
-    await place("bar", bucket=BucketKind.WILLING_TO_SIT_OUT, i=1)
-    await place("Saicro_", bucket=BucketKind.CONFIRMED_NONATTENDANCE, i=0)
+    await place("Salted", bucket=BucketKind.UNASSIGNED, late=True, i=6)   # LATE
+    await place("Jumla", bucket=BucketKind.UNASSIGNED, late=True, i=7)
+    await place("Sevisoup", bucket=BucketKind.VOLUNTEERS, i=0)
+    await place("bar", bucket=BucketKind.VOLUNTEERS, i=1)
+    await place("ThinKing", bucket=BucketKind.WONTASSIGN, i=0)
     # Holidaze is the organiser — intentionally not placed on the board.
 
     # --- RSVPs ---------------------------------------------------------------
     for name, notice in (
-        ("Wenweia", AttendanceNotice.HARD_RSVP),
-        ("Nazzae", AttendanceNotice.HARD_RSVP),
-        ("Metrafish", AttendanceNotice.HARD_RSVP),   # API-disabled but RSVP'd
-        ("AnneeChovies", AttendanceNotice.SOFT_RSVP),
-        ("Paradrex", AttendanceNotice.SOFT_RSVP),
-        ("foo", AttendanceNotice.HARD_RSVP),
+        ("Wenweia", AttendanceNotice.RSVP_HARD),
+        ("Nazzae", AttendanceNotice.RSVP_HARD),
+        ("Metrafish", AttendanceNotice.RSVP_HARD),   # API-disabled but RSVP'd
+        ("Trixomaniac", AttendanceNotice.RSVP_SOFT),
+        ("Paradrex", AttendanceNotice.RSVP_SOFT),
+        ("foo", AttendanceNotice.RSVP_HARD),
     ):
         await Rsvp.create(event=event, player=p[name], notice=notice)
 
@@ -213,7 +214,7 @@ async def main() -> None:
     print(
         f"Seeded dev data: 1 active event (anni ~93m, organiser Holidaze), "
         f"{len(PLAYERS)} real-name players (incl. API-disabled Metrafish + "
-        f"rename-desync EenRandomG), 2 parties (stages 3 & 1), "
+        f"rename-desync _akaPasta), 2 parties (stages 3 & 1), "
         f"15 placements, 6 RSVPs. Run the dev server -> http://127.0.0.1:8000/"
     )
 
