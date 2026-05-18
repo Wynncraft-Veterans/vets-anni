@@ -8,10 +8,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Wynnvets Annihilation{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/anni.css">
-  <link rel="stylesheet" href="/static/css/colourblind.css">
-  <script defer src="/static/js/alpine.min.js"></script>
-  <script src="/static/js/htmx.min.js"></script>
+  <link rel="stylesheet" href="{{ asset('css/anni.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/colourblind.css') }}">
+  <script defer src="{{ asset('js/alpine.min.js') }}"></script>
+  <script src="{{ asset('js/htmx.min.js') }}"></script>
 </head>
 <body class="{% if cb %}cb{% endif %}">
   <nav class="navbar">
@@ -33,7 +33,7 @@
     </div>
   </nav>
 
-  <main class="page">
+  <main class="page {% block page_extra %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 

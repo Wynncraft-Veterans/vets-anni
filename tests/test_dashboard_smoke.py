@@ -72,4 +72,4 @@ async def test_me_redirects_anonymous_to_login(client):
 async def test_staff_page_shows_login_when_signed_out(client):
     r = await client.get("/staff")
     assert r.status_code == 200
-    assert "Staff sign in" in r.text
+    assert "Staff Login" in r.text and "Staff password" in r.text

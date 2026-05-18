@@ -20,6 +20,23 @@ from app.settings import get_settings
 
 _settings = get_settings()
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
+_STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
+
+
+def asset(path: str) -> str:
+    """``/static/<path>`` with a ``?v=<mtime>`` cache-buster.
+
+    CSS/JS edits don't restart the server (uvicorn only watches ``*.py``), so
+    without this the browser keeps serving a stale stylesheet — the cause of
+    "the change didn't take" loops. The mtime is read per call (cheap) so the
+    URL changes the instant the file is saved, no restart needed.
+    """
+    rel = path.lstrip("/")
+    try:
+        v = int((_STATIC_DIR / rel).stat().st_mtime)
+    except OSError:
+        v = 0
+    return f"/static/{rel}?v={v}"
 
 #: Jinja environment. Templates use the glassmorphism reference CSS; colour is
 #: never the only signal (macros emit glyph + label + pattern too).
@@ -36,6 +53,7 @@ env.globals.update(
     STATUS_STYLES=STATUS_STYLES,
     UNASSIGNED_STYLE=UNASSIGNED_STYLE,
     PUBLIC_BASE_URL=_settings.public_base_url,
+    asset=asset,
 )
 
 _SESSION_COOKIE = "anni_session"
