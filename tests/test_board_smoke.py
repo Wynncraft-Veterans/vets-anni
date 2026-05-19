@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest_asyncio
 
-from app.db.models import BoardPlacement
+from app.db.models import BoardPlacement, Party
 from app.web import deps
 
 
@@ -200,6 +200,44 @@ async def test_status_border_patterns_are_cb_only(client):
         s = line.strip()
         if s.startswith(".status-border[data-pattern="):
             raise AssertionError(f"unscoped pattern rule leaks with cb off: {s}")
+
+
+async def test_party_collapse_is_per_user_cookie_and_survives_refresh(
+    as_staff, seeded
+):
+    """Collapsing a party hides its edit form + members to one line, persists
+    via a cookie (so it survives the WS-driven #board refreshes), and toggles
+    back. It's a personal view pref — server-rendered, no board_hub."""
+    p1 = await Party.get(event=seeded["event"], ordinal=1)
+    pid = str(p1.id)
+    url = f"/staff/board/party/{pid}/collapse"
+
+    r = await as_staff.get("/staff/board")
+    assert r.text.count('class="party-set"') == 2          # 2 seeded parties
+    assert f'hx-get="{url}"' in r.text                      # the toggle exists
+
+    r = await as_staff.get(url, follow_redirects=False)
+    assert r.status_code == 200 and 'id="board"' in r.text  # the #board frag
+    assert r.cookies.get("collapsed_parties") == pid
+    assert r.text.count('class="party-set"') == 1           # party 1 collapsed
+    assert "party-summary" in r.text                        # one-line summary
+
+    # Survives a plain fragment refresh (the WS path) — cookie is now in the
+    # jar, the server re-renders it collapsed without re-toggling.
+    r = await as_staff.get("/staff/board/fragment")
+    assert r.text.count('class="party-set"') == 1
+
+    # Toggling again expands it and clears the (now empty) cookie.
+    r = await as_staff.get(url, follow_redirects=False)
+    assert r.text.count('class="party-set"') == 2
+    assert r.cookies.get("collapsed_parties") in (None, "")
+
+
+async def test_party_collapse_is_staff_gated(client, seeded):
+    p1 = await Party.get(event=seeded["event"], ordinal=1)
+    r = await client.get(f"/staff/board/party/{p1.id}/collapse",
+                         follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/staff"
 
 
 async def test_board_requires_staff(client, seeded):

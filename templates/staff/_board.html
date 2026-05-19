@@ -117,11 +117,28 @@
         </div>
 
         {% for party in snap.parties %}
-          <div class="party-card" data-party-id="{{ party.id }}">
+          {% set is_collapsed = party.id in collapsed_parties %}
+          <div class="party-card{{ ' collapsed' if is_collapsed }}"
+               data-party-id="{{ party.id }}">
             <div class="party-head">
+              {# Per-user collapse (a cookie, like cb/pin — survives the WS
+                 board refreshes; never broadcast to other staff). #}
+              <button class="party-collapse" type="button"
+                      hx-get="/staff/board/party/{{ party.id }}/collapse"
+                      hx-target="#board" hx-swap="outerHTML"
+                      aria-expanded="{{ 'false' if is_collapsed else 'true' }}"
+                      aria-label="{{ 'Expand' if is_collapsed else 'Collapse' }} Party {{ party.ordinal }}"
+                      title="{{ 'Expand' if is_collapsed else 'Collapse' }} this party">{{ '▸' if is_collapsed else '▾' }}</button>
               <strong>Party {{ party.ordinal }}</strong>
               <span class="muted">{{ party.members | length }}/{{ party.capacity }}</span>
+              {% if is_collapsed %}
+                {# Keep the one collapsed line informative at a glance. #}
+                <span class="muted party-summary">{{ party.world or 'no world' }}
+                  · stage {{ party.stage }}/5 · {{ party.result }}
+                  {%- if party.host %} · host {{ party.host.name }}{% endif %}</span>
+              {% endif %}
             </div>
+            {% if not is_collapsed %}
             <div class="party-set">
               <form class="party-form" hx-post="/staff/board/party/{{ party.id }}/set"
                     hx-target="#board" hx-swap="outerHTML">
@@ -163,6 +180,7 @@
                 <p class="muted dz-empty">Empty — drag players here.</p>
               {% endif %}
             </div>
+            {% endif %}
           </div>
         {% else %}
           <p class="muted">No parties yet — “+ Party” to start assigning.</p>

@@ -237,3 +237,22 @@ async def rest_party_rename(
 async def rest_organizer(request: Request, player_uuid: str = Form("")):
     return await _apply_rest(request, P.Intent(
         P.ORGANIZER_SET, data={"player_uuid": player_uuid or None}))
+
+
+@router.get("/staff/board/party/{party_id}/collapse", include_in_schema=False)
+async def toggle_party_collapse(request: Request, party_id: str):
+    """Toggle this party's collapsed state for THIS user only. A cookie (not
+    board_hub) — it's a personal view pref, never broadcast, and it must be
+    server-rendered so it survives the WS-driven #board refreshes. Returns
+    the #board fragment with the new state applied immediately (the cookie
+    we set isn't readable until the next request, so we also pass the fresh
+    set straight into the render)."""
+    if not auth.is_staff(request):
+        return RedirectResponse("/staff", status_code=303)
+    ids = deps.collapsed_parties(request)
+    ids.discard(party_id) if party_id in ids else ids.add(party_id)
+    ctx = await _board_ctx(request)
+    ctx["collapsed_parties"] = ids          # override the cookie-derived set
+    resp = render_board(request, ctx, full=False)
+    deps.set_collapsed_parties(resp, ids)   # persist for later refreshes
+    return resp

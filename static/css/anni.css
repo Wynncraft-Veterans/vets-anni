@@ -418,6 +418,16 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .party-head { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 .party-head strong { font-size:1.05rem; }
+/* Collapse caret — unobtrusive, the whole party-head reads as one line when
+   collapsed. */
+.party-collapse {
+  width:1.5rem; height:1.5rem; flex:none; margin:0; padding:0;
+  border:1px solid #d1d5db; border-radius:6px; background:#f3f4f6;
+  color:#374151; font-size:.8rem; line-height:1; cursor:pointer;
+}
+.party-collapse:hover { background:#e5e7eb; }
+.party-summary { font-size:.82rem; }
+.party-card.collapsed { padding:.5rem .85rem; }
 .party-set { margin:.4rem 0; }
 /* Flex (not an even auto-fit grid) so fields take only the width their
    content needs: world ≤5 chars, result ≤"loss" — the freed space goes to

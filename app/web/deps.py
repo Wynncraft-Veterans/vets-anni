@@ -164,6 +164,28 @@ def set_pin(response: Response, on: bool) -> None:
                             samesite="lax")
 
 
+# Per-user collapsed parties — a CSV of party ids in a cookie (same family as
+# cb/pin). It MUST be server-side: the board re-renders on every WS tick, so
+# a client-only collapse would pop back open; and it's per-user, so it never
+# goes through board_hub / WS broadcast. Stale ids from a wiped event simply
+# never match a current party (harmless), so no pruning is needed.
+_COLLAPSE_COOKIE = "collapsed_parties"
+
+
+def collapsed_parties(request: Request) -> set[str]:
+    """The set of party ids this user has collapsed (``{}`` if none)."""
+    raw = request.cookies.get(_COLLAPSE_COOKIE) or ""
+    return {p for p in raw.split(",") if p}
+
+
+def set_collapsed_parties(response: Response, ids: set[str]) -> None:
+    if ids:
+        response.set_cookie(_COLLAPSE_COOKIE, ",".join(sorted(ids)),
+                            max_age=60 * 60 * 24 * 365, samesite="lax")
+    else:
+        response.delete_cookie(_COLLAPSE_COOKIE)
+
+
 # --- rendering -------------------------------------------------------------
 def render(request: Request, template: str, **context: Any) -> Response:
     """Render a Jinja template with the common context every page needs."""
@@ -182,6 +204,10 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "label_roles": label_visible(request, "roles"),
         "label_status": label_visible(request, "status"),
         "pin_legend": pin_legend(request),
+        # Cookie-derived by default; the collapse toggle route passes a fresh
+        # set via **context so its own response reflects the new state (the
+        # cookie it sets isn't visible until the next request).
+        "collapsed_parties": collapsed_parties(request),
         **context,
     }
     return HTMLResponse(env.get_template(template).render(**ctx))
