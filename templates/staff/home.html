@@ -43,7 +43,7 @@
           <label for="org">Claim / change organiser</label>
           <select id="org" name="player_uuid">
             <option value="">— release (unclaimed) —</option>
-            {% for s in online_staff %}
+            {% for s in organizer_candidates %}
               <option value="{{ s.uuid }}"
                 {{ 'selected' if organizer and s.uuid == organizer.uuid }}>
                 {{ s.name }} ({{ s.rank }})</option>

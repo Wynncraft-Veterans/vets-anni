@@ -64,10 +64,19 @@ async def _hub_ctx(request: Request) -> dict:
                 "avatar": avatar(event.organizer.mc_uuid, 24),
             }
 
+    # "Staff online" stays the live online-only feed (a presence display);
+    # the organiser candidate list is the FULL WAPI guild staff (offline too).
     online_staff = sorted(
         (
             {"uuid": v["uuid"], "name": v["username"], "rank": v["rank"]}
             for v in state.online_staff.values()
+        ),
+        key=lambda s: s["name"].lower(),
+    )
+    organizer_candidates = sorted(
+        (
+            {"uuid": v["uuid"], "name": v["username"], "rank": v["rank"]}
+            for v in state.guild_staff.values()
         ),
         key=lambda s: s["name"].lower(),
     )
@@ -78,6 +87,7 @@ async def _hub_ctx(request: Request) -> dict:
         "parties": parties,
         "organizer": organizer,
         "online_staff": online_staff,
+        "organizer_candidates": organizer_candidates,
         "now": int(time.time()),
         "users": [
             {"mc_uuid": p.mc_uuid, "name": p.mc_username,
@@ -116,23 +126,22 @@ async def staff_logout():
 
 @router.post("/staff/organizer", include_in_schema=False)
 async def claim_organizer(request: Request, player_uuid: str = Form("")):
-    """Claim (a chosen online staffer) or release (blank) the lead-organiser
-    slot on the active event. The board's WS ``ORGANIZER_SET`` does the same;
-    this is the no-JS path on the hub."""
+    """Claim (a chosen guild staffer) or release (blank) the lead-organiser
+    slot. Same as the board's WS ``ORGANIZER_SET``; the no-JS path on the hub.
+    A staffer with no :class:`AnniPlayer` yet is get-or-created by
+    ``set_organizer`` from the cached guild-staff name."""
     if not auth.is_staff(request):
         return RedirectResponse("/staff", status_code=303)
     event = await get_active_event()
     if event is not None:
         uuid = player_uuid.strip() or None
-        if uuid:
-            # Staff may not have an AnniPlayer row yet — organiser is just a
-            # display pointer (FK SET_NULL); create a minimal one on demand.
-            cached = _state(request).online_staff.get(uuid)
-            await AnniPlayer.get_or_create(
-                mc_uuid=uuid,
-                defaults={"mc_username": (cached or {}).get("username", uuid[:8])},
-            )
-        await buckets.set_organizer(event, uuid)
+        state = _state(request)
+        cached = (
+            state.guild_staff.get(uuid) or state.online_staff.get(uuid)
+        ) if uuid else None
+        await buckets.set_organizer(
+            event, uuid, name=(cached or {}).get("username")
+        )
         logger.info("organiser %s via staff hub", "released" if not uuid else uuid)
     return RedirectResponse("/staff", status_code=303)
 

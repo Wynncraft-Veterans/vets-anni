@@ -19,7 +19,7 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from app.constants import DEFAULT_ENABLED_REGIONS
+from app.constants import DEFAULT_ENABLED_REGIONS, DEFAULT_STAFF_GUILD_RANKS
 
 
 class Settings(BaseSettings):
@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     )
     returners_guild_name: str = Field(default="Returners")
 
+    staff_guild_ranks: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_STAFF_GUILD_RANKS),
+        description="WAPI guild member rank keys treated as staff — the "
+        "lead-organiser candidate set (ALL of them, online or not). "
+        "Comma-separated in env (STAFF_GUILD_RANKS); matched case-insensitively "
+        "against the v3 guild ranks (owner/chief/strategist/captain/recruiter/"
+        "recruit). Default = the management ranks; widen if recruiters organise.",
+    )
+
     enabled_regions: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [c.value for c in DEFAULT_ENABLED_REGIONS],
         description="MaxMind GeoIP2 continent codes offered in the "
@@ -92,6 +101,17 @@ class Settings(BaseSettings):
         items = v.split(",") if isinstance(v, str) else v
         if isinstance(items, (list, tuple)):
             return [s for t in items if (s := str(t).strip())]
+        return v
+
+    @field_validator("staff_guild_ranks", mode="before")
+    @classmethod
+    def _split_ranks(cls, v: object) -> object:
+        """``STAFF_GUILD_RANKS`` as a comma string or list; trim + lower-case
+        (WAPI v3 guild rank keys are lower-case). Unknown tokens are harmless
+        (they just never match a real rank)."""
+        items = v.split(",") if isinstance(v, str) else v
+        if isinstance(items, (list, tuple)):
+            return [s for t in items if (s := str(t).strip().lower())]
         return v
 
     @field_validator("enabled_regions", mode="before")
@@ -147,6 +167,12 @@ class Settings(BaseSettings):
         (Membership).
         """
         return frozenset(self.ally_guild_tags)
+
+    @property
+    def staff_guild_rank_set(self) -> frozenset[str]:
+        """Staff guild ranks as a lower-cased set (WAPI rank keys are
+        lower-case) for O(1) membership checks in ``online_merge``."""
+        return frozenset(r.lower() for r in self.staff_guild_ranks)
 
 
 @lru_cache(maxsize=1)

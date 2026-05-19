@@ -175,6 +175,11 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   cursor:pointer;
 }
 .btn-sm.btn-danger { background:#fecaca; color:#b91c1c; }
+/* Add actions (Add Party / Add player) — a visible accent so they don't
+   vanish into the white card like the neutral grey .btn-sm did. */
+.btn-sm.btn-add { background:#2563eb; color:#fff; }
+.btn-sm.btn-add:hover { filter:brightness(1.06); }
+.btn-sm.btn-add:disabled { background:#9db8ef; cursor:not-allowed; }
 /* Secondary action — same base `button` box as the primary (identical
    height/shape), just a neutral palette. */
 .btn-secondary { background:#e5e7eb; color:#111827; }
@@ -379,6 +384,21 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .org-form select { width:auto; min-width:14rem; }
 .org-form .btn-sm { margin:0; }
 
+/* Board header: title + live pill on the left, the one-line "Lead organiser
+   [dropdown]" aligned right; the drag hint is a subheader under it. */
+.board-head {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:.6rem 1.5rem; flex-wrap:wrap;
+}
+.board-title {
+  display:flex; align-items:center; gap:.6rem; margin:0; flex-wrap:wrap;
+}
+.board-title #ws-state { font-size:.7rem; font-weight:600; }
+.board-sub { margin:.15rem 0 0; }
+.org-inline { display:flex; align-items:center; gap:.5rem; }
+.org-inline label { display:inline; margin:0; font-size:.85rem; color:#374151; }
+.org-inline select { width:auto; min-width:12rem; }
+
 .board { display:block; }
 .board-grid {
   display:grid; grid-template-columns: 1.4fr 1fr; gap:1rem; margin-top:1rem;
@@ -399,14 +419,22 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .party-head { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 .party-head strong { font-size:1.05rem; }
 .party-set { margin:.4rem 0; }
-.party-set summary { cursor:pointer; font-size:.82rem; color:#4b5563; }
+/* Flex (not an even auto-fit grid) so fields take only the width their
+   content needs: world ≤5 chars, result ≤"loss" — the freed space goes to
+   the stage dropdown, which now shows a readable description per stage. */
 .party-form {
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));
-  gap:.4rem .7rem; align-items:end; margin-top:.5rem;
+  display:flex; flex-wrap:wrap; gap:.4rem .7rem; align-items:flex-end;
+  margin-top:.5rem;
 }
-.party-form label { margin:0; font-size:.78rem; }
-.party-form input, .party-form select { padding:.3rem .4rem; }
-.party-form .btn-sm { margin:0; align-self:end; }
+.party-form label {
+  margin:0; font-size:.78rem; display:flex; flex-direction:column; gap:.15rem;
+}
+.party-form input, .party-form select { padding:.3rem .4rem; width:100%; }
+.party-form .pf-host   { flex:1 1 9rem; }
+.party-form .pf-stage  { flex:4 1 16rem; }     /* widest — readable label */
+.party-form .pf-world  { flex:0 0 5.5rem; }    /* ≤5 chars */
+.party-form .pf-result { flex:0 0 6rem; }      /* ≤"loss" */
+.party-form .btn-sm { margin:0; align-self:flex-end; }
 
 .bucket h3 { margin:.1rem 0 .4rem; font-size:1rem; }
 .late-head { margin:.5rem 0 .25rem; font-size:.82rem; color:#6b7280;
@@ -414,6 +442,9 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .addign { display:flex; gap:.5rem; margin:.2rem 0 .4rem; }
 .addign input { flex:1; }
 .addign .btn-sm { margin:0; }
+/* "+ Party" and "Add" render identically sized (their label widths differ). */
+.board-col-head .btn-sm,
+.addign .btn-sm { min-width:6rem; text-align:center; }
 
 /* Drop containers. A min-height keeps an empty zone a real drop target. */
 .dropzone {
@@ -463,6 +494,59 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 /* The status border itself (width/style/pattern come from colourblind.css,
    which applies in both modes; colour is the inline var(--st-*)). */
 .person.status-border { border-width:3px; }
+
+/* Label-density toggles (deps.label_visible -> base.html body class). CB OFF:
+   hide the text tag — the card background (role) and the border colour+
+   pattern (status) still carry it. CB ON: the spec's HARD rule wins, the tag
+   is ALWAYS shown (the !important guards against a stale pref cookie). */
+body.hide-rolelabel  .person .role-tag    { display:none; }
+body.hide-statuslabel .person .status-tag { display:none; }
+body.cb .person .role-tag,
+body.cb .person .status-tag { display:inline-flex !important; }
+
+/* Legend (~90%) beside the Configs box (~10%). */
+.legend-wrap {
+  display:flex; gap:1rem; margin-top:1rem; align-items:stretch;
+  flex-wrap:wrap;
+}
+.legend-wrap > .legend { flex:90 1 18rem; margin-top:0; }
+.legend-wrap > .board-controls { flex:10 1 7rem; margin-top:0; }
+@media (max-width:780px){ .legend-wrap > * { flex-basis:100%; } }
+
+/* Pinned: keep the legend/Configs bar just under the sticky navbar while
+   the board scrolls (per-user config, default on). z-index sits below the
+   navbar (20); the child cards are opaque so scrolled content can't bleed
+   through. Honours prefers-reduced-motion implicitly (no animation). */
+.legend-wrap.pinned {
+  position:sticky; top:3.6rem; z-index:15;
+}
+
+.board-controls h3 { margin:.1rem 0 .4rem; font-size:.95rem; }
+.cfg-list { list-style:none; margin:.3rem 0 0; padding:0;
+  display:flex; flex-direction:column; gap:.45rem; }
+/* Each config = a "Name  [switch]" row. The whole row is the toggle (an <a>
+   that round-trips a cookie + reload — same no-JS pattern as the CB link);
+   the switch is a pure-CSS track + sliding knob, green when on. */
+.cfg-row {
+  display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+  font-size:.82rem; font-weight:600; color:#374151;
+  padding:.15rem 0;
+}
+.cfg-switch {
+  flex:none; position:relative; width:2.1rem; height:1.1rem;
+  border-radius:999px; background:#cbd5e1; box-sizing:border-box;
+  transition:background .15s;
+}
+.cfg-switch::after {
+  content:""; position:absolute; top:.13rem; left:.13rem;
+  width:.84rem; height:.84rem; border-radius:50%; background:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.35); transition:transform .15s;
+}
+.cfg-switch.on { background:#16a34a; }
+.cfg-switch.on::after { transform:translateX(1rem); }
+a.cfg-row:hover .cfg-switch { filter:brightness(.97); }
+.cfg-row.cfg-locked { color:#0369a1; cursor:not-allowed; }
+.cfg-row.cfg-locked .cfg-switch.on { background:#0369a1; }
 
 /* Legend — every channel that carries meaning shown explicitly. */
 .legend { margin-top:1rem; }

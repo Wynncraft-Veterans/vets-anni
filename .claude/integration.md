@@ -41,6 +41,15 @@ the token only on: `/v3/guild/Returners` online, `/v3/item/search/{q}` (weapons
 catalog, ITEMS bucket, 1 h cache), and the slow api-disabled `/v3/player/{uuid}`
 probe. Heavy reads come from api.wynnvets.org instead.
 
+The single `/v3/guild/Returners` response `online_merge` already fetches is
+*also* parsed for the **full staff roster** (every member whose rank is in
+`settings.staff_guild_rank_set` — `STAFF_GUILD_RANKS` env, default the
+management ranks; online **or offline**) into `state.guild_staff`. That is the
+**lead-organiser candidate list** for the board dropdown + the staff hub
+(replacing the old board-members-only / online-only sources) — no extra WAPI
+call. A picked organiser with no `AnniPlayer` row yet is get-or-created from
+the cached guild-staff name in `buckets.set_organizer`.
+
 ## dazebot — one added internal endpoint (verify network only)
 `POST /api/internal/anni-identity`, header `X-Introspect-Secret` ==
 `DAZEBOT_INTROSPECT_SECRET` (reuse the existing fail-closed pattern; no new

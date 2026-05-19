@@ -35,6 +35,56 @@ async def test_staff_hub_renders_status_and_tools(as_staff, seeded):
     assert "Rotate the staff password" in body       # Phase-1 tools kept
 
 
+async def test_label_toggles_default_hidden_off_cb_and_flip(as_staff, seeded):
+    """CB off: labels hidden by default (colour conveys it); the Configs box
+    renders radio rows and the toggle round-trips a cookie."""
+    r = await as_staff.get("/staff/board")
+    assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
+    assert "<h3>Configs</h3>" in r.text
+    assert "Role Labels" in r.text and "Status Labels" in r.text
+    assert "cfg-switch" in r.text                  # the switch control
+    assert "Hide the text tags" not in r.text      # subheading removed
+
+    r = await as_staff.get("/toggle-label?which=roles&next=/staff/board",
+                            follow_redirects=False)
+    assert r.status_code == 303 and r.cookies.get("lbl_roles") == "1"
+
+    r = await as_staff.get("/staff/board")
+    assert "hide-rolelabel" not in r.text          # roles now labelled
+    assert "hide-statuslabel" in r.text            # status still hidden
+    assert 'aria-checked="true"' in r.text         # the roles switch is on
+
+    r = await as_staff.get("/toggle-label?which=bogus", follow_redirects=False)
+    assert r.status_code == 303  # unknown facet -> safe bounce, no crash
+
+
+async def test_cb_forces_labels_on_regardless_of_pref(as_staff, seeded):
+    """The hard rule: under colourblind mode the tags are always on and the
+    config row is locked, even if the hide pref cookie says otherwise."""
+    as_staff.cookies.set("cb", "1")
+    as_staff.cookies.set("lbl_roles", "")   # pref says hide...
+    r = await as_staff.get("/staff/board")
+    assert "hide-rolelabel" not in r.text   # ...but CB overrides it
+    assert "hide-statuslabel" not in r.text
+    assert "cfg-locked" in r.text and "🔒" in r.text  # shown locked
+
+
+async def test_pin_legend_defaults_on_and_toggles_off(as_staff, seeded):
+    """Pin is a config that defaults ON (no cookie == pinned); turning it off
+    stores the explicit opt-out and drops the sticky class."""
+    r = await as_staff.get("/staff/board")
+    assert "legend-wrap pinned" in r.text          # default on
+    assert "Pin to top" in r.text
+
+    r = await as_staff.get("/toggle-label?which=pin&next=/staff/board",
+                            follow_redirects=False)
+    assert r.status_code == 303 and r.cookies.get("cfg_pin") == "0"
+
+    r = await as_staff.get("/staff/board")
+    assert "legend-wrap pinned" not in r.text      # opted out
+    assert 'class="legend-wrap"' in r.text
+
+
 async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     r = await as_staff.get("/staff/board")
     assert r.status_code == 200
@@ -47,7 +97,15 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     assert "data-pattern=" in body
     assert "aria-label=" in body
     assert "PRIM" in body                # a role glyph
-    assert "Status borders" in body      # the legend explains the non-colour
+    # Legend renders the status-border key (glyph+label+pattern) but the
+    # "Roles"/"Status borders" headers + the prose subheader were removed.
+    assert "legend-status" in body
+    assert "<h3>Roles</h3>" not in body
+    assert "<h3>Status borders</h3>" not in body
+    assert "The border colour" not in body
+    # Party-edit fields are always visible now (no <details> collapsible).
+    assert "<details" not in body and "Edit party" not in body
+    assert 'name="world"' in body and 'name="result"' in body
     # board.js + vendored SortableJS are wired (no CDN/build step).
     assert "board.js" in body and "sortable.min.js" in body
 
@@ -92,6 +150,56 @@ async def test_rest_player_add_unknown_ign_shows_friendly_error(as_staff, seeded
     # rendered fragment, so match an apostrophe-free slice of the reason).
     assert "find a Minecraft account" in r.text
     assert 'class="bar bar-danger"' in r.text
+
+
+async def test_party_head_trimmed_and_stage_labels_readable(as_staff, seeded):
+    r = await as_staff.get("/staff/board")
+    body = r.text
+    # Tweak: the stage + tbd bubbles are gone from the "Party N x/y" head.
+    assert "stage 3/5" not in body          # seeded party 1 was stage 3
+    assert "Party 1" in body and "/10" in body   # "Party N  x/10" head kept
+    # Stage dropdown shows a readable description, not a bare number.
+    assert "Determining how many parties" in body   # PARTY_STAGE_LABELS[2]
+    # "+ Party" replaced by a visible "Add Party" accent button.
+    assert "Add Party" in body and "+ Party" not in body
+    assert "btn-add" in body
+    # World capped at 5 chars.
+    assert 'name="world"' in body and 'maxlength="5"' in body
+
+
+async def test_add_player_is_a_popup_not_an_inline_field(as_staff, seeded):
+    body = (await as_staff.get("/staff/board")).text
+    # The always-on input is gone; the Players head has a popup trigger.
+    assert "Add a walk-in by IGN" not in body
+    assert 'hx-get="/staff/board/add"' in body
+    assert 'id="board-modal-mount"' in body
+
+    r = await as_staff.get("/staff/board/add")
+    assert r.status_code == 200
+    assert "modal-overlay" in r.text and 'name="ign"' in r.text
+    assert 'hx-post="/staff/board/player-add"' in r.text
+
+
+async def test_add_modal_is_staff_gated(client, seeded):
+    r = await client.get("/staff/board/add", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/staff"
+
+
+async def test_status_border_patterns_are_cb_only(client):
+    """CB off => a single solid coloured outline; the dash/dot/double
+    patterns are scoped under body.cb (and data-pattern is still always in
+    the DOM, asserted elsewhere). Guards tweak: 'solid outline when cb off'."""
+    r = await client.get("/static/css/colourblind.css")
+    assert r.status_code == 200
+    css = r.text
+    # The base rule is a plain solid border (cb-off default).
+    assert ".status-border { border-width: 3px; border-style: solid; }" in css
+    # Every pattern selector is cb-scoped — none appears unscoped.
+    assert "body.cb .status-border[data-pattern=" in css
+    for line in css.splitlines():
+        s = line.strip()
+        if s.startswith(".status-border[data-pattern="):
+            raise AssertionError(f"unscoped pattern rule leaks with cb off: {s}")
 
 
 async def test_board_requires_staff(client, seeded):

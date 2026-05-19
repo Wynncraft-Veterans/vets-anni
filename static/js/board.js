@@ -168,10 +168,14 @@
   }
 
   // Re-init after every #board swap (HTMX replaces the node, so the old
-  // Sortable instances are dead).
+  // Sortable instances are dead) and dismiss the add-player popup once its
+  // submit has swapped the board back in (same pattern as the dashboard
+  // modals — close on the read fragment landing).
   document.body.addEventListener("htmx:afterSwap", function (e) {
     if (e.detail && e.detail.target && e.detail.target.id === "board") {
       initBoard();
+      var m = document.getElementById("board-modal-mount");
+      if (m) m.innerHTML = "";
     }
   });
 

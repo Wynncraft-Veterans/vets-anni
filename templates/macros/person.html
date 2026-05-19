@@ -15,7 +15,8 @@
   <div class="person status-border" data-pattern="{{ p.status_chip.pattern }}"
        data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
        draggable="true"
-       style="border-color: var({{ p.status_chip.css_var }});
+       style="--stc: var({{ p.status_chip.css_var }});
+              border-color: var({{ p.status_chip.css_var }});
               background-color: var({{ p.role_chip.css_var_dark }})"
        aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}"
        title="{{ p.name }} — {{ p.status_chip.label }}">
@@ -25,7 +26,7 @@
       <span class="person-name">
         {{ p.name }}
         {% if p.desynced %}
-          <span class="muted" title="in-game name differs">|{{ p.wynn_username }}</span>
+          <span class="muted" title="in-game name differs">| {{ p.wynn_username }}</span>
         {% endif %}
       </span>
       <span class="person-tags">

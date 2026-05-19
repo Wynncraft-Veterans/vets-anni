@@ -199,6 +199,17 @@ CONTINENT_ORDER: tuple[ContinentCode, ...] = (
 )
 
 
+#: WAPI v3 guild member rank keys treated as "staff" — the lead-organiser
+#: candidate set (ALL of them, online or not; ``services/online_merge`` caches
+#: it from the guild payload it already fetches). The conventional Wynncraft
+#: management ranks; widen/narrow per guild via ``STAFF_GUILD_RANKS`` env (see
+#: ``app.settings``). Matched case-insensitively (WAPI keys are lower-case:
+#: owner/chief/strategist/captain/recruiter/recruit).
+DEFAULT_STAFF_GUILD_RANKS: tuple[str, ...] = (
+    "owner", "chief", "strategist", "captain",
+)
+
+
 class BucketKind(StrEnum):
     """Non-party containers on the organizer board."""
 
@@ -274,7 +285,10 @@ STYLES: dict[PaletteColor, Style] = {
     PaletteColor.YELLOW: Style("#fffb00", "#f5f36e", "#696800", "#F0E442"),
     PaletteColor.GREEN:  Style("#15ff00", "#83ff78", "#0a7700", "#009E73"),
     PaletteColor.BLUE:   Style("#0400ff", "#9290ff", "#0300AC", "#0072B2"),
-    PaletteColor.CYAN: Style("#00e1ff", "#4aeaff", "#007E8F", "#56B4E9"),
+    # CB hue is Okabe-Ito BLACK (not sky-blue): sky-blue #56B4E9 was too
+    # close to BLUE's #0072B2 to tell apart. CYAN is the shared FILL-role /
+    # ONLINE_WORLD-status entry, so both go black under cb.
+    PaletteColor.CYAN: Style("#00e1ff", "#4aeaff", "#007E8F", "#000000"),
     PaletteColor.MAGENTA: Style("#ff00dd", "#ff7aff", "#6000b9", "#CC79A7"),
     PaletteColor.GREY:   Style("#888888", "#d6d6d6", "#3d3d3d", "#999999"),
 }
@@ -300,13 +314,16 @@ class StatusStyle:
     RoleStyle, plus ``pattern`` — a non-colour channel — and ``glyph`` +
     ``label`` for the colourblind variant and screen readers.
 
-    ``pattern`` encodes online-ness by family so the border alone reads
-    online vs offline. ONLINE = unbroken, escalating with presence:
-    ``solid`` (elsewhere) → ``double`` (world) → ``triple`` (in party).
-    OFFLINE = broken, degrading with risk: ``long-dash`` (hard RSVP) →
-    ``short-dash`` (soft RSVP) → ``dotted`` (gone). ``wavy`` = UNKNOWN
-    (neither — unconfirmable). Rendered by static/css/colourblind.css
-    ``.status-border[data-pattern=…]``."""
+    ``pattern`` is the non-colour channel (CB-only — with cb off the border
+    is a plain solid coloured outline). One uniform-width family, most→least
+    "present", PARTY→GONE: ``double`` (in party) → ``solid`` (world) →
+    ``dash`` (elsewhere) → ``dash-dash-dot`` (hard RSVP) → ``dash-dot``
+    (soft RSVP) → ``dot`` (gone); ``dash-dot-dot`` = UNKNOWN
+    (unconfirmable). All render the border-colour **verbatim** (no
+    groove/ridge 3-D shading) so under ``body.cb`` the line is the exact
+    Okabe-Ito hue. Rendered by static/css/colourblind.css
+    ``.status-border[data-pattern=…]`` (composites via a ``var(--stc)``
+    border-image)."""
 
     color: str
     light: str
@@ -344,25 +361,25 @@ UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "Unassigned")
 # ELSEWHERE↔TANK(blue), WORLD↔FILL(cyan), PARTY↔TERTIARY(magenta).
 STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
     PresenceStatus.OFFLINE_GONE: _status(
-        STYLES[PaletteColor.RED], "dotted", "!",
+        STYLES[PaletteColor.RED], "dot", "!",
         "A user who was here but has since logged out"),
     PresenceStatus.OFFLINE_HARD: _status(
-        STYLES[PaletteColor.GREEN], "long-dash", "✓",
+        STYLES[PaletteColor.GREEN], "dash-dash-dot", "✓",
         "A hard RSVP'd user who is not here yet"),
     PresenceStatus.OFFLINE_SOFT: _status(
-        STYLES[PaletteColor.YELLOW], "short-dash", "~",
+        STYLES[PaletteColor.YELLOW], "dash-dot", "~",
         "A soft RSVP'd user who is not here yet"),
     PresenceStatus.ONLINE_ELSEWHERE: _status(
-        STYLES[PaletteColor.BLUE], "solid", "→",
+        STYLES[PaletteColor.BLUE], "dash", "→",
         "An online user not on their party's world"),
     PresenceStatus.ONLINE_WORLD: _status(
-        STYLES[PaletteColor.CYAN], "double", "◐",
+        STYLES[PaletteColor.CYAN], "solid", "◐",
         "An on-world online user who has not joined their party yet."),
     PresenceStatus.ONLINE_PARTY: _status(
-        STYLES[PaletteColor.MAGENTA], "triple", "●",
+        STYLES[PaletteColor.MAGENTA], "double", "●",
         "An online user who has joined their party."),
     PresenceStatus.UNKNOWN: _status(
-        STYLES[PaletteColor.GREY], "wavy", "?",
+        STYLES[PaletteColor.GREY], "dash-dot-dot", "?",
         "Unknown — API disabled / unconfirmable"),
 }
 

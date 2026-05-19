@@ -52,6 +52,14 @@ class AppState:
     online_staff: dict[str, dict] = field(default_factory=dict)
     staff_fetched_at: float = 0.0
 
+    # --- online_merge: full guild staff (organiser candidates) --------------
+    #: uuid -> {"uuid","username","rank"} for EVERY guild member whose rank is
+    #: in ``settings.staff_guild_rank_set`` — online OR offline. The
+    #: lead-organiser candidate set; ``online_merge`` fills it from the WAPI
+    #: guild payload it already fetches (kept last-good on a failed tick).
+    guild_staff: dict[str, dict] = field(default_factory=dict)
+    guild_staff_fetched_at: float = 0.0
+
     # --- online_merge --------------------------------------------------------
     #: uuid -> OnlinePlayer. THE online-truth set (mirror of vetsmod /wv list).
     online_by_uuid: dict[str, OnlinePlayer] = field(default_factory=dict)

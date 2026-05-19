@@ -1,0 +1,32 @@
+{# Add-a-walk-in popup, HTMX-loaded into #board-modal-mount (same popup
+   pattern as the user dashboard modals). The form posts the existing
+   player-add REST twin and swaps #board; board.js clears this mount once the
+   board swaps back in (an unknown IGN surfaces inline in the board's error
+   bar — the modal closes, reopen to retry). #}
+<div class="modal-overlay" role="dialog" aria-modal="true"
+     aria-labelledby="add-modal-h">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="add-modal-h">Add a player</h2>
+      <button class="btn-sm" type="button"
+              onclick="document.getElementById('board-modal-mount').innerHTML=''">✕</button>
+    </div>
+
+    <form hx-post="/staff/board/player-add"
+          hx-target="#board" hx-swap="outerHTML">
+      <p class="field-help">
+        Drops anyone into Unassigned by in-game name — even a walk-in who
+        never RSVP'd. Re-adding someone already on the board is a no-op.
+      </p>
+      <label for="add-ign">In-game name</label>
+      <input id="add-ign" name="ign" autocomplete="off" autofocus
+             placeholder="e.g. Wenweia" aria-label="Player in-game name">
+
+      <div class="modal-actions">
+        <button type="submit">Add</button>
+        <button type="button" class="btn-secondary"
+                onclick="document.getElementById('board-modal-mount').innerHTML=''">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>

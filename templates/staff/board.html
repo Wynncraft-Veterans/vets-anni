@@ -1,20 +1,40 @@
 {% extends "base.html" %}
 {% block title %}Organizer Board · Wynnvets Annihilation{% endblock %}
 {% block content %}
-  <div class="dash-head">
-    <h1>Organizer Board</h1>
-    <p class="muted">
-      <a href="/staff">← staff hub</a> ·
-      <a href="/staff/roles">roles dashboard</a> ·
-      drag players between parties &amp; buckets · live across every staff tab
-      <span id="ws-state" class="pill pill-muted" title="Live-sync status">connecting…</span>
-    </p>
+  <div class="board-head">
+    <h1 class="board-title">Organizer Board
+      <span id="ws-state" class="pill pill-muted"
+            title="Live-sync status">connecting…</span>
+    </h1>
+    {% if has_event %}
+      {# One line, aligned right: "Lead organiser [dropdown]". Auto-submits on
+         change via HTMX (the board is already a JS surface — drag/WS); the
+         no-JS organiser path stays on the staff hub. #}
+      <div class="org-inline">
+        <label for="org-sel">Lead organiser</label>
+        <select id="org-sel" name="player_uuid" aria-label="Set lead organiser"
+                hx-post="/staff/board/organizer" hx-trigger="change"
+                hx-target="#board" hx-swap="outerHTML"
+                {{ 'disabled' if snapshot.event.frozen }}>
+          <option value="">— unclaimed —</option>
+          {% for r in snapshot.organizer_candidates %}
+            <option value="{{ r.uuid }}"
+              {{ 'selected' if snapshot.event.organizer and r.uuid == snapshot.event.organizer.uuid }}>{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
   </div>
+  <p class="board-sub muted">Drag players between parties &amp; buckets.</p>
 
   {# The board fragment. board.js refreshes #board (via HTMX) on every WS
      signal, so all rendering stays server-side. Forms inside it post to the
      REST twins and work even with the socket down (graceful degradation). #}
   {% include "staff/_board.html" %}
+
+  {# Add-player popup mounts here (outside #board so a board refresh can't
+     wipe an open modal); board.js clears it once the board swaps in. #}
+  <div id="board-modal-mount"></div>
 {% endblock %}
 
 {% block scripts %}

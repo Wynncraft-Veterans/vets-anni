@@ -206,7 +206,11 @@ class BoardHub:
             )
 
         if intent.type == P.ORGANIZER_SET:
-            return await buckets.set_organizer(event, d.get("player_uuid"))
+            uuid = d.get("player_uuid")
+            cached = state.guild_staff.get(uuid) if uuid else None
+            return await buckets.set_organizer(
+                event, uuid, name=(cached or {}).get("username")
+            )
 
         return buckets.OpResult(False, "Unknown intent.")
 

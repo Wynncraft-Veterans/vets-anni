@@ -13,14 +13,20 @@
   <script defer src="{{ asset('js/alpine.min.js') }}"></script>
   <script src="{{ asset('js/htmx.min.js') }}"></script>
 </head>
-<body class="{% if cb %}cb{% endif %}">
+<body class="{% if cb %}cb{% endif %}{% if not label_roles %} hide-rolelabel{% endif %}{% if not label_status %} hide-statuslabel{% endif %}">
   <nav class="navbar">
     <div class="nav-inner">
       <a class="nav-brand" href="/">WYNNVETS · ANNI</a>
       <div class="nav-links">
         {% if user_uuid %}<a href="/overview">Overview</a>{% endif %}
         {% if user_uuid %}<a href="/me">My Dashboard</a>{% endif %}
-        <a href="/staff">Staff</a>
+        {% if is_staff %}
+          <a href="/staff">Staff hub</a>
+          <a href="/staff/board">Board</a>
+          <a href="/staff/roles">Roles</a>
+        {% else %}
+          <a href="/staff">Staff</a>
+        {% endif %}
         {% if user_uuid %}<a href="/logout">Log out</a>{% endif %}
         {% if is_staff %}<a href="/staff/logout">Log out</a>{% endif %}
         {# Colourblind toggle — present on EVERY interface (spec requirement) #}

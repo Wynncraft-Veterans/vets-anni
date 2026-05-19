@@ -1,25 +1,53 @@
-/* Colourblind variant. Activated by <body class="cb">. Two things happen:
-   (1) the shared --c-* hues swap to the canonical Okabe-Ito CVD-safe set
-       (the --role-*/--st-* aliases in anni.css follow automatically — one
-       definition, mirrors STYLES[*].cb in app/constants.py);
-   (2) shape/pattern channels (driven by data-pattern + glyphs from the
-   macros, Phase 2) become the primary signal so colour is never load-bearing.
-   This satisfies the spec's hard "usable colourblind variant" requirement.
-   The raw --c-*-light/-dark tints are not swapped, but the role-chip BODY
-   aliases (--role-*-dark) ARE remapped to *darkened* Okabe-Ito shades under
-   body.cb (see below) so the user dashboard — whose only palette element is
-   the role chip — actually changes in cb, not just the staff board, while
-   keeping plain white text legible. CB still leans on glyph/label/pattern,
-   never colour alone. */
+/* Colourblind variant. Activated by <body class="cb">. The shared base
+   hues swap to the canonical Okabe-Ito CVD-safe set (mirrors STYLES[].cb in
+   app/constants.py); shape/pattern channels (data-pattern + glyphs) carry
+   meaning so colour is never load-bearing. Satisfies the spec's hard
+   "usable colourblind variant" requirement.
+
+   NOTE: never write a glob asterisk immediately followed by a slash inside
+   a CSS comment — that two-char sequence closes the comment early and
+   silently corrupts the whole stylesheet (it killed the entire body.cb
+   variable block for a long time). Say "role / status aliases" with spaces.
+
+   IMPORTANT — the role and status aliases DO NOT "follow automatically".
+   They are declared in anni.css ":root" as a base-hue var(), so they are
+   resolved on :root (the html element), where the base hue is still the
+   default palette (body.cb only swaps the base hues on <body>, a different
+   element). The resolved default then inherits into the cards — i.e. CB
+   mode would keep showing the bright default. The fix: re-declare every
+   alias here on body.cb so its base-hue var() re-resolves against the
+   swapped hues and inherits correctly (this is also why the role dark
+   aliases are re-declared below). Any new base-hue alias added to anni.css
+   MUST be mirrored here too (a static guard in test_colourblind.py
+   enforces it). */
 
 body.cb {
   --c-red:     #D55E00;  /* vermillion */
   --c-yellow:  #F0E442;  /* yellow */
   --c-green:   #009E73;  /* bluish green */
   --c-blue:    #0072B2;  /* blue */
-  --c-cyan:    #56B4E9;  /* sky blue */
+  --c-cyan:    #000000;  /* black (Okabe-Ito) — sky-blue was too near blue */
   --c-magenta: #CC79A7;  /* reddish purple */
   --c-grey:    #999999;
+
+  /* Re-resolve the role / status aliases against the swapped --c-* (see the
+     IMPORTANT note above — without this they stay baked to the :root
+     default and CB mode shows the bright palette). Borders + the role glyph
+     swatch read these, so this is what makes them verbatim Okabe-Ito. */
+  --role-primary:    var(--c-red);
+  --role-secondary:  var(--c-yellow);
+  --role-tertiary:   var(--c-magenta);
+  --role-healer:     var(--c-green);
+  --role-tank:       var(--c-blue);
+  --role-fill:       var(--c-cyan);
+  --role-unassigned: var(--c-grey);
+  --st-gone:      var(--c-red);
+  --st-offhard:   var(--c-green);
+  --st-offsoft:   var(--c-yellow);
+  --st-elsewhere: var(--c-blue);
+  --st-world:     var(--c-cyan);
+  --st-party:     var(--c-magenta);
+  --st-unknown:   var(--c-grey);
 
   /* Role-chip BODIES adopt CVD-safe hues here too (the user dashboard's only
      palette element is the role chip, so cb must visibly change it). These
@@ -32,7 +60,7 @@ body.cb {
   --role-tertiary-dark:   #8a4e72;  /* dark reddish-purple */
   --role-healer-dark:     #00684c;  /* dark bluish-green */
   --role-tank-dark:       #00598c;  /* dark blue */
-  --role-fill-dark:       #1b6088;  /* dark sky blue */
+  --role-fill-dark:       #000000;  /* black (Okabe-Ito); white text is 21:1 */
   --role-unassigned-dark: #4d4d4d;  /* dark grey */
 }
 
@@ -40,23 +68,63 @@ body.cb {
 body.cb .pill { font-weight: 700; }
 body.cb .cb-toggle { text-decoration: underline; }
 
-/* Non-colour border patterns for person objects (Phase 2 sets data-pattern;
-   declared here so the channel exists from the start). Two families so the
-   border alone reads online vs offline (mirrors StatusStyle.pattern):
-     ONLINE  unbroken, escalating : solid → double → triple
-     OFFLINE broken,  degrading  : long-dash → short-dash → dotted
-     wavy = UNKNOWN (neither).
-   `triple`, the two dash lengths and `wavy` have no native border-style;
-   they're distinct approximations here (heavier double / dash width / groove)
-   — a true 3-line + real wave is a Phase-2 border-image refinement. */
+/* Status border. CB OFF (default world state): a single SOLID coloured
+   outline — colour is reliable for non-CVD users, so the dash/dot/double
+   noise is dropped entirely. The `data-pattern` attribute is STILL emitted
+   in the DOM at all times (the macros never stop) so the channel "exists
+   from the start"; only CB activates it. */
 .status-border { border-width: 3px; border-style: solid; }
-.status-border[data-pattern="solid"]      { border-style: solid;  border-width: 3px; }
-.status-border[data-pattern="double"]     { border-style: double; border-width: 6px; }
-.status-border[data-pattern="triple"]     { border-style: double; border-width: 9px; }
-.status-border[data-pattern="long-dash"]  { border-style: dashed; border-width: 4px; }
-.status-border[data-pattern="short-dash"] { border-style: dashed; border-width: 2px; }
-.status-border[data-pattern="dotted"]     { border-style: dotted; border-width: 3px; }
-.status-border[data-pattern="wavy"]       { border-style: groove; border-width: 4px; }
-/* CB leans on style + glyph/label, so width is normalised here (long/short
-   dash then differ only by glyph + aria-label, which always carry meaning). */
-body.cb .status-border { border-width: 4px; }
+
+/* CB ON: the non-colour pattern channel becomes load-bearing (the spec's
+   hard rule). ONE uniform 4px family, most→least "present" (PARTY→GONE):
+   double → solid → dash → dash-dash-dot → dash-dot → dot; dash-dot-dot =
+   UNKNOWN. The colour is ALWAYS the verbatim `--stc` Okabe-Ito hue — only
+   solid/double/dashed/dotted are native border-styles (they render
+   border-color exactly); the composite dash-dot variants are a
+   `repeating-linear-gradient` border-image fed by `var(--stc)`, so the line
+   is still the exact hue (NO groove/ridge — those 3-D shade the colour).
+
+   In CB-on the ring is drawn OUTSIDE the box (a ::after offset out by the
+   ring width) instead of an inner border — it no longer eats into the card
+   and reads as a halo. CB-off keeps the plain inner border (rule above,
+   untouched: every ring rule here is scoped to body.cb + ::after). The ring
+   is non-interactive (pointer-events:none) so drag/clicks pass through. */
+body.cb .status-border { border: 0; position: relative; }
+body.cb .status-border::after {
+  content: ""; position: absolute; inset: -4px;
+  border: 4px solid var(--stc, currentColor);
+  border-image: none; border-radius: inherit; pointer-events: none;
+}
+body.cb .status-border[data-pattern="solid"]::after  { border-style: solid; }
+body.cb .status-border[data-pattern="double"]::after { border-style: double; }
+body.cb .status-border[data-pattern="dash"]::after    { border-style: dashed; }
+body.cb .status-border[data-pattern="dot"]::after     { border-style: dotted; }
+/* Composites: native border-color is the solid fallback; border-image draws
+   the dash/dot rhythm in the SAME verbatim colour (var(--stc)). */
+body.cb .status-border[data-pattern="dash-dot"]::after {
+  border-style: solid;
+  border-image: repeating-linear-gradient(90deg,
+    var(--stc) 0 12px, transparent 12px 17px,
+    var(--stc) 17px 20px, transparent 20px 25px) 4;
+}
+body.cb .status-border[data-pattern="dash-dash-dot"]::after {
+  border-style: solid;
+  border-image: repeating-linear-gradient(90deg,
+    var(--stc) 0 12px, transparent 12px 17px,
+    var(--stc) 17px 29px, transparent 29px 34px,
+    var(--stc) 34px 37px, transparent 37px 42px) 4;
+}
+body.cb .status-border[data-pattern="dash-dot-dot"]::after {
+  border-style: solid;
+  border-image: repeating-linear-gradient(90deg,
+    var(--stc) 0 12px, transparent 12px 17px,
+    var(--stc) 17px 20px, transparent 20px 25px,
+    var(--stc) 25px 28px, transparent 28px 33px) 4;
+}
+
+/* The CB-on ring overhangs each box by the 4px ring width, so two adjacent
+   rings span 8px — more than the default .45rem dropzone gap, and they bleed
+   together. Widen the gaps in CB only (CB-off has an inner border, no
+   overhang, so it keeps the tighter default spacing). */
+body.cb .dropzone  { gap: .95rem; }
+body.cb .legend-row { gap: 1rem; }

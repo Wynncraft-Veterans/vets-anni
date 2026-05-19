@@ -293,16 +293,27 @@ async def set_party(
 
 
 async def set_organizer(
-    event: AnniEvent, player_uuid: str | None
+    event: AnniEvent, player_uuid: str | None, *, name: str | None = None
 ) -> OpResult:
-    """Claim/release the lead-organiser slot. ``None`` releases it."""
+    """Claim/release the lead-organiser slot. ``None`` releases it.
+
+    Organiser candidates are now the full WAPI guild-staff list, most of whom
+    have never logged into vets-anni — so when ``player_uuid`` has no
+    :class:`AnniPlayer` yet, get-or-create a minimal one from ``name`` (the
+    cached guild-staff username). With neither a row nor a name we still
+    reject (an unknown uuid from a hand-crafted request).
+    """
     if player_uuid is None:
         event.organizer = None
         await event.save(update_fields=["organizer_id"])
         return OpResult(True)
     player = await AnniPlayer.filter(mc_uuid=player_uuid).first()
     if player is None:
-        return OpResult(False, "That organiser isn't a known player.")
+        if not name:
+            return OpResult(False, "That organiser isn't a known player.")
+        player, _ = await AnniPlayer.get_or_create(
+            mc_uuid=player_uuid, defaults={"mc_username": name}
+        )
     event.organizer = player
     await event.save(update_fields=["organizer_id"])
     logger.info("organiser set: %s", player.mc_username)

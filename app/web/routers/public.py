@@ -20,8 +20,12 @@ from app.web.routers.user import _avatar
 from app.web.deps import (
     clear_session,
     colourblind,
+    label_pref_on,
+    pin_legend,
     render,
     set_colourblind,
+    set_label_pref,
+    set_pin,
     write_session,
 )
 
@@ -132,4 +136,21 @@ async def toggle_colourblind(request: Request):
     target = request.query_params.get("next") or request.headers.get("referer") or "/"
     resp = RedirectResponse(target, status_code=303)
     set_colourblind(resp, not colourblind(request))
+    return resp
+
+
+@router.get("/toggle-label", include_in_schema=False)
+async def toggle_label(request: Request):
+    """Flip a board label-density preference (``which`` = roles|status) and
+    bounce back. Only meaningful with CB off — under CB the hard rule keeps
+    labels on regardless; we still flip the underlying cookie so the choice
+    takes effect if the user later turns CB off."""
+    which = request.query_params.get("which")
+    target = request.query_params.get("next") or "/staff/board"
+    resp = RedirectResponse(target, status_code=303)
+    if which in ("roles", "status"):
+        set_label_pref(resp, which, not label_pref_on(request, which))
+    elif which == "pin":
+        set_pin(resp, not pin_legend(request))
+    # Unknown facet -> a safe bounce, no cookie change, never a crash.
     return resp

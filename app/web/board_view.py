@@ -161,4 +161,22 @@ async def snapshot(event, state: AppState) -> dict:
             ({"uuid": u, "name": n} for u, n in roster.items()),
             key=lambda x: x["name"].lower(),
         ),
+        # Lead-organiser candidates: the FULL WAPI guild-staff list (online or
+        # not), + the current organiser even if their rank fell out of the
+        # staff set, so the selected option always renders. Uses the already-
+        # resolved ``organizer`` dict (never the raw FK — an unfetched null FK
+        # is a truthy _NoneAwaitable, not None).
+        "organizer_candidates": _organizer_candidates(state, organizer),
     }
+
+
+def _organizer_candidates(state: AppState, organizer: dict | None) -> list[dict]:
+    cands: dict[str, str] = {
+        u: s["username"] for u, s in state.guild_staff.items()
+    }
+    if organizer:
+        cands.setdefault(organizer["uuid"], organizer["name"])
+    return sorted(
+        ({"uuid": u, "name": n} for u, n in cands.items()),
+        key=lambda x: x["name"].lower(),
+    )

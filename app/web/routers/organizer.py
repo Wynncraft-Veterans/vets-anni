@@ -63,6 +63,15 @@ async def board_page(request: Request):
     return render_board(request, await _board_ctx(request), full=True)
 
 
+@router.get("/staff/board/add", include_in_schema=False)
+async def board_add_modal(request: Request):
+    """The add-a-walk-in popup (HTMX-mounted into #board-modal-mount). The
+    form itself posts the existing player-add REST twin."""
+    if not auth.is_staff(request):
+        return RedirectResponse("/staff", status_code=303)
+    return deps.render(request, "staff/_add_modal.html")
+
+
 @router.get("/staff/board/fragment", include_in_schema=False)
 async def board_fragment(request: Request):
     """Just the ``#board`` block. board.js re-fetches this whenever the socket

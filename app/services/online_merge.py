@@ -56,6 +56,27 @@ def _parse_guild_online(payload: dict) -> dict[str, str]:
     return out
 
 
+def _parse_guild_staff(payload: dict, staff_ranks: frozenset[str]) -> dict[str, dict]:
+    """``{uuid: {"uuid","username","rank"}}`` for EVERY guild member (online
+    or not) whose rank is in ``staff_ranks`` — the lead-organiser candidate
+    set. Same defensive nested-by-rank parse as :func:`_parse_guild_online`;
+    rank is matched case-insensitively (WAPI keys are lower-case)."""
+    out: dict[str, dict] = {}
+    members = payload.get("members")
+    if not isinstance(members, dict):
+        return out
+    for rank, group in members.items():
+        if rank == "total" or not isinstance(group, dict):
+            continue
+        if rank.lower() not in staff_ranks:
+            continue
+        for username, info in group.items():
+            if isinstance(info, dict) and info.get("uuid"):
+                uuid = str(info["uuid"])
+                out[uuid] = {"uuid": uuid, "username": username, "rank": rank}
+    return out
+
+
 async def _tick(state: AppState, settings: Settings) -> None:
     ts = get_tempserver()
 
@@ -102,6 +123,12 @@ async def _tick(state: AppState, settings: Settings) -> None:
                     username=state.roster_by_uuid.get(uuid) or name,
                     tier="guild",
                 )
+        # Same payload also yields the FULL staff list (offline included) —
+        # the lead-organiser candidates. Last-good: only replace on success.
+        staff = _parse_guild_staff(guild, settings.staff_guild_rank_set)
+        if staff:
+            state.guild_staff = staff
+            state.touch("guild_staff_fetched_at")
     except WapiError as exc:
         logger.info("guild-online fetch skipped (%s) — list-only this tick", exc)
     except Exception:  # noqa: BLE001
