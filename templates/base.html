@@ -13,6 +13,19 @@
   <link rel="stylesheet" href="{{ asset('css/colourblind.css') }}">
   <script defer src="{{ asset('js/alpine.min.js') }}"></script>
   <script src="{{ asset('js/htmx.min.js') }}"></script>
+
+  {# Discord / link-preview embed. Discord reads Open Graph + Twitter Card +
+     theme-color; `summary` keeps the bow as a small right-side thumbnail.
+     URLs must be absolute (Discord doesn't follow relative paths). #}
+  <meta name="theme-color" content="#6000b9">
+  <meta property="og:site_name" content="Wynnvets Annihilation">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ PUBLIC_BASE_URL }}{{ request.url.path }}">
+  <meta property="og:title" content="{% block og_title %}Wynnvets Annihilation{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Log in here to let us know your role and region preferences!
+You can also follow along with the status of the current anni (if announced).{% endblock %}">
+  <meta property="og:image" content="{{ PUBLIC_BASE_URL }}{{ asset('img/favicon.png') }}">
+  <meta name="twitter:card" content="summary">
 </head>
 <body class="{% if cb %}cb{% endif %}{% if not label_roles %} hide-rolelabel{% endif %}{% if not label_status %} hide-statuslabel{% endif %}{% if dot_click_mode %} dotmode-click{% endif %}">
   <nav class="navbar">
