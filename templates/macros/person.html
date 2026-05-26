@@ -11,15 +11,20 @@
    Every colour comes from a `var(--st-*)` / `var(--role-*)` custom property,
    so the per-user `cb` cookie swap recolours it with zero markup change. #}
 
+{% from "macros/pills.html" import level, weapon, success %}
 {% macro person(p) %}
+  {# No `title=` on the root: the browser fires the nearest ancestor's title
+     for any descendant under the pointer, so a title here pops up on top of
+     the capability-dot popover whenever you hover a dot. The same name +
+     status is in `aria-label` for screen readers; the visible card +
+     border colour/pattern + opt-in Status Labels carry it visually. #}
   <div class="person status-border" data-pattern="{{ p.status_chip.pattern }}"
        data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
        draggable="true"
        style="--stc: var({{ p.status_chip.css_var }});
               border-color: var({{ p.status_chip.css_var }});
               background-color: var({{ p.role_chip.css_var_dark }})"
-       aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}"
-       title="{{ p.name }} — {{ p.status_chip.label }}">
+       aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}">
     <img class="person-face" src="{{ p.avatar }}" alt="" width="32" height="32"
          loading="lazy" onerror="this.remove()">
     <div class="person-main">
@@ -27,6 +32,53 @@
         {{ p.name }}
         {% if p.desynced %}
           <span class="muted" title="in-game name differs">| {{ p.wynn_username }}</span>
+        {% endif %}
+        {# Capability dots — the roles this user *can* do (distinct from the
+           assigned role on the card background). Up to five, in a stable
+           PRIM→SUNK→HDMG→HEAL→TANK order; only the ones the player declared
+           are emitted ("up to five"). Each wraps its own popover so the
+           CSS-only hover path is one + selector away. The popover carries
+           the same data the roles dashboard shows — confidence/build/wins
+           +weapons — so it's the at-a-glance answer to "what can they bring
+           to this slot?" without leaving the board.
+
+           Letter (P/S/M/H/T) is in the DOM at all times; CSS hides it
+           outside CB so the colour-only default reads as a clean dot, and
+           shows it under body.cb so the channel is non-colour there (spec
+           hard rule). #}
+        {% if p.capability_dots %}
+          <span class="cap-dots" role="group" aria-label="Capable roles">
+            {% for c in p.capability_dots %}
+              <span class="cap-dot-wrap">
+                {# No `title=` — the custom popover already shows the role
+                   name as its first line; the native browser tooltip would
+                   double up and overlap. `aria-label` still carries it for
+                   screen readers. #}
+                <button type="button" class="cap-dot"
+                        style="--cap-fill: var({{ c.css_var }}); --cap-halo: var({{ c.css_var_light }})"
+                        aria-label="{{ c.label }} (capable)"
+                        data-role="{{ c.role }}"
+                        draggable="false">
+                  <span class="cap-letter" aria-hidden="true">{{ c.letter }}</span>
+                </button>
+                <span class="cap-popover" role="tooltip">
+                  <strong class="cap-popover-title">{{ c.label }}</strong>
+                  <span class="cap-popover-meta">
+                    {{ level("Confidence", c.confidence) }}
+                    {{ level("Build", c.build_quality) }}
+                    {{ success(c.success_count) }}
+                  </span>
+                  <span class="cap-popover-weapons">
+                    {% if c.weapons %}
+                      {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
+                    {% else %}
+                      <span class="muted">no weapons listed</span>
+                    {% endif %}
+                  </span>
+                </span>
+              </span>
+            {% endfor %}
+          </span>
         {% endif %}
       </span>
       <span class="person-tags">

@@ -16,11 +16,14 @@ from __future__ import annotations
 
 from app.constants import (
     BUCKET_LABEL,
+    CAPABILITY_ROLES,
     PARTY_STAGE_LABELS,
     PARTY_CAPACITY,
+    ROLE_STYLES,
     BucketKind,
     PartyResult,
     PresenceStatus,
+    Role,
 )
 from app.domain import buckets
 from app.domain import regions as regions_domain
@@ -29,6 +32,64 @@ from app.domain.membership import label as tier_label
 from app.domain.schedule import phase_of
 from app.services.state import AppState
 from app.settings import get_settings
+
+
+#: Single-letter glyph per capability role for the colourblind variant. "M" for
+#: tertiary (Mob killer) distinguishes it from Tank — same convention as
+#: ``constants.ROLE_STYLES`` uses ``HDMG`` rather than ``TER``.
+_CAP_LETTER: dict[Role, str] = {
+    Role.PRIMARY: "P",
+    Role.SECONDARY: "S",
+    Role.TERTIARY: "M",
+    Role.HEALER: "H",
+    Role.TANK: "T",
+}
+#: CSS custom property for the dot's *raw* role hue (the same one ``role_chip``
+#: returns as ``css_var`` — full red/yellow/magenta/green/blue, body.cb swaps
+#: them to the Okabe-Ito set).
+_CAP_CSS_VAR: dict[Role, str] = {
+    Role.PRIMARY: "--role-primary",
+    Role.SECONDARY: "--role-secondary",
+    Role.TERTIARY: "--role-tertiary",
+    Role.HEALER: "--role-healer",
+    Role.TANK: "--role-tank",
+}
+#: Paired *-light* alias for the same role — used by the dot's halo so the
+#: outline is the same hue family as the fill, just lighter (a dark fill on a
+#: dark card disappears without this). CB-swapped (see colourblind.css).
+_CAP_CSS_VAR_LIGHT: dict[Role, str] = {
+    role: f"{var}-light" for role, var in _CAP_CSS_VAR.items()
+}
+#: Stable display order for the dots (left-to-right). Matches the enum order
+#: in ``Role`` so the layout is identical across all cards regardless of which
+#: capabilities a given player has.
+_CAP_ORDER: dict[Role, int] = {r: i for i, r in enumerate(CAPABILITY_ROLES)}
+
+
+def _capability_dots(caps) -> list[dict]:
+    """Shape a player's :class:`RoleCapability` rows for the person-card dots
+    + their hover/click popovers. Skips anything not in :data:`CAPABILITY_ROLES`
+    (FILL is assign-only, never a capability) so a stale row can't leak in."""
+    dots: list[dict] = []
+    for c in caps:
+        if c.role not in _CAP_ORDER:
+            continue
+        dots.append({
+            "role": c.role.value,
+            "label": ROLE_STYLES[c.role].label,
+            "letter": _CAP_LETTER[c.role],
+            "css_var": _CAP_CSS_VAR[c.role],
+            "css_var_light": _CAP_CSS_VAR_LIGHT[c.role],
+            "confidence": c.confidence.value,
+            "build_quality": c.build_quality.value,
+            "success_count": c.success_count,
+            "weapons": [
+                {"name": w.weapon_name, "subtype": w.weapon_subtype}
+                for w in c.weapons
+            ],
+        })
+    dots.sort(key=lambda d: _CAP_ORDER[Role(d["role"])])
+    return dots
 
 
 def avatar(uuid: str, size: int = 40) -> str:
@@ -60,6 +121,7 @@ def _person(row: dict, presence_by_uuid: dict[str, str]) -> dict:
         "status_chip": status_chip(status),
         "is_late": row["is_late"],
         "sort_index": row["sort_index"],
+        "capability_dots": _capability_dots(row.get("capabilities") or []),
     }
 
 

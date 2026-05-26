@@ -247,6 +247,21 @@ async def rename_party(
     return OpResult(True)
 
 
+async def delete_party(event: AnniEvent, party_id: str) -> OpResult:
+    """Remove an *empty* party. Non-empty is a friendly REJECTED so members
+    aren't silently stranded (BoardPlacement.party is SET_NULL on delete,
+    which would violate the exactly-one-of-bucket-or-party invariant)."""
+    party = await Party.filter(id=party_id, event=event).first()
+    if party is None:
+        return OpResult(False, "That party no longer exists.")
+    if await BoardPlacement.filter(event=event, party=party).exists():
+        return OpResult(False, "Move its members out before deleting.")
+    ordinal = party.ordinal
+    await party.delete()
+    logger.info("party deleted: #%d", ordinal)
+    return OpResult(True)
+
+
 async def set_party(
     event: AnniEvent,
     party_id: str,
@@ -324,10 +339,17 @@ async def set_organizer(
 async def board_rows(event: AnniEvent) -> list[dict]:
     """Every placement for ``event`` as plain dicts (no colour/avatar — that
     is ``app/web/board_view``'s job). One query, FK-eager, ordered the way the
-    columns render (container then ``sort_index``)."""
+    columns render (container then ``sort_index``).
+
+    ``capabilities`` is the player's declared :class:`RoleCapability` rows with
+    weapons eager-loaded — surfaced on the person card as small role-coloured
+    dots (what a player *can* do, distinct from ``assigned_role`` which is
+    what they *will* do in this anni). Raw rows only; the popover shape lives
+    in ``app/web/board_view``."""
     rows = (
         await BoardPlacement.filter(event=event)
         .select_related("player", "party")
+        .prefetch_related("player__capabilities__weapons")
         .order_by("sort_index")
     )
     out: list[dict] = []
@@ -350,6 +372,7 @@ async def board_rows(event: AnniEvent) -> list[dict]:
                 "assigned_role": r.assigned_role,
                 "is_late": r.is_late,
                 "sort_index": r.sort_index,
+                "capabilities": list(r.player.capabilities),
             }
         )
     return out

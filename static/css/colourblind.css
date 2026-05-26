@@ -62,11 +62,80 @@ body.cb {
   --role-tank-dark:       #00598c;  /* dark blue */
   --role-fill-dark:       #000000;  /* black (Okabe-Ito); white text is 21:1 */
   --role-unassigned-dark: #4d4d4d;  /* dark grey */
+  /* Light halo tints — same hue family as the bright `--c-*` (CB) swatch,
+     bright enough to read as a halo on the dark person-card backgrounds.
+     Same role family as the `-dark` body shades above; capability dots'
+     border uses these so the halo stays Okabe-Ito under body.cb instead of
+     bleeding through to the default bright palette. */
+  --role-primary-light:    #ff9966;  /* light vermillion */
+  --role-secondary-light:  #fff099;  /* light gold */
+  --role-tertiary-light:   #ebbed3;  /* light reddish-purple */
+  --role-healer-light:     #66d6b3;  /* light bluish-green */
+  --role-tank-light:       #66b3e0;  /* light blue */
+}
+
+/* Per-role card-background texture — a CB-only non-colour channel that
+   survives greyscale. Okabe-Ito hues are tuned for protan/deutan/tritan but
+   several collapse to similar luminance under achromatopsia (monochromacy),
+   so the `--role-*-dark` background alone leaves roles indistinguishable on
+   the person cards. A faint shape rhythm per role restores identifiability
+   for that population. data-role is already on every .person at all times
+   (see templates/macros/person.html); only CB activates the rule, matching
+   how data-pattern works for statuses. ONLY background-image is set here so
+   the inline `background-color: var(--role-*-dark)` underneath is untouched
+   (and white text legibility, ≥ ~4.7:1, is preserved — the overlay alpha is
+   < 10%). Unassigned cards stay flat — no texture maps to "no role".
+
+   The same rule also targets the LEGEND role chips (the big labelled chips
+   in `_board.html`, scoped by the `.legend` ancestor) so the legend acts as
+   the key — without it the textures on cards have no glossary. The smaller
+   cross-dashboard role chips emitted by the `role_bg` macro deliberately
+   stay clean (they live outside `.legend`); chip-size texture reads as
+   noise at that scale. */
+body.cb .person[data-role="primary"],
+body.cb .legend .role-chip[data-role="primary"] {
+  background-image: repeating-linear-gradient(45deg,
+    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+}
+body.cb .person[data-role="secondary"],
+body.cb .legend .role-chip[data-role="secondary"] {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+}
+body.cb .person[data-role="tertiary"],
+body.cb .legend .role-chip[data-role="tertiary"] {
+  background-image: repeating-linear-gradient(90deg,
+    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+}
+body.cb .person[data-role="healer"],
+body.cb .legend .role-chip[data-role="healer"] {
+  background-image:
+    repeating-linear-gradient(45deg,
+      rgba(255,255,255,.06) 0 1.5px, transparent 1.5px 12px),
+    repeating-linear-gradient(135deg,
+      rgba(255,255,255,.06) 0 1.5px, transparent 1.5px 12px);
+}
+body.cb .person[data-role="tank"],
+body.cb .legend .role-chip[data-role="tank"] {
+  background-image: radial-gradient(circle at center,
+    rgba(255,255,255,.09) 1.4px, transparent 1.6px);
+  background-size: 12px 12px;
+}
+body.cb .person[data-role="fill"],
+body.cb .legend .role-chip[data-role="fill"] {
+  background-image: repeating-linear-gradient(0deg,
+    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
 }
 
 /* In CB mode, lean on text weight + the always-present glyph/label. */
 body.cb .pill { font-weight: 700; }
 body.cb .cb-toggle { text-decoration: underline; }
+
+/* Capability dots: surface the per-role letter (P/S/M/H/T) so the role is
+   readable without colour. The letter is in the DOM at all times (the macro
+   never stops emitting it); only CB mode shows it. !important guards against
+   any inline ``display`` ever sneaking in. */
+body.cb .cap-letter { display: inline !important; }
 
 /* Status border. CB OFF (default world state): a single SOLID coloured
    outline — colour is reliable for non-CVD users, so the dash/dot/double
@@ -95,6 +164,17 @@ body.cb .status-border::after {
   border: 4px solid var(--stc, currentColor);
   border-image: none; border-radius: inherit; pointer-events: none;
 }
+/* Inside the .person stacking context (isolation: isolate, in anni.css), the
+   ::after is a positioned z-auto descendant — which outranks an in-flow
+   inline descendant like the .cap-dots stacking context. Result: the card's
+   own ring paints OVER the popover where they overlap (the bottom edge of
+   the card, where the popover starts). Pushing the ring to z:-1 puts it
+   below all in-flow content within the same .person while leaving its
+   spatial layout (inset:-4px, the outer halo) untouched — nothing else
+   spatially overlaps the ring, so it stays fully visible. Scoped to
+   `.person` so the legend's status-border (no popover, no isolation) keeps
+   its default stacking. */
+body.cb .person.status-border::after { z-index: -1; }
 body.cb .status-border[data-pattern="solid"]::after  { border-style: solid; }
 body.cb .status-border[data-pattern="double"]::after { border-style: double; }
 body.cb .status-border[data-pattern="dash"]::after    { border-style: dashed; }

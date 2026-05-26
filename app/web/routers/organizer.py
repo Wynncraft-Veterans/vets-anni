@@ -233,6 +233,12 @@ async def rest_party_rename(
         P.PARTY_RENAME, data={"party_id": party_id, "ordinal": ordinal}))
 
 
+@router.post("/staff/board/party/{party_id}/delete", include_in_schema=False)
+async def rest_party_delete(request: Request, party_id: str):
+    return await _apply_rest(request, P.Intent(
+        P.PARTY_DELETE, data={"party_id": party_id}))
+
+
 @router.post("/staff/board/organizer", include_in_schema=False)
 async def rest_organizer(request: Request, player_uuid: str = Form("")):
     return await _apply_rest(request, P.Intent(

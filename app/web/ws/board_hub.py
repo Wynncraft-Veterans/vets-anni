@@ -193,6 +193,11 @@ class BoardHub:
                 int(d.get("ordinal", 0) or 0),
             )
 
+        if intent.type == P.PARTY_DELETE:
+            return await buckets.delete_party(
+                event, str(d.get("party_id", "")),
+            )
+
         if intent.type == P.PARTY_SET:
             # During grace ONLY result + stage may change; host/world are
             # frozen out by passing the "untouched" sentinel.

@@ -34,6 +34,16 @@
   --role-tank-dark:      var(--c-blue-dark);
   --role-fill-dark:      var(--c-cyan-dark);
   --role-unassigned-dark:var(--c-grey-dark);
+  /* Light tints — used for the capability-dot halo so small dots remain
+     readable against any card background (the dark fills on `.person` make
+     a dark-grey/black outline disappear into the card; a light same-hue
+     halo pops). CB mode re-declares these under body.cb so the halo stays
+     same-hue under Okabe-Ito too (see colourblind.css). */
+  --role-primary-light:   var(--c-red-light);
+  --role-secondary-light: var(--c-yellow-light);
+  --role-tertiary-light:  var(--c-magenta-light);
+  --role-healer-light:    var(--c-green-light);
+  --role-tank-light:      var(--c-blue-light);
   /* Status → the SAME shared colour as its paired role (spec.md [^6];
      see STATUS_STYLES). */
   --st-gone:        var(--c-red);
@@ -427,6 +437,15 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .party-collapse:hover { background:#e5e7eb; }
 .party-summary { font-size:.82rem; }
+/* Delete-X for empty parties — rendered only when the party has no members
+   (template-gated), so click→confirm→delete is always a safe action. */
+.party-delete {
+  margin-left:auto; width:1.5rem; height:1.5rem; flex:none; padding:0;
+  border:0; background:transparent; color:#dc2626;
+  font-size:1.25rem; line-height:1; cursor:pointer; border-radius:6px;
+}
+.party-delete:hover { background:#fee2e2; }
+.party-delete:focus-visible { outline:2px solid #dc2626; outline-offset:1px; }
 .party-card.collapsed { padding:.5rem .85rem; }
 .party-set { margin:.4rem 0; }
 /* Flex (not an even auto-fit grid) so fields take only the width their
@@ -505,14 +524,103 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
    which applies in both modes; colour is the inline var(--st-*)). */
 .person.status-border { border-width:3px; }
 
-/* Label-density toggles (deps.label_visible -> base.html body class). CB OFF:
-   hide the text tag — the card background (role) and the border colour+
-   pattern (status) still carry it. CB ON: the spec's HARD rule wins, the tag
-   is ALWAYS shown (the !important guards against a stale pref cookie). */
+/* Label-density toggles (deps.label_visible -> base.html body class). Default
+   off in both modes — the role card background, status border colour+pattern,
+   and capability dots already carry the signal; the text tag is opt-in. */
 body.hide-rolelabel  .person .role-tag    { display:none; }
 body.hide-statuslabel .person .status-tag { display:none; }
-body.cb .person .role-tag,
-body.cb .person .status-tag { display:inline-flex !important; }
+
+/* Capability dots — "what can this player do?". Sit inline after the name on
+   the title row, full raw role hue (PRIM=red/SUNK=yellow/HDMG=magenta/
+   HEAL=green/TANK=blue; FILL is not a capability so cyan never appears). The
+   wrapper anchors the absolutely-positioned popover so each dot owns its own
+   info panel; the popover is a sibling so the CSS-only hover path (the
+   default) is one `+` selector away. */
+.person-name .cap-dots {
+  display:inline-flex; align-items:center; gap:.25rem;
+  margin-left:.4rem; vertical-align:middle;
+  /* Nudge up: `vertical-align:middle` aligns the dot's vertical centre to
+     the parent's lowercase x-height (not the cap-height), which reads ~3px
+     low next to a bold capitalised name. */
+  transform:translateY(-3px);
+}
+.cap-dot-wrap { position:relative; display:inline-flex; }
+.cap-dot {
+  width:.85rem; height:.85rem; padding:0; margin:0; border:none;
+  border-radius:50%; cursor:pointer; flex:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  background-color: var(--cap-fill, currentColor);
+  /* Outer halo in the role's light same-hue tint — a dark fill (e.g. blue)
+     on a dark person-card background needs a light outline to be visible.
+     Pair with a subtle drop shadow so the dot still looks "lifted". */
+  box-shadow:0 0 0 1.5px var(--cap-halo, rgba(255,255,255,.7)),
+             0 1px 2px rgba(0,0,0,.35);
+  /* The button is interactive, not a drag handle — keep it crisp. */
+  -webkit-touch-callout:none; user-select:none;
+}
+.cap-dot:focus-visible { outline:2px solid #fff; outline-offset:1px; }
+/* Letter glyph (P/S/M/H/T): the CB non-colour channel. Hidden in default
+   mode (the colour conveys it for non-CVD users); CSS in colourblind.css
+   shows it under body.cb so colour is never the only signal there.
+   White-with-thin-black-outline mirrors the existing role-chip glyph trick
+   — legible on every role hue including yellow. */
+.cap-letter {
+  display:none; font-size:.55rem; font-weight:800; line-height:1;
+  color:#fff; -webkit-text-stroke:.4px #000; paint-order:stroke fill;
+  text-shadow:none;
+}
+
+/* The info popover. Anchored at the left edge of the dot so it grows
+   rightward — the dots sit on the left side of the card (inline after the
+   name), so opening leftward would clip the popover off the page on narrow
+   windows. z-index sits above neighbouring person cards but below the
+   pinned legend (15) and the navbar (20). */
+.cap-popover {
+  display:none; position:absolute; top:calc(100% + .35rem); left:0;
+  z-index:14; min-width:14rem; max-width:22rem;
+  padding:.5rem .65rem; border-radius:10px;
+  background:#fff; color:#111827; border:1px solid #e5e7eb;
+  box-shadow:0 14px 30px rgba(15,23,42,.25);
+  font-weight:400; font-size:.78rem; line-height:1.35;
+  /* The card itself is a flex row centred on the avatar; reset so each block
+     inside the popover stacks naturally. */
+  text-align:left;
+}
+.cap-popover-title { display:block; font-size:.85rem; margin-bottom:.3rem; }
+.cap-popover-meta {
+  display:flex; flex-wrap:wrap; gap:.3rem; margin-bottom:.3rem;
+}
+.cap-popover-weapons { display:flex; flex-wrap:wrap; gap:.25rem; }
+.cap-popover .muted { color:#6b7280; font-size:.75rem; }
+
+/* Default (hover) mode: open on pointer hover OR keyboard focus-within so
+   the dot stays usable with no mouse. */
+body:not(.dotmode-click) .cap-dot-wrap:hover > .cap-popover,
+body:not(.dotmode-click) .cap-dot-wrap:focus-within > .cap-popover {
+  display:block;
+}
+/* Click mode: only the JS-applied .open class shows the popover. board.js
+   handles the toggle + outside-click dismissal. */
+body.dotmode-click .cap-popover.open { display:block; }
+
+/* Stacking-order fix.
+   (1) `.cap-dots` has a `transform` (the upward nudge), so it forms its own
+       stacking context; the popover's z-index then only competes WITHIN
+       that context.
+   (2) Under CB, every .person has a ::after ring (`inset:-4px`) that paints
+       4px outside the card. With .person at `z-auto` it does NOT establish
+       a stacking context, so the ring escapes UP to the nearest ancestor
+       stacking context (effectively body) — where it can paint over a
+       hovered card's popover that overhangs into the next card's area.
+   Fix in two parts: `isolation: isolate` makes every .person its own
+   stacking context so its ring stays contained; then bump the hovered/open
+   card above its siblings so the popover overhangs cleanly. 18 sits above
+   sibling .person (auto) but below the navbar (20), so the popover never
+   overlays page chrome. */
+.person { position: relative; isolation: isolate; }
+body:not(.dotmode-click) .person:has(.cap-dot-wrap:hover),
+body:not(.dotmode-click) .person:has(.cap-dot-wrap:focus-within),
+body.dotmode-click .person:has(.cap-popover.open) { z-index: 18; }
 
 /* Legend (~90%) beside the Configs box (~10%). */
 .legend-wrap {
@@ -555,8 +663,6 @@ body.cb .person .status-tag { display:inline-flex !important; }
 .cfg-switch.on { background:#16a34a; }
 .cfg-switch.on::after { transform:translateX(1rem); }
 a.cfg-row:hover .cfg-switch { filter:brightness(.97); }
-.cfg-row.cfg-locked { color:#0369a1; cursor:not-allowed; }
-.cfg-row.cfg-locked .cfg-switch.on { background:#0369a1; }
 
 /* Legend — every channel that carries meaning shown explicitly. */
 .legend { margin-top:1rem; }

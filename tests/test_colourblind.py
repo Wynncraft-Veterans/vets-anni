@@ -96,6 +96,13 @@ def test_css_defines_base_hues_and_swaps_all_seven_under_body_cb():
               "unassigned"):
         assert f"--role-{r}-dark:" in cb_block
 
+    # Every ASSIGNABLE role has a CB-only card texture (a non-colour channel
+    # for achromatopsia, since Okabe-Ito collapses in greyscale). Unassigned
+    # stays flat — "no texture" maps to "no role".
+    for r in ("primary", "secondary", "tertiary", "healer", "tank", "fill"):
+        assert f'body.cb .person[data-role="{r}"]' in cbc, (
+            f"missing CB card texture for role={r}")
+
 
 def _comment_fault(css: str) -> str | None:
     """None if every CSS comment is well-formed; else a description. Catches

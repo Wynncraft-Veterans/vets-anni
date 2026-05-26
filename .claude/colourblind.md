@@ -30,6 +30,23 @@ carries, in addition to colour:
   `data-pattern` → `colourblind.css`. ONE uniform-width family, most→least
   "present" (PARTY→GONE): `double`→`solid`→`dash`→`dash-dash-dot`→`dash-dot`
   →`dot`; `dash-dot-dot` = unknown.
+- for assigned roles, a **card-background texture** keyed off the `data-role`
+  attribute on `.person` (already in the DOM at all times). Six visually
+  distinct, faint shape rhythms — PRIMARY `/` 45° stripes, SECONDARY `\` 135°
+  stripes, TERTIARY vertical stripes, HEALER crosshatch, TANK dot grid, FILL
+  horizontal stripes — drawn as a low-alpha white `background-image` overlay
+  on top of the inline `--role-*-dark` background-color. CB-only (under
+  `body.cb`); the rhythm only carries load when colour does not (i.e. under
+  achromatopsia, where Okabe-Ito hues collapse to similar luminance). The
+  overlay is faint enough (≤ ~9% white) that the white chip text keeps its
+  ≥ ~4.7:1 contrast. Unassigned cards stay flat — "no texture" maps to "no
+  role". The **board legend** chips (`body.cb .legend .role-chip[data-role=…]`)
+  share the same rule so the legend is the key — without it the textures on
+  cards have no glossary. The smaller cross-dashboard role chips emitted by
+  the `role_bg` macro stay clean (chip-size texture reads as noise at that
+  scale; the legend chips are larger and exist precisely as a teach-aid). A
+  static test (`test_colourblind.py`) asserts a rule exists for every
+  assignable role.
 
 **Verbatim Okabe-Ito under `body.cb`:** the border colour is *always* the
 exact Okabe-Ito hue (`--stc`/`--st-*` → `--c-*`, == `STYLES[*].cb`). Only
@@ -48,29 +65,25 @@ the dash/dot/double rhythm was visual noise), and the pattern rules are
 scoped under `body.cb`. The `data-pattern` attribute is **always emitted**
 in the DOM regardless of `cb` (the macros never stop) so the channel "exists
 from the start" and CB merely activates the CSS — the Phase 1/2 DOM checks
-still assert `data-pattern` present in both modes. glyph + aria-label are
-likewise always emitted; under `body.cb` they are additionally forced
-*visible* (the label-density toggles can hide the text tag only with cb off).
+still assert `data-pattern` present in both modes. The person root's
+`aria-label` (role+status) is always emitted too, so screen-reader users get
+the full signal in both modes.
 
 The board/dashboards remain fully usable in greyscale or any CVD type (with
-`cb` on: glyph + label + border pattern; the colourblind variant is never
-colour-only). This is verified by DOM inspection in the Phase 1/2 checks.
+`cb` on: Okabe-Ito hue + border pattern + capability dots + aria-label; the
+colourblind variant is never colour-only at the DOM level). This is verified
+by DOM inspection in the Phase 1/2 checks.
 
-### Board label-density toggles (do not weaken the hard rule)
+### Board label-density toggles
 The organizer board's **Configs** box has per-user "Role Labels" / "Status
-Labels" radio toggles (`lbl_roles`/`lbl_status` cookies, `GET /toggle-label`,
+Labels" toggles (`lbl_roles`/`lbl_status` cookies, `GET /toggle-label`,
 `deps.label_visible`; a sibling "Pin to top" config — `cfg_pin`, default on —
-shares the same route/box but is unrelated to CB). They only hide the *text tag* on a person card — and
-**only when `cb` is off**, where the card background (role) and the border
-colour+pattern (status) already convey it for non-CVD users. Default is
-**off** (hidden) with `cb` off, **forced on** with `cb` on: `label_visible`
-returns `True` whenever `colourblind()` is true, and `colourblind.css` has a
-`body.cb .person .role-tag/.status-tag { display:inline-flex !important }`
-guard, so a stale pref cookie can never strip glyph+label under CB. The hard
-rule ("colour is never the only signal in the colourblind variant") therefore
-still holds — these toggles are a non-CB cosmetic density choice only. The
-person root keeps its full `aria-label` (role+status) even when the tag is
-visually hidden, so screen-reader users are unaffected.
+shares the same route/box but is unrelated to CB). They hide the *text tag*
+on a person card. Default is **off in both modes**, opt-in: the card
+background (role colour), border colour+pattern (status), and capability
+dots already carry the signal, and the person root's `aria-label` is
+unaffected. CB does not lock these toggles; a CB user opting out is making
+an informed density choice.
 
 ## Role-chip rendering (legibility)
 In **normal** mode a role chip's **body** uses the `--role-*-dark` shade

@@ -10,7 +10,7 @@ duplicate, a crash, or a silent half-apply.
 from __future__ import annotations
 
 from app.constants import BucketKind, PartyResult, Role
-from app.db.models import BoardPlacement
+from app.db.models import BoardPlacement, Party
 from app.domain import buckets
 from app.services.state import AppState
 
@@ -114,6 +114,28 @@ async def test_party_create_rename_and_set(seeded):
     assert party.stage == 5  # clamped to MAX_PARTY_STAGE
     assert party.result is PartyResult.WIN
     assert party.host_id == host.id
+
+
+async def test_delete_party_only_when_empty(seeded):
+    event = seeded["event"]
+
+    # A freshly-created party has no members -> deletes cleanly.
+    fresh = await buckets.create_party(event)
+    n_before = await Party.filter(event=event).count()
+    r = await buckets.delete_party(event, str(fresh.id))
+    assert r.ok
+    assert await Party.filter(event=event).count() == n_before - 1
+
+    # Seeded party 1 has members (Wenweia et al.) -> friendly REJECTED, and
+    # the row is still there so members aren't stranded.
+    wen = seeded["players"]["Wenweia"]
+    party1 = await BoardPlacement.get(event=event, player=wen).values("party_id")
+    r = await buckets.delete_party(event, str(party1["party_id"]))
+    assert not r.ok and "Move its members" in r.reason
+
+    # Unknown id -> friendly REJECTED, not a crash.
+    r = await buckets.delete_party(event, "00000000-0000-0000-0000-000000000000")
+    assert not r.ok and "no longer exists" in r.reason
 
 
 async def test_set_organizer_claim_and_release(seeded):

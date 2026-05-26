@@ -8,12 +8,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Wynnvets Annihilation{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ asset('img/favicon.png') }}">
   <link rel="stylesheet" href="{{ asset('css/anni.css') }}">
   <link rel="stylesheet" href="{{ asset('css/colourblind.css') }}">
   <script defer src="{{ asset('js/alpine.min.js') }}"></script>
   <script src="{{ asset('js/htmx.min.js') }}"></script>
 </head>
-<body class="{% if cb %}cb{% endif %}{% if not label_roles %} hide-rolelabel{% endif %}{% if not label_status %} hide-statuslabel{% endif %}">
+<body class="{% if cb %}cb{% endif %}{% if not label_roles %} hide-rolelabel{% endif %}{% if not label_status %} hide-statuslabel{% endif %}{% if dot_click_mode %} dotmode-click{% endif %}">
   <nav class="navbar">
     <div class="nav-inner">
       <a class="nav-brand" href="/">WYNNVETS · ANNI</a>

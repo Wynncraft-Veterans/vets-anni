@@ -9,6 +9,9 @@ Frames are JSON `{v:1, type, ...}`.
 - `MOVE {player_uuid, target:{bucket|party_id, sort_index}, op_id}`
 - `ASSIGN_ROLE {player_uuid, role|null, op_id}`
 - `PARTY_CREATE {}` · `PARTY_RENAME {party_id, ordinal}`
+- `PARTY_DELETE {party_id}` — empty parties only; the hub rejects non-empty
+  with a friendly reason (the UI hides the button on non-empty cards, so this
+  is a safety net for hand-crafted requests).
 - `PARTY_SET {party_id, host_uuid?, world?, stage?, result?, op_id}`
 - `ORGANIZER_SET {player_uuid|null}` · `PING`
 

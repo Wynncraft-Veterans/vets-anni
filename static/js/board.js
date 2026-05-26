@@ -161,11 +161,56 @@
           animation: 120,
           draggable: ".person",
           ghostClass: "person-ghost",
+          /* Sortable picks up mouse-downs on any descendant of `.person` and
+             treats them as the start of a drag; this filter excludes the
+             interactive controls (capability dots + their popovers + the role
+             <select>) so a click on a dot is a real click, not a drag-start
+             that swallows the event. `preventOnFilter:false` lets the native
+             click still fire. */
+          filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role",
+          preventOnFilter: false,
           onEnd: onDrop,
         })
       );
     });
   }
+
+  /* ---- capability-dot click mode ---------------------------------------- */
+  /* In click mode (body.dotmode-click), clicking a dot toggles its sibling
+     popover's `.open` class; an outside click dismisses any open popover.
+     Hover mode is pure CSS — this handler is a no-op there. The handler is
+     bound once on document.body so it survives the WS-driven #board
+     refreshes (which destroy and recreate every dot). */
+  function closeAllPopovers() {
+    document.querySelectorAll(".cap-popover.open").forEach(function (el) {
+      el.classList.remove("open");
+    });
+  }
+
+  document.addEventListener("click", function (ev) {
+    if (!document.body.classList.contains("dotmode-click")) return;
+    var dot = ev.target.closest && ev.target.closest(".cap-dot");
+    if (dot) {
+      ev.preventDefault();
+      var wrap = dot.parentElement;
+      var pop = wrap && wrap.querySelector(".cap-popover");
+      if (!pop) return;
+      var wasOpen = pop.classList.contains("open");
+      closeAllPopovers();
+      if (!wasOpen) pop.classList.add("open");
+      return;
+    }
+    /* Click landed somewhere that's neither a dot nor the popover itself —
+       treat it as "dismiss" so popovers don't linger after the user has
+       moved on (the natural escape for a click-to-open UI). */
+    if (!(ev.target.closest && ev.target.closest(".cap-popover"))) {
+      closeAllPopovers();
+    }
+  });
+  /* Escape always closes (a11y); harmless in hover mode. */
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") closeAllPopovers();
+  });
 
   // Re-init after every #board swap (HTMX replaces the node, so the old
   // Sortable instances are dead) and dismiss the add-player popup once its

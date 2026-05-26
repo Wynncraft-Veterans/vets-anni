@@ -58,15 +58,22 @@ async def test_label_toggles_default_hidden_off_cb_and_flip(as_staff, seeded):
     assert r.status_code == 303  # unknown facet -> safe bounce, no crash
 
 
-async def test_cb_forces_labels_on_regardless_of_pref(as_staff, seeded):
-    """The hard rule: under colourblind mode the tags are always on and the
-    config row is locked, even if the hide pref cookie says otherwise."""
+async def test_label_toggles_unlocked_under_cb_and_default_hidden(as_staff, seeded):
+    """CB no longer locks the label toggles — they default hidden in both modes
+    (the role-card background, status border colour+pattern, and capability
+    dots still carry the signal) and stay interactive under CB."""
     as_staff.cookies.set("cb", "1")
-    as_staff.cookies.set("lbl_roles", "")   # pref says hide...
     r = await as_staff.get("/staff/board")
-    assert "hide-rolelabel" not in r.text   # ...but CB overrides it
-    assert "hide-statuslabel" not in r.text
-    assert "cfg-locked" in r.text and "🔒" in r.text  # shown locked
+    assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
+    assert "cfg-locked" not in r.text and "🔒" not in r.text  # no lock under CB
+    assert "/toggle-label?which=roles" in r.text             # row is a real link
+
+    r = await as_staff.get("/toggle-label?which=roles&next=/staff/board",
+                            follow_redirects=False)
+    assert r.status_code == 303 and r.cookies.get("lbl_roles") == "1"
+
+    r = await as_staff.get("/staff/board")
+    assert "hide-rolelabel" not in r.text   # CB user opted labels on
 
 
 async def test_pin_legend_defaults_on_and_toggles_off(as_staff, seeded):

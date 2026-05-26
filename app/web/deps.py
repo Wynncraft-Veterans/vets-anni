@@ -115,25 +115,17 @@ def set_colourblind(response: Response, on: bool) -> None:
 
 
 # --- board label-density toggles -------------------------------------------
-# Per-user "show the text tag?" prefs for the board person cards. When CB is
-# OFF the role is fully derivable from the card background and the status from
-# the border colour+pattern, so the text tags are noise — hidden by default,
-# opt back in here. When CB is ON the spec's HARD rule (colour is never the
-# only signal) overrides everything: glyph+label are ALWAYS shown, the toggle
-# is inert. The cookie only records the *non-cb* preference; CB wins at render.
+# Per-user "show the text tag?" prefs for the board person cards. Default OFF
+# in both modes — the role-card background, status border colour+pattern, and
+# capability dots already carry the signal, so the text tag is opt-in density.
+# The toggle is interactive in CB too: aria-label on the person root still
+# announces role+status for screen-reader users regardless.
 _LABEL_COOKIES = {"roles": "lbl_roles", "status": "lbl_status"}
 
 
-def label_pref_on(request: Request, which: str) -> bool:
-    """The raw per-user cookie preference (independent of CB)."""
-    return request.cookies.get(_LABEL_COOKIES[which]) == "1"
-
-
 def label_visible(request: Request, which: str) -> bool:
-    """Whether the role/status text tag actually renders on a person card:
-    forced on under colourblind mode (hard spec rule), else the cookie pref
-    (default off — colour alone conveys it when CB is off)."""
-    return colourblind(request) or label_pref_on(request, which)
+    """Whether the role/status text tag actually renders on a person card."""
+    return request.cookies.get(_LABEL_COOKIES[which]) == "1"
 
 
 def set_label_pref(response: Response, which: str, on: bool) -> None:
@@ -162,6 +154,27 @@ def set_pin(response: Response, on: bool) -> None:
     else:
         response.set_cookie(_PIN_COOKIE, "0", max_age=60 * 60 * 24 * 365,
                             samesite="lax")
+
+
+# Capability-dot popover trigger — hover (default, cookie absent/"") or click
+# ("click"). Same cookie family as cb/pin/label prefs; we only store the
+# explicit non-default ("click") so clearing the cookie reverts to hover. The
+# value is exposed as a body class so the choice survives the WS-driven
+# #board refreshes with no JS needed for the hover path.
+_DOT_MODE_COOKIE = "cfg_dot_mode"
+
+
+def dot_click_mode(request: Request) -> bool:
+    """True when the user opted into click-based capability-dot info popups."""
+    return request.cookies.get(_DOT_MODE_COOKIE) == "click"
+
+
+def set_dot_click_mode(response: Response, on: bool) -> None:
+    if on:
+        response.set_cookie(_DOT_MODE_COOKIE, "click",
+                            max_age=60 * 60 * 24 * 365, samesite="lax")
+    else:
+        response.delete_cookie(_DOT_MODE_COOKIE)   # back to default (hover)
 
 
 # Per-user collapsed parties — a CSV of party ids in a cookie (same family as
@@ -204,6 +217,7 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "label_roles": label_visible(request, "roles"),
         "label_status": label_visible(request, "status"),
         "pin_legend": pin_legend(request),
+        "dot_click_mode": dot_click_mode(request),
         # Cookie-derived by default; the collapse toggle route passes a fresh
         # set via **context so its own response reflects the new state (the
         # cookie it sets isn't visible until the next request).

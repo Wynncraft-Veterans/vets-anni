@@ -34,7 +34,8 @@
         <div class="legend-row">
           {% for role, s in ROLE_STYLES.items() %}
             {% set rc = role_chip(role) %}
-            <span class="role-chip" style="background-color: var({{ rc.css_var_dark }})">
+            <span class="role-chip" data-role="{{ role.value }}"
+                  style="background-color: var({{ rc.css_var_dark }})">
               <span class="glyph" style="background-color: var({{ rc.css_var }})">{{ rc.glyph }}</span>
               <span class="chip-text">{{ rc.label }}</span>
             </span>
@@ -61,36 +62,20 @@
       <h3>Configs</h3>
       <ul class="cfg-list">
         <li>
-          {% if cb %}
-            <span class="cfg-row cfg-locked" role="switch" aria-checked="true"
-                  title="Required while colourblind mode is on">
-              <span class="cfg-name">Role Labels 🔒</span>
-              <span class="cfg-switch on" aria-hidden="true"></span>
-            </span>
-          {% else %}
-            <a class="cfg-row" role="switch"
-               aria-checked="{{ 'true' if label_roles else 'false' }}"
-               href="/toggle-label?which=roles&next=/staff/board">
-              <span class="cfg-name">Role Labels</span>
-              <span class="cfg-switch{{ ' on' if label_roles }}" aria-hidden="true"></span>
-            </a>
-          {% endif %}
+          <a class="cfg-row" role="switch"
+             aria-checked="{{ 'true' if label_roles else 'false' }}"
+             href="/toggle-label?which=roles&next=/staff/board">
+            <span class="cfg-name">Role Labels</span>
+            <span class="cfg-switch{{ ' on' if label_roles }}" aria-hidden="true"></span>
+          </a>
         </li>
         <li>
-          {% if cb %}
-            <span class="cfg-row cfg-locked" role="switch" aria-checked="true"
-                  title="Required while colourblind mode is on">
-              <span class="cfg-name">Status Labels 🔒</span>
-              <span class="cfg-switch on" aria-hidden="true"></span>
-            </span>
-          {% else %}
-            <a class="cfg-row" role="switch"
-               aria-checked="{{ 'true' if label_status else 'false' }}"
-               href="/toggle-label?which=status&next=/staff/board">
-              <span class="cfg-name">Status Labels</span>
-              <span class="cfg-switch{{ ' on' if label_status }}" aria-hidden="true"></span>
-            </a>
-          {% endif %}
+          <a class="cfg-row" role="switch"
+             aria-checked="{{ 'true' if label_status else 'false' }}"
+             href="/toggle-label?which=status&next=/staff/board">
+            <span class="cfg-name">Status Labels</span>
+            <span class="cfg-switch{{ ' on' if label_status }}" aria-hidden="true"></span>
+          </a>
         </li>
         <li>
           <a class="cfg-row" role="switch"
@@ -98,6 +83,18 @@
              href="/toggle-label?which=pin&next=/staff/board">
             <span class="cfg-name">Pin to top</span>
             <span class="cfg-switch{{ ' on' if pin_legend }}" aria-hidden="true"></span>
+          </a>
+        </li>
+        {# Capability-dot info trigger — hover (default) vs click. The switch
+           is "Click to open" so OFF = the default hover and ON = the opt-in
+           click mode (same direction as the other prefs). #}
+        <li>
+          <a class="cfg-row" role="switch"
+             aria-checked="{{ 'true' if dot_click_mode else 'false' }}"
+             href="/toggle-label?which=dotmode&next=/staff/board"
+             title="Off: hover a role dot to see its info. On: click a dot instead.">
+            <span class="cfg-name">Click for role info</span>
+            <span class="cfg-switch{{ ' on' if dot_click_mode }}" aria-hidden="true"></span>
           </a>
         </li>
       </ul>
@@ -136,6 +133,18 @@
                 <span class="muted party-summary">{{ party.world or 'no world' }}
                   · stage {{ party.stage }}/5 · {{ party.result }}
                   {%- if party.host %} · host {{ party.host.name }}{% endif %}</span>
+              {% endif %}
+              {# Delete is only offered for empty parties so we never strand
+                 members (buckets.delete_party rejects non-empty as a safety
+                 net for hand-crafted requests). Hidden during grace too —
+                 the hub would REJECT it anyway. #}
+              {% if not party.members and not snap.event.frozen %}
+                <button class="party-delete" type="button"
+                        hx-post="/staff/board/party/{{ party.id }}/delete"
+                        hx-target="#board" hx-swap="outerHTML"
+                        hx-confirm="Delete Party {{ party.ordinal }}?"
+                        aria-label="Delete Party {{ party.ordinal }}"
+                        title="Delete this empty party">×</button>
               {% endif %}
             </div>
             {% if not is_collapsed %}
