@@ -507,14 +507,14 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
     Role.TERTIARY: RoleGuidance(
         "Tertiary DPS (Healing-Mob Killer)",
         "Players who eliminate the mobs that regenerate the boss' health.",
-        "100k+ DPS and reliable movement to cross a 15+ block lava pit. "
+        "150k+ DPS and reliable movement to cross a 15+ block lava pit. "
         "Mobs are low-HP but spawn in inconvenient places.",
         f"{DOCS_BASE}/#tertiary-dps", f"{DOCS_BASE}/#tertiary-builds",
     ),
     Role.HEALER: RoleGuidance(
         "Healer (Party Healer)",
         "Spam heals to keep the core alive. You are protected by the core.",
-        "40k+ HPS. You only need to heal players in the core (~5 blocks wide) "
+        "8k+ HPS. You only need to heal players in the core (~5 blocks wide) "
         "and rarely leave its vicinity.",
         f"{DOCS_BASE}/#healer", f"{DOCS_BASE}/#healer-builds",
     ),
