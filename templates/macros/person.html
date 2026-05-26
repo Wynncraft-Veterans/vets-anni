@@ -34,13 +34,15 @@
           <span class="muted" title="in-game name differs">| {{ p.wynn_username }}</span>
         {% endif %}
         {# Capability dots — the roles this user *can* do (distinct from the
-           assigned role on the card background). Up to five, in a stable
-           PRIM→SUNK→HDMG→HEAL→TANK order; only the ones the player declared
-           are emitted ("up to five"). Each wraps its own popover so the
-           CSS-only hover path is one + selector away. The popover carries
-           the same data the roles dashboard shows — confidence/build/wins
-           +weapons — so it's the at-a-glance answer to "what can they bring
-           to this slot?" without leaving the board.
+           assigned role on the card background). Up to five, sorted by the
+           player's own confidence (high → low) with lifetime wins breaking
+           ties, so the leftmost dot is "what they'd most like to do" and
+           the row scans as the player's own preference ranking. Each wraps
+           its own popover so the CSS-only hover path is one + selector
+           away. The popover carries the same data the roles dashboard
+           shows — confidence/build/wins + weapons — so it's the at-a-glance
+           answer to "what can they bring to this slot?" without leaving
+           the board.
 
            Letter (P/S/M/H/T) is in the DOM at all times; CSS hides it
            outside CB so the colour-only default reads as a clean dot, and

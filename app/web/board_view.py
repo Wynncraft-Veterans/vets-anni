@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from app.constants import (
     BUCKET_LABEL,
-    CAPABILITY_ROLES,
     PARTY_STAGE_LABELS,
     PARTY_CAPACITY,
     ROLE_STYLES,
@@ -60,19 +59,28 @@ _CAP_CSS_VAR: dict[Role, str] = {
 _CAP_CSS_VAR_LIGHT: dict[Role, str] = {
     role: f"{var}-light" for role, var in _CAP_CSS_VAR.items()
 }
-#: Stable display order for the dots (left-to-right). Matches the enum order
-#: in ``Role`` so the layout is identical across all cards regardless of which
-#: capabilities a given player has.
-_CAP_ORDER: dict[Role, int] = {r: i for i, r in enumerate(CAPABILITY_ROLES)}
+#: Confidence ranking for dot order. Mirrors :class:`ConfidenceLevel` (low =
+#: least confident, high = most), inverted so the sort key reads left-to-right
+#: as best-first. Unknown / off-table values fall to the end.
+_CONFIDENCE_RANK: dict[str, int] = {"high": 0, "moderate": 1, "low": 2}
 
 
 def _capability_dots(caps) -> list[dict]:
     """Shape a player's :class:`RoleCapability` rows for the person-card dots
-    + their hover/click popovers. Skips anything not in :data:`CAPABILITY_ROLES`
-    (FILL is assign-only, never a capability) so a stale row can't leak in."""
+    + their hover/click popovers. Skips anything not in
+    :data:`CAPABILITY_ROLES` (FILL is assign-only, never a capability) so a
+    stale row can't leak in.
+
+    Sorted **per-user** by self-declared confidence (high → low), with
+    lifetime wins (``success_count``) as the tiebreaker. The dot row then
+    reads as the player's own preference ranking — the leftmost dot is what
+    they'd most like to slot into — which is more useful to an organiser
+    than a fixed PRIM/SUNK/HDMG/HEAL/TANK column where every card looks the
+    same regardless of fit.
+    """
     dots: list[dict] = []
     for c in caps:
-        if c.role not in _CAP_ORDER:
+        if c.role not in _CAP_CSS_VAR:
             continue
         dots.append({
             "role": c.role.value,
@@ -88,7 +96,12 @@ def _capability_dots(caps) -> list[dict]:
                 for w in c.weapons
             ],
         })
-    dots.sort(key=lambda d: _CAP_ORDER[Role(d["role"])])
+    # Higher confidence first; more wins breaks ties (negate so larger wins
+    # sort earlier under ascending sort).
+    dots.sort(key=lambda d: (
+        _CONFIDENCE_RANK.get(d["confidence"], 99),
+        -d["success_count"],
+    ))
     return dots
 
 
