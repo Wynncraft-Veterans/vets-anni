@@ -47,6 +47,7 @@ from app.web.routers import (  # noqa: E402
     public,
     roles_dash,
     staff,
+    staff_capability,
     user,
 )
 
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(staff.router)
     app.include_router(organizer.router)
     app.include_router(roles_dash.router)
+    app.include_router(staff_capability.router)
     return app
 
 

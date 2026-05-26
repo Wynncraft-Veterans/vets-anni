@@ -1,0 +1,80 @@
+{# A single roles-dashboard row. Re-rendered standalone by the staff
+   capability edit/delete routes (HTMX `outerHTML` swap on `#roles-row-{uuid}`)
+   so a single row can update in place after a mutation. #}
+{% from "macros/chips.html" import role_bg %}
+{% from "macros/pills.html" import level, weapon, success, regions as region_pills %}
+<li class="roles-row" id="roles-row-{{ r.uuid }}"
+    data-name="{{ r.name|lower }}"
+    data-search="{{ r.name|lower }}{% if r.desynced %} {{ r.wynn_username|lower }}{% endif %}"
+    data-tier="{{ r.tier_value }}"
+    data-fill="{{ 'core' if r.is_core else 'fill' }}"
+    data-wins="{{ r.wins_total }}"
+    data-regions="{{ r.region_codes_csv }}"
+    data-roles="{{ r.role_values_csv }}"
+    data-active="{{ '1' if r.is_active else '0' }}">
+  <div class="roles-who">
+    <div class="roles-avatar-col">
+      <img class="avatar" src="{{ r.avatar }}" alt="" width="32"
+           height="32" loading="lazy" onerror="this.remove()">
+      {% if r.rsvp_state == 'hard' %}
+        <span class="rsvp-badge rsvp-yes" title="Hard RSVP'd"
+              aria-label="Hard RSVP'd">✓</span>
+      {% elif r.rsvp_state == 'soft' %}
+        <span class="rsvp-badge rsvp-soft" title="Soft RSVP'd"
+              aria-label="Soft RSVP'd">✓</span>
+      {% elif r.rsvp_state == 'none' %}
+        <span class="rsvp-badge rsvp-no" title="Not RSVP'd"
+              aria-label="Not RSVP'd">✗</span>
+      {% endif %}
+    </div>
+    <div>
+      <span class="roles-name">{{ r.name }}
+        {% if r.desynced %}
+          <span class="muted" title="in-game name differs">| {{ r.wynn_username }}</span>
+        {% endif %}
+      </span>
+      <span class="roles-meta">
+        <span class="pill pill-muted">{{ r.tier_label }}</span>
+        {% if r.is_core %}<span class="pill pill-ok">Core</span>
+        {% else %}<span class="pill pill-danger">Fill</span>{% endif %}
+      </span>
+      <span class="roles-regions">{{ region_pills(r.regions) }}</span>
+    </div>
+  </div>
+  <div class="roles-caps">
+    {% if r.capabilities %}
+      {% for c in r.capabilities %}
+        <div class="roles-cap">
+          {{ role_bg(c.chip, c.role_label) }}
+          <span class="cap-weapons">
+            {% if c.weapons %}
+              {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
+            {% else %}<span class="muted">no weapons listed</span>{% endif %}
+          </span>
+          {# Row 1 = badge + weapons; row 2 (.cap-bottom) holds levels on the
+             left and the Edit/Delete actions pushed to the right. #}
+          <div class="cap-bottom">
+            <span class="cap-levels">
+              {{ level("Confidence", c.confidence) }}
+              {{ level("Build", c.build_quality) }}
+              {{ success(c.success_count) }}
+            </span>
+            <span class="cap-actions">
+              <button class="btn-sm"
+                      hx-get="/staff/roles/capability/{{ c.id }}/edit"
+                      hx-target="#modal-mount" hx-swap="innerHTML">Edit</button>
+              <button class="btn-sm btn-danger"
+                      hx-post="/staff/roles/capability/{{ c.id }}/delete"
+                      hx-target="#roles-row-{{ r.uuid }}" hx-swap="outerHTML"
+                      hx-confirm="Remove {{ r.name }}'s {{ c.role_label }} capability?">
+                Delete
+              </button>
+            </span>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <span class="muted">No declared capabilities — attends as Fill.</span>
+    {% endif %}
+  </div>
+</li>

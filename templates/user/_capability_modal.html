@@ -1,7 +1,13 @@
 {# Add/edit capability modal (HTMX-loaded into #modal-mount).
    Quotes the docs-sourced role guidance + links the wynnvets.org anchors
-   (spec). The form swaps the #capacity fragment on success; dashboard.html
-   clears this mount on that swap. #}
+   (spec). The form swaps `form_target` on success (default `#capacity` —
+   the user dashboard's role-capacity fragment); the surrounding page clears
+   this mount on that swap. Staff edits pass `form_action`/`form_target`/
+   `weapon_search_url` to point at the /staff/roles/... surface and swap the
+   single roles-dashboard row instead. #}
+{% set _form_action = form_action or ("/me/capability/" ~ cap.id if mode == "edit" else "/me/capability") %}
+{% set _form_target = form_target or "#capacity" %}
+{% set _weapon_search_url = weapon_search_url or "/me/capability/weapons" %}
 <div class="modal-overlay" role="dialog" aria-modal="true"
      aria-labelledby="modal-h">
   <div class="modal">
@@ -27,6 +33,10 @@
       </select>
     {% endif %}
 
+    {% if modal_error %}
+      <p class="bar bar-danger" role="alert">{{ modal_error }}</p>
+    {% endif %}
+
     {% if guidance %}
       <div class="guidance">
         <h3>{{ guidance.title }}</h3>
@@ -40,9 +50,8 @@
       </div>
     {% endif %}
 
-    <form {% if mode == "new" %}hx-post="/me/capability"
-          {% else %}hx-post="/me/capability/{{ cap.id }}"{% endif %}
-          hx-target="#capacity" hx-swap="outerHTML">
+    <form hx-post="{{ _form_action }}"
+          hx-target="{{ _form_target }}" hx-swap="outerHTML">
       {% if mode == "new" %}
         <input type="hidden" name="role" value="{{ role.value if role }}">
       {% endif %}
@@ -88,7 +97,7 @@
              value="{{ cap.weapons if cap }}">
       <input type="search" class="weapon-search"
              placeholder="🔍 Search Wynn's list of weapons…"
-             name="q" hx-get="/me/capability/weapons"
+             name="q" hx-get="{{ _weapon_search_url }}"
              hx-trigger="keyup changed delay:250ms" hx-target="#weapon-list"
              hx-swap="innerHTML" list="weapon-list" autocomplete="off">
       <datalist id="weapon-list"></datalist>

@@ -1,60 +1,215 @@
 {% extends "base.html" %}
-{% from "macros/chips.html" import role_bg %}
-{% from "macros/pills.html" import level, weapon, success, regions as region_pills %}
 {% block title %}Roles dashboard · Wynnvets Annihilation{% endblock %}
 {% block content %}
   <div class="dash-head">
     <h1>Roles dashboard</h1>
+    {% if rows %}
+      <label class="active-toggle" role="switch" aria-checked="false"
+             title="Show only users who are online or RSVP'd">
+        <input type="checkbox" id="roles-active-only" hidden>
+        <span class="active-toggle-name">Active only</span>
+        <span class="cfg-switch" aria-hidden="true"></span>
+      </label>
+      <input type="search" id="roles-search" class="roles-search"
+             placeholder="Search username…" autocomplete="off"
+             aria-label="Search by username">
+    {% endif %}
   </div>
+
+  {% if rows %}
+      <div class="roles-filters card" id="roles-filters">
+        <label>Region
+          <select data-filter="regions">
+            <option value="">All</option>
+            {% for o in region_options %}
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Type
+          <select data-filter="fill">
+            <option value="">All</option>
+            <option value="core">Core only</option>
+            <option value="fill">Fill only</option>
+          </select>
+        </label>
+        <label>Tier
+          <select data-filter="tier">
+            <option value="">All</option>
+            {% for o in tier_options %}
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Role
+          <select data-filter="roles">
+            <option value="">All</option>
+            {% for o in role_options %}
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Min wins
+          <select data-filter="wins">
+            <option value="0">Any</option>
+            <option value="1">1+</option>
+            <option value="5">5+</option>
+            <option value="10">10+</option>
+            <option value="25">25+</option>
+          </select>
+        </label>
+        <label>Sort
+          <select data-sort>
+            <option value="default">Default (tier · core/fill · name)</option>
+            <option value="wins-desc">Wins (high → low)</option>
+            <option value="name-asc">Name (A → Z)</option>
+          </select>
+        </label>
+        <div class="roles-reset">
+          <span class="roles-count muted" id="roles-count"></span>
+          <button type="button" class="btn-sm" id="roles-filters-reset">Reset</button>
+        </div>
+      </div>
+  {% endif %}
 
   <section class="card">
     {% if rows %}
-      <ul class="roles-list">
+      <ul class="roles-list" id="roles-list">
         {% for r in rows %}
-          <li class="roles-row">
-            <div class="roles-who">
-              <img class="avatar" src="{{ r.avatar }}" alt="" width="32"
-                   height="32" loading="lazy" onerror="this.remove()">
-              <div>
-                <span class="roles-name">{{ r.name }}
-                  {% if r.desynced %}
-                    <span class="muted" title="in-game name differs">| {{ r.wynn_username }}</span>
-                  {% endif %}
-                </span>
-                <span class="roles-meta">
-                  <span class="pill pill-muted">{{ r.tier_label }}</span>
-                  {% if r.is_core %}<span class="pill pill-ok">Core</span>
-                  {% else %}<span class="pill pill-danger">Fill</span>{% endif %}
-                  {{ region_pills(r.regions) }}
-                </span>
-              </div>
-            </div>
-            <div class="roles-caps">
-              {% if r.capabilities %}
-                {% for c in r.capabilities %}
-                  <div class="roles-cap">
-                    {{ role_bg(c.chip, c.role_label) }}
-                    <span class="cap-weapons">
-                      {% if c.weapons %}
-                        {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
-                      {% else %}<span class="muted">no weapons listed</span>{% endif %}
-                    </span>
-                    <span class="cap-levels">
-                      {{ level("Confidence", c.confidence) }}
-                      {{ level("Build", c.build_quality) }}
-                      {{ success(c.success_count) }}
-                    </span>
-                  </div>
-                {% endfor %}
-              {% else %}
-                <span class="muted">No declared capabilities — attends as Fill.</span>
-              {% endif %}
-            </div>
-          </li>
+          {% include "staff/_roles_row.html" %}
         {% endfor %}
       </ul>
+      <p class="muted" id="roles-empty" hidden>No players match the current filters.</p>
     {% else %}
       <p class="muted">No players known yet.</p>
     {% endif %}
   </section>
+
+  {# Edit-capability modal mounts here (HTMX innerHTML swap from the Edit
+     button). The form's success swap targets the row, then the JS below
+     clears the mount. #}
+  <div id="modal-mount"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Close the edit modal after the row finishes swapping back in.
+  document.body.addEventListener('htmx:afterSwap', (e) => {
+    const id = e.detail.target && e.detail.target.id;
+    if (id && id.startsWith('roles-row-')) {
+      document.getElementById('modal-mount').innerHTML = '';
+      applyRolesView();
+    }
+  });
+
+  // --- Roles dashboard filter + sort (client-side, presentational only) ----
+  // Tier priority mirrors app.constants.MEMBERSHIP_PRIORITY so the JS-side
+  // "Default" sort matches the server's initial ordering after a swap.
+  const TIER_RANK = {
+    member: 0, waitlist: 1, honourary: 2,
+    community: 3, ally: 4, other: 5,
+  };
+
+  function rowVisible(li, f) {
+    if (f.activeOnly && li.dataset.active !== '1') return false;
+    if (f.tier && li.dataset.tier !== f.tier) return false;
+    if (f.fill && li.dataset.fill !== f.fill) return false;
+    if (f.wins && Number(li.dataset.wins || 0) < f.wins) return false;
+    if (f.roles) {
+      const roles = (li.dataset.roles || '').split(',').filter(Boolean);
+      if (!roles.includes(f.roles)) return false;
+    }
+    if (f.regions) {
+      // Empty regions = "any region" — matches every specific region filter.
+      const regs = (li.dataset.regions || '').split(',').filter(Boolean);
+      if (regs.length && !regs.includes(f.regions)) return false;
+    }
+    if (f.search) {
+      const hay = li.dataset.search || li.dataset.name || '';
+      if (!hay.includes(f.search)) return false;
+    }
+    return true;
+  }
+
+  function sortKey(li, mode) {
+    if (mode === 'wins-desc') return [-Number(li.dataset.wins || 0), li.dataset.name];
+    if (mode === 'name-asc') return [li.dataset.name];
+    // default: tier rank, then core before fill, then name
+    return [
+      TIER_RANK[li.dataset.tier] ?? 9,
+      li.dataset.fill === 'core' ? 0 : 1,
+      li.dataset.name,
+    ];
+  }
+  function cmp(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if (a[i] === b[i]) continue;
+      return a[i] < b[i] ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function applyRolesView() {
+    const list = document.getElementById('roles-list');
+    if (!list) return;
+    const bar = document.getElementById('roles-filters');
+    const searchEl = document.getElementById('roles-search');
+    const activeEl = document.getElementById('roles-active-only');
+    const filters = {
+      regions: bar.querySelector('[data-filter="regions"]').value,
+      fill: bar.querySelector('[data-filter="fill"]').value,
+      tier: bar.querySelector('[data-filter="tier"]').value,
+      roles: bar.querySelector('[data-filter="roles"]').value,
+      wins: Number(bar.querySelector('[data-filter="wins"]').value || 0),
+      search: (searchEl?.value || '').trim().toLowerCase(),
+      activeOnly: !!(activeEl && activeEl.checked),
+    };
+    const sortMode = bar.querySelector('[data-sort]').value;
+
+    let visible = 0;
+    const rows = Array.from(list.children);
+    for (const li of rows) {
+      const show = rowVisible(li, filters);
+      li.hidden = !show;
+      if (show) visible++;
+    }
+    rows.sort((a, b) => cmp(sortKey(a, sortMode), sortKey(b, sortMode)))
+        .forEach(li => list.appendChild(li));
+
+    const count = document.getElementById('roles-count');
+    count.textContent = `${visible} of ${rows.length} shown`;
+    document.getElementById('roles-empty').hidden = visible !== 0;
+  }
+
+  function syncActiveSwitch() {
+    const activeEl = document.getElementById('roles-active-only');
+    if (!activeEl) return;
+    const label = activeEl.closest('.active-toggle');
+    const knob = label && label.querySelector('.cfg-switch');
+    if (knob) knob.classList.toggle('on', activeEl.checked);
+    if (label) label.setAttribute('aria-checked', activeEl.checked ? 'true' : 'false');
+  }
+
+  (function initRolesFilters() {
+    const bar = document.getElementById('roles-filters');
+    if (!bar) return;
+    bar.addEventListener('change', applyRolesView);
+    const searchEl = document.getElementById('roles-search');
+    if (searchEl) searchEl.addEventListener('input', applyRolesView);
+    const activeEl = document.getElementById('roles-active-only');
+    if (activeEl) activeEl.addEventListener('change', () => {
+      syncActiveSwitch();
+      applyRolesView();
+    });
+    document.getElementById('roles-filters-reset').addEventListener('click', () => {
+      bar.querySelectorAll('select').forEach(s => { s.selectedIndex = 0; });
+      if (searchEl) searchEl.value = '';
+      if (activeEl) activeEl.checked = false;
+      syncActiveSwitch();
+      applyRolesView();
+    });
+    syncActiveSwitch();
+    applyRolesView();
+  })();
+</script>
 {% endblock %}

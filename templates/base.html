@@ -24,7 +24,7 @@
           <a href="/staff">Overview</a>
           <a href="/staff/board">Board</a>
           <a href="/staff/roles">Roles</a>
-        {% else %}
+        {% elif not user_uuid %}
           <a href="/staff">Staff</a>
         {% endif %}
         {% if user_uuid %}<a href="/logout">Log out</a>{% endif %}

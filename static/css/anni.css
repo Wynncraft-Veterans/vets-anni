@@ -571,16 +571,81 @@ a.cfg-row:hover .cfg-switch { filter:brightness(.97); }
 .legend-status .glyph { font-weight:700; }
 
 /* ===== Phase 2 — roles dashboard ======================================== */
+/* "Active only" toggle sits to the LEFT of the search bar; it owns the
+   margin-left:auto so both controls anchor together at the right edge. */
+.active-toggle {
+  margin-left:auto;
+  display:inline-flex; align-items:center; gap:.5rem;
+  font-size:.82rem; font-weight:600; color:#374151;
+  cursor:pointer; user-select:none;
+}
+.active-toggle .active-toggle-name { white-space:nowrap; }
+.roles-search {
+  width:260px;  /* explicit — override generic input{width:100%} */
+  padding:.4rem .7rem; font-size:.85rem; color:#374151;
+  background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px;
+}
+.roles-search::placeholder { color:#9ca3af; }
+.roles-search:focus { outline:none; background:#fff; border-color:#cbd5e1; }
+.roles-filters {
+  display:flex; flex-wrap:wrap; gap:.6rem .9rem; align-items:flex-end;
+  /* Override .card defaults: sit tight under the heading, slimmer padding. */
+  margin-top:.25rem; padding:.6rem .9rem;
+}
+.roles-filters label {
+  display:flex; flex-direction:column; gap:.15rem;
+  font-size:.78rem; line-height:1.5; color:#475569;
+}
+.roles-filters select {
+  font-size:.85rem; padding:.25rem .4rem;
+  border:1px solid #cbd5e1; border-radius:6px; background:#fff;
+}
+/* Reset stack mirrors a <label>+<select> column: count text in the label
+   slot, Reset button matched to the select's vertical metrics so the two
+   columns share an intrinsic height and everything top-aligns cleanly. */
+.roles-reset {
+  display:flex; flex-direction:column; gap:.15rem; align-items:flex-start;
+  /* Nudge up: bottom-aligned columns leave a 2-3px optical gap from the
+     select bottoms because the button's rounded box visually centres higher.*/
+  margin-bottom:.2rem;
+}
+.roles-reset .roles-count { font-size:.78rem; line-height:1.5; }
+.roles-reset .btn-sm {
+  font-size:.85rem; padding:.25rem .6rem;
+  border:1px solid transparent;  /* matches the 1px select border for height */
+}
 .roles-list { list-style:none; margin:0; padding:0; }
 .roles-row {
-  display:grid; grid-template-columns:minmax(220px,1fr) 2fr; gap:1rem;
+  display:grid; grid-template-columns:minmax(180px,1fr) 3fr; gap:1rem;
   align-items:start; padding:.7rem 0; border-top:1px solid #e5e7eb;
 }
 .roles-row:first-child { border-top:none; }
+/* Beats `.roles-row { display:grid }` so li.hidden = true actually hides the
+   row — without this, the UA `[hidden]{display:none}` (specificity 0,1,0)
+   ties with `.roles-row` and source-order keeps the row displayed. */
+.roles-row[hidden] { display:none; }
 @media (max-width:820px){ .roles-row{ grid-template-columns:1fr; } }
 .roles-who { display:flex; gap:.6rem; align-items:flex-start; }
+.roles-avatar-col {
+  display:flex; flex-direction:column; align-items:center; gap:.25rem;
+  flex:none;
+}
+/* RSVP badge under the avatar — ✓ (green) when RSVP'd, ✗ (red) when not.
+   Glyph + aria-label carry the meaning so the badge reads under CB. The
+   badge is omitted entirely when no active event exists (rsvp_state='na'). */
+.rsvp-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:1.1rem; height:1.1rem; border-radius:50%;
+  font-size:.78rem; font-weight:700; line-height:1;
+  border:1px solid currentColor;
+}
+.rsvp-badge.rsvp-yes  { color:#15803d; background:#dcfce7; }
+.rsvp-badge.rsvp-soft { color:#708a14; background:#f1f7cf; }
+.rsvp-badge.rsvp-no   { color:#b91c1c; background:#fee2e2; }
 .roles-name { font-weight:700; display:block; }
 .roles-meta { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.25rem;
+  align-items:center; }
+.roles-regions { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.25rem;
   align-items:center; }
 .roles-caps { display:flex; flex-direction:column; gap:.4rem; }
 .roles-cap {
@@ -588,6 +653,14 @@ a.cfg-row:hover .cfg-switch { filter:brightness(.97); }
   background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px;
   padding:.35rem .6rem;
 }
+/* Row 1 = badge + weapons; row 2 = .cap-bottom (levels left, actions right).
+   flex-basis:100% on cap-bottom forces the wrap so the bottom row is always
+   full-width regardless of how the row-1 content fits. */
+.roles-cap .cap-bottom {
+  flex-basis:100%; display:flex; flex-wrap:wrap; gap:.4rem 1rem;
+  align-items:center;
+}
+.roles-cap .cap-bottom .cap-actions { margin-left:auto; }
 
 /* Respect reduced-motion (reference parity). Covers the new flash/anim too. */
 @media (prefers-reduced-motion: reduce) {

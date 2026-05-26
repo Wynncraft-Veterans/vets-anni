@@ -14,10 +14,12 @@ Real usernames are used so the UI looks authentic:
 * OTHER   — real members of guild ``Wynn``.
 * COMMUNITY — foo / bar / baz (guildless placeholders).
 
-UUIDs for the WAPI-sourced players are their real Minecraft UUIDs; the
-honourary/community names get a deterministic synthetic UUID so the seed stays
-fully offline and idempotent. It only touches the local SQLite file resolved
-from settings (``ANNI_DB_PATH``) — NEVER point it at production.
+UUIDs for the WAPI-sourced players and the honourary trio are their real
+Minecraft UUIDs (so mc-heads.net renders an actual face rather than the Steve
+default it serves for unknown UUIDs); only the community placeholders use a
+deterministic synthetic UUID. The seed stays fully offline and idempotent.
+It only touches the local SQLite file resolved from settings
+(``ANNI_DB_PATH``) — NEVER point it at production.
 
     python scripts/seed_dev.py        # or the "vets-anni: seed dev data" launch
 """
@@ -82,10 +84,12 @@ PLAYERS: tuple[tuple, ...] = (
      "ISnortPasta", None),
     ("c55a4c65-8486-4004-a70e-8c7b03ea86c1", "Faulischlumpf", M, "Returners",
      None, None),
-    # Honourary
-    (_synth("Paradrex"), "Paradrex", H, None, None, None),
-    (_synth("Sevisoup"), "Sevisoup", H, None, None, None),
-    (_synth("Minethuselah"), "Minethuselah", H, None, None, None),
+    # Honourary — real Mojang UUIDs so mc-heads.net serves the actual skin
+    # (synthetic UUIDs render as Steve since mc-heads returns the default
+    # face with HTTP 200, bypassing the template's onerror fallback).
+    ("081f3c72-2c43-4689-ad2c-91446a72734d", "Paradrex", H, None, None, None),
+    ("62a4c5b5-7e50-4308-a313-1f3efb9c318d", "Sevisoup", H, None, None, None),
+    ("60ea30a2-ddfb-4620-b465-832a20ba2205", "Minethuselah", H, None, None, None),
     # Ally — guild TCM (Team CM)
     ("a411f463-d32f-477f-b821-03fdea70a0d9", "Trixomaniac", A, "Team CM", None, None),
     ("4fbf7838-f795-4545-8bdb-f39c2a0a0835", "ThinKing", A, "Team CM", None, None),
