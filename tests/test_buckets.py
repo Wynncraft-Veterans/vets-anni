@@ -113,7 +113,7 @@ async def test_party_create_rename_and_set(seeded):
     assert party.world == "NA12"
     assert party.stage == 5  # clamped to MAX_PARTY_STAGE
     assert party.result is PartyResult.WIN
-    assert party.host_id == host.id
+    assert party.host_id == host.mc_uuid
 
 
 async def test_delete_party_only_when_empty(seeded):
@@ -144,7 +144,7 @@ async def test_set_organizer_claim_and_release(seeded):
 
     assert (await buckets.set_organizer(event, naz.mc_uuid)).ok
     await event.refresh_from_db()
-    assert event.organizer_id == naz.id
+    assert event.organizer_id == naz.mc_uuid
 
     assert (await buckets.set_organizer(event, None)).ok
     await event.refresh_from_db()

@@ -35,8 +35,7 @@ class AnniPlayer(Model):
     used to detect/display rename desync; ``mc_username`` is the resolved one.
     """
 
-    id = fields.UUIDField(primary_key=True)
-    mc_uuid = fields.CharField(max_length=36, unique=True, index=True)
+    mc_uuid = fields.CharField(max_length=36, primary_key=True)
     mc_username = fields.CharField(max_length=32)
     wynn_username = fields.CharField(max_length=32, null=True)
 

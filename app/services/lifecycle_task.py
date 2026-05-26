@@ -27,7 +27,7 @@ from tortoise.transactions import in_transaction
 
 from app.constants import CAPABILITY_ROLES, PartyResult
 from app.db.lifecycle import get_active_event
-from app.db.models import BoardPlacement, Party, RoleCapability, Rsvp
+from app.db.models import BoardPlacement, RoleCapability, Rsvp
 from app.domain.schedule import EventPhase, phase_of
 from app.services.loop import poll_forever
 from app.services.state import AppState
@@ -38,21 +38,25 @@ logger = logging.getLogger("anni.lifecycle")
 
 async def _credit_wins(event) -> int:
     """+1 ``success_count`` for each (player, core-role) a WIN party member was
-    assigned this event. Returns the number of capabilities credited."""
-    win_parties = await Party.filter(event=event, result=PartyResult.WIN)
-    credited = 0
-    for party in win_parties:
-        members = (
-            await BoardPlacement.filter(event=event, party=party)
-            .select_related("player")
+    assigned this event. Returns the number of capabilities credited.
+
+    One query for the (event × WIN-party × core-role) cross-join — FILL /
+    unassigned placements are excluded by the ``assigned_role__in`` filter so
+    they never reach the per-row capability update."""
+    members = (
+        await BoardPlacement.filter(
+            event=event,
+            party__result=PartyResult.WIN,
+            assigned_role__in=CAPABILITY_ROLES,
         )
-        for m in members:
-            if m.assigned_role not in CAPABILITY_ROLES:
-                continue  # FILL / unassigned earns no capability success
-            updated = await RoleCapability.filter(
-                player=m.player, role=m.assigned_role
-            ).update(success_count=F("success_count") + 1)
-            credited += updated
+        .select_related("player")
+    )
+    credited = 0
+    for m in members:
+        updated = await RoleCapability.filter(
+            player=m.player, role=m.assigned_role,
+        ).update(success_count=F("success_count") + 1)
+        credited += updated
     return credited
 
 
