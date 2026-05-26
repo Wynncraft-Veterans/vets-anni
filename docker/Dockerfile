@@ -31,6 +31,9 @@ RUN pip install \
 
 COPY . .
 
+# Windows checkouts can drop the exec bit — don't rely on git mode here.
+RUN chmod +x docker/entrypoint.sh
+
 # SQLite lives on a persisted volume (vets-deploy mounts ./data here).
 VOLUME ["/app/data"]
 EXPOSE 8000
