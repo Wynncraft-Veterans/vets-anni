@@ -35,12 +35,27 @@ from typing import Literal
 import discord
 from discord.ext import commands
 
-from app.constants import AttendanceNotice, MembershipTier
+from app.constants import (
+    BUCKET_LABEL,
+    AttendanceNotice,
+    MembershipTier,
+)
 from app.db.lifecycle import get_active_event
-from app.db.models import AnniEvent, AnniPlayer
+from app.db.models import (
+    AnniEvent,
+    AnniPlayer,
+    BoardPlacement,
+    RoleCapability,
+    Rsvp,
+)
+from app.domain import capability as capability_domain
+from app.domain import identity as identity_domain
 from app.domain import rsvp as rsvp_domain
 from app.domain.membership import _DAZEBOT_TIER
+from app.domain.membership import label as tier_label
+from app.domain.roles import guidance as role_guidance
 from app.services.dazebot_client import AnniIdentity, get_dazebot_client
+from app.services.state import AppState
 from app.settings import get_settings
 
 logger = logging.getLogger("anni.fishbot.rsvp")
@@ -122,7 +137,13 @@ async def _do_set(
     private = (
         f"RSVP recorded: **{label}**. Track your status on the dashboard: {url}"
     )
-    public = f"`{player.mc_username}` RSVP'd **{label}** for tonight's anni."
+    # Discord timestamp tags only — anni timing must localise per viewer
+    # (CLAUDE.md). The earlier wording "for tonight's anni" was wrong for
+    # anyone outside the organisers' wall-clock evening.
+    public = (
+        f"`{player.mc_username}` has **{label}** RSVP'd for the anni "
+        f"<t:{event.stamp_epoch}:R> (<t:{event.stamp_epoch}:F>)."
+    )
     return RsvpOutcome(private_message=private, public_message=public)
 
 
@@ -199,6 +220,160 @@ async def execute_rsvp(discord_id: int | str, action: Action) -> RsvpOutcome:
     raise ValueError(f"unknown /rsvp action: {action!r}")
 
 
+# --------------------------------------------------------------------------- #
+# Read-only subcommands: ``\rsvp list`` + ``\rsvp check <username>``          #
+# --------------------------------------------------------------------------- #
+#
+# These two are public-reply (no ephemeral), do NOT need the dazebot identity
+# round-trip, and never call WAPI/Mojang — IGN lookup is cache-first (the
+# OWN-token bucket must not be spent from Discord; CLAUDE.md hard rule).
+
+
+async def _resolve_player_by_ign(name: str, state: AppState) -> AnniPlayer | None:
+    """Cache-first IGN → :class:`AnniPlayer` (no network).
+
+    Tries, in order: an exact-case-insensitive match on
+    ``AnniPlayer.mc_username``, then the roster/aliases cache on
+    :class:`AppState`. Returns ``None`` when neither knows the name —
+    callers render a friendly miss rather than spending the WAPI token.
+    """
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return None
+    player = await AnniPlayer.filter(mc_username__iexact=cleaned).first()
+    if player is not None:
+        return player
+    uuid = state.resolve_uuid(cleaned)
+    if uuid is None:
+        return None
+    return await AnniPlayer.filter(mc_uuid=uuid).first()
+
+
+async def execute_list() -> str:
+    """``\\rsvp list`` — everyone's active RSVP for the announced anni,
+    split into HARD/SOFT groups."""
+    event = await get_active_event()
+    url = _dashboard_url()
+    if event is None:
+        return (
+            f"No anni is currently announced. Watch the dashboard: {url}"
+        )
+    rsvps = await (
+        Rsvp.filter(event=event, revoked_at__isnull=True)
+        .select_related("player")
+        .order_by("player__mc_username")
+    )
+    hard = [r.player.mc_username for r in rsvps if r.notice is AttendanceNotice.RSVP_HARD]
+    soft = [r.player.mc_username for r in rsvps if r.notice is AttendanceNotice.RSVP_SOFT]
+
+    def _fmt(group: list[str]) -> str:
+        if not group:
+            return "_nobody yet_"
+        return ", ".join(f"`{n}`" for n in group)
+
+    stamp = event.stamp_epoch
+    return (
+        f"**RSVPs for the anni <t:{stamp}:R> (<t:{stamp}:F>):**\n"
+        f"**Hard ({len(hard)}):** {_fmt(hard)}\n"
+        f"**Soft ({len(soft)}):** {_fmt(soft)}"
+    )
+
+
+async def execute_check(username: str, state: AppState) -> str:
+    """``\\rsvp check <username>`` — a public profile snapshot.
+
+    Surfaces: membership tier, Core/Fill + declared roles, current online
+    state (online-merge cache; "unknown" for API-disabled), the RSVP +
+    board placement for the announced anni. Cache-first IGN resolution —
+    never spends the OWN-token bucket.
+    """
+    name = (username or "").strip()
+    url = _dashboard_url()
+    if not name:
+        return "Specify an in-game name: `\\rsvp check <username>`."
+    player = await _resolve_player_by_ign(name, state)
+    if player is None:
+        return (
+            f"I don't know `{name}` — they haven't logged into the "
+            f"dashboard, RSVP'd, or appeared on the board yet."
+        )
+
+    lines: list[str] = []
+    if player.wynn_username and player.wynn_username != player.mc_username:
+        lines.append(
+            f"**`{player.mc_username}`** (in-game: `{player.wynn_username}`)"
+        )
+    else:
+        lines.append(f"**`{player.mc_username}`**")
+    lines.append(f"Membership: **{tier_label(player.membership_tier)}**")
+
+    caps = await RoleCapability.filter(player=player).all()
+    eligibility = "Core" if capability_domain.is_core(len(caps)) else "Fill"
+    if caps:
+        roles_listed = ", ".join(
+            role_guidance(c.role).title
+            for c in sorted(caps, key=lambda c: c.role.value)
+        )
+        lines.append(f"Eligibility: **{eligibility}** — {roles_listed}")
+    else:
+        lines.append(f"Eligibility: **{eligibility}** — no capabilities declared")
+
+    # Online state — mirrors web/routers/user._build_specific.
+    online = state.is_online(player.mc_uuid)
+    if online is None:
+        if identity_domain.is_api_disabled(player.last_online):
+            lines.append("Online: _unknown — Wynncraft API disabled_")
+        else:
+            lines.append("Online: offline")
+    elif online.queued:
+        lines.append("Online: connecting (in queue)")
+    elif online.server:
+        lines.append(f"Online: yes, on `{online.server}`")
+    else:
+        lines.append("Online: yes")
+
+    event = await get_active_event()
+    if event is None:
+        lines.append("RSVP: _no anni currently announced_")
+    else:
+        rsvp = await Rsvp.filter(
+            event=event, player=player, revoked_at__isnull=True,
+        ).first()
+        if rsvp is None:
+            lines.append("RSVP: _none for the current anni_")
+        else:
+            label = _notice_label(rsvp.notice)
+            ts = int(rsvp.updated_at.timestamp())
+            lines.append(f"RSVP: **{label}** (set <t:{ts}:R>)")
+        placement = await (
+            BoardPlacement.filter(event=event, player=player)
+            .select_related("party")
+            .first()
+        )
+        if placement is not None:
+            if placement.party is not None:
+                lines.append(f"Board: Party {placement.party.ordinal}")
+            elif placement.bucket is not None:
+                bucket_label = BUCKET_LABEL.get(
+                    placement.bucket, placement.bucket.value
+                )
+                lines.append(f"Board: {bucket_label}")
+
+    lines.append(f"Dashboard: {url}")
+    return "\n".join(lines)
+
+
+def _appstate() -> AppState:
+    """Read the shared :class:`AppState` from the FastAPI singleton.
+
+    Lazy import to dodge the cog↔main circular at module import time
+    (``main.py`` only imports cogs at fishbot-start, by which point
+    ``main.app`` is already constructed by :func:`create_app`).
+    """
+    from main import app
+    return app.state.appstate
+
+
 class RsvpCog(commands.Cog):
     """The discord.py shim around :func:`execute_rsvp`.
 
@@ -214,8 +389,8 @@ class RsvpCog(commands.Cog):
         # Bare ``\rsvp`` / ``/rsvp`` with no subcommand — show what's available.
         if ctx.invoked_subcommand is None:
             await ctx.reply(
-                "Use `\\rsvp hard` / `soft` / `revoke` / `status` "
-                "(or the `/rsvp …` slash form).",
+                "Use `\\rsvp hard` / `soft` / `revoke` / `status` / `list` / "
+                "`check <username>` (or the `/rsvp …` slash form).",
                 ephemeral=True,
             )
 
@@ -234,6 +409,23 @@ class RsvpCog(commands.Cog):
     @rsvp_group.command(name="status", description="Show your RSVP + a dashboard link.")
     async def status(self, ctx: commands.Context) -> None:
         await self._handle(ctx, "status")
+
+    @rsvp_group.command(
+        name="list",
+        description="Public: who has RSVP'd (hard vs soft) for the announced anni.",
+    )
+    async def list_(self, ctx: commands.Context) -> None:
+        await self._handle_public(ctx, "list", execute_list)
+
+    @rsvp_group.command(
+        name="check",
+        description="Public: full status readout of a player by in-game name.",
+    )
+    async def check(self, ctx: commands.Context, *, username: str) -> None:
+        # ``*`` keyword-only consumes the rest of the prefix message into
+        # ``username`` so ``\rsvp check Some Player`` works; for the slash
+        # form it becomes a normal ``username:`` parameter.
+        await self._handle_public(ctx, "check", execute_check, username, _appstate())
 
     async def _handle(self, ctx: commands.Context, action: Action) -> None:
         # Defer so a slow dazebot lookup doesn't time the interaction out in
@@ -254,6 +446,29 @@ class RsvpCog(commands.Cog):
 
         if outcome.public_message:
             await _post_public(self.bot, outcome.public_message)
+
+    async def _handle_public(
+        self,
+        ctx: commands.Context,
+        action: str,
+        fn,
+        *args,
+    ) -> None:
+        """Shim for the read-only public subcommands (``list``/``check``).
+
+        Defers non-ephemerally so a slow DB query can't time the slash
+        interaction out, then replies in-channel. A handler crash is
+        caught and turned into a friendly line — never an interaction
+        timeout traceback in front of the user.
+        """
+        await ctx.defer()
+        try:
+            message = await fn(*args)
+        except Exception:
+            logger.exception("/rsvp %s failed unexpectedly", action)
+            await ctx.reply("Something went wrong — staff have been notified.")
+            return
+        await ctx.reply(message)
 
 
 async def _post_public(bot: commands.Bot, content: str) -> None:

@@ -392,6 +392,151 @@ async def test_handle_defers_ephemerally_and_replies(seeded, monkeypatch):
     assert len(channel.sent) == 1 and "baz" in channel.sent[0]
 
 
+# --------------------------------------------------------------------------- #
+# \rsvp list / \rsvp check — read-only public subcommands (no dazebot needed) #
+# --------------------------------------------------------------------------- #
+
+
+async def test_set_public_message_uses_discord_timestamp_tag(seeded, monkeypatch):
+    """Regression for the timezone-safety rewrite: the public echo must
+    reference the anni via a Discord ``<t:N:R>`` tag, never English
+    ("tonight", "today", etc.)."""
+    baz = seeded["players"]["baz"]
+    _patch_identity(monkeypatch, _ident(baz, tier="community"))
+    from app.bot.cogs.rsvp import execute_rsvp
+
+    outcome = await execute_rsvp(123, "hard")
+
+    event = seeded["event"]
+    assert outcome.public_message is not None
+    assert f"<t:{event.stamp_epoch}:R>" in outcome.public_message
+    assert f"<t:{event.stamp_epoch}:F>" in outcome.public_message
+    assert "tonight" not in outcome.public_message.lower()
+    assert "today" not in outcome.public_message.lower()
+
+
+async def test_execute_list_no_event(db):
+    from app.bot.cogs.rsvp import execute_list
+
+    msg = await execute_list()
+    assert "No anni is currently announced" in msg
+
+
+async def test_execute_list_splits_hard_and_soft(seeded):
+    """The seed has 4 HARD (Wenweia, Nazzae, Metrafish, foo) and 2 SOFT
+    (Trixomaniac, Paradrex) active RSVPs."""
+    from app.bot.cogs.rsvp import execute_list
+
+    msg = await execute_list()
+
+    assert "**Hard (4):**" in msg
+    assert "**Soft (2):**" in msg
+    for name in ("Wenweia", "Nazzae", "Metrafish", "foo"):
+        assert f"`{name}`" in msg
+    for name in ("Trixomaniac", "Paradrex"):
+        assert f"`{name}`" in msg
+    # Discord timestamp tag in the header — never wall-clock English.
+    event = seeded["event"]
+    assert f"<t:{event.stamp_epoch}:R>" in msg
+
+
+async def test_execute_list_empty_group_says_nobody_yet(seeded):
+    """Revoke every HARD; the Hard line then reads "_nobody yet_"."""
+    from app.bot.cogs.rsvp import execute_list
+
+    event = seeded["event"]
+    await Rsvp.filter(
+        event=event, notice=AttendanceNotice.RSVP_HARD,
+    ).update(revoked_at=__import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ))
+
+    msg = await execute_list()
+    assert "**Hard (0):** _nobody yet_" in msg
+    # Soft RSVPs untouched.
+    assert "**Soft (2):**" in msg
+
+
+async def test_execute_check_unknown_name(seeded):
+    """A name nobody knows -> friendly miss, no exception, no DB row."""
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("NotARealPlayer", AppState())
+    assert "don't know" in msg.lower()
+    assert "NotARealPlayer" in msg
+
+
+async def test_execute_check_empty_username(seeded):
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("   ", AppState())
+    assert "Specify an in-game name" in msg
+
+
+async def test_execute_check_known_player_full_readout(seeded):
+    """Wenweia is HARD'd, on Party 1 with role PRIMARY, in Returners (MEMBER)."""
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("Wenweia", AppState())
+
+    assert "Wenweia" in msg
+    assert "Member" in msg                       # tier label
+    assert "Core" in msg                         # has capabilities
+    assert "Primary DPS" in msg                  # capability surfaced
+    assert "RSVP: **HARD**" in msg               # active RSVP
+    assert "Party 1" in msg                      # board placement
+    assert "Dashboard:" in msg
+
+
+async def test_execute_check_is_case_insensitive(seeded):
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("WENWEIA", AppState())
+    assert "Wenweia" in msg
+    assert "RSVP: **HARD**" in msg
+
+
+async def test_execute_check_no_capabilities_says_fill(seeded):
+    """baz has no capability rows → Fill, no roles listed."""
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("baz", AppState())
+    assert "Fill" in msg
+    assert "no capabilities declared" in msg
+
+
+async def test_execute_check_api_disabled_player_says_unknown(seeded):
+    """Metrafish has ``last_online == EPOCH`` (API-disabled). Online line
+    must say "unknown" — never fabricate offline (CLAUDE.md hard rule)."""
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    msg = await execute_check("Metrafish", AppState())
+    assert "unknown" in msg.lower()
+    assert "API disabled" in msg
+
+
+async def test_execute_check_resolves_via_alias_cache(seeded):
+    """A legacy/in-game name only present in the alias cache still
+    resolves to the right player (rename-desync path)."""
+    from app.bot.cogs.rsvp import execute_check
+    from app.services.state import AppState
+
+    pasta = seeded["players"]["_akaPasta"]
+    state = AppState()
+    state.aliases["isnortpasta"] = pasta.mc_uuid  # how online_merge stores them
+
+    msg = await execute_check("ISnortPasta", state)
+    assert "_akaPasta" in msg
+    # Rename-desync line shows the stale name.
+    assert "ISnortPasta" in msg
+
+
 async def test_handle_skips_public_post_when_channel_unset(seeded, monkeypatch):
     """A misconfigured RSVP_CHANNEL_ID is a logged warning, never a crash."""
     wen = seeded["players"]["Wenweia"]
