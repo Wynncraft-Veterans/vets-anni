@@ -25,8 +25,11 @@ class FishBot(commands.Bot):
 
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        # Slash commands don't need privileged intents; keep the footprint tiny.
-        super().__init__(command_prefix="!fish ", intents=intents, help_command=None)
+        # Hybrid commands need message_content to parse the ``\rsvp`` prefix
+        # form (slash invocations don't, but we support both). Must also be
+        # toggled on in the Developer Portal or login will fail.
+        intents.message_content = True
+        super().__init__(command_prefix="\\", intents=intents, help_command=None)
 
     async def setup_hook(self) -> None:
         await self._load_cogs()

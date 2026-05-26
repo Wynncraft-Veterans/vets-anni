@@ -33,7 +33,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from app.constants import AttendanceNotice, MembershipTier
@@ -201,46 +200,57 @@ async def execute_rsvp(discord_id: int | str, action: Action) -> RsvpOutcome:
 
 
 class RsvpCog(commands.Cog):
-    """The discord.py shim around :func:`execute_rsvp`."""
+    """The discord.py shim around :func:`execute_rsvp`.
+
+    Exposed as a *hybrid* group so both ``/rsvp …`` (slash) and ``\\rsvp …``
+    (prefix, matching the fishbot convention) reach the same handler.
+    """
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    group = app_commands.Group(
-        name="rsvp", description="Manage your anni RSVP."
-    )
+    @commands.hybrid_group(name="rsvp", description="Manage your anni RSVP.")
+    async def rsvp_group(self, ctx: commands.Context) -> None:
+        # Bare ``\rsvp`` / ``/rsvp`` with no subcommand — show what's available.
+        if ctx.invoked_subcommand is None:
+            await ctx.reply(
+                "Use `\\rsvp hard` / `soft` / `revoke` / `status` "
+                "(or the `/rsvp …` slash form).",
+                ephemeral=True,
+            )
 
-    @group.command(name="hard", description="Commit to attending (hard RSVP).")
-    async def hard(self, interaction: discord.Interaction) -> None:
-        await self._handle(interaction, "hard")
+    @rsvp_group.command(name="hard", description="Commit to attending (hard RSVP).")
+    async def hard(self, ctx: commands.Context) -> None:
+        await self._handle(ctx, "hard")
 
-    @group.command(name="soft", description="Tentative — might attend (soft RSVP).")
-    async def soft(self, interaction: discord.Interaction) -> None:
-        await self._handle(interaction, "soft")
+    @rsvp_group.command(name="soft", description="Tentative — might attend (soft RSVP).")
+    async def soft(self, ctx: commands.Context) -> None:
+        await self._handle(ctx, "soft")
 
-    @group.command(name="revoke", description="Withdraw your current RSVP.")
-    async def revoke(self, interaction: discord.Interaction) -> None:
-        await self._handle(interaction, "revoke")
+    @rsvp_group.command(name="revoke", description="Withdraw your current RSVP.")
+    async def revoke(self, ctx: commands.Context) -> None:
+        await self._handle(ctx, "revoke")
 
-    @group.command(name="status", description="Show your RSVP + a dashboard link.")
-    async def status(self, interaction: discord.Interaction) -> None:
-        await self._handle(interaction, "status")
+    @rsvp_group.command(name="status", description="Show your RSVP + a dashboard link.")
+    async def status(self, ctx: commands.Context) -> None:
+        await self._handle(ctx, "status")
 
-    async def _handle(self, interaction: discord.Interaction, action: Action) -> None:
-        # Defer ephemerally so a slow dazebot lookup never times us out
-        # in front of the user. ``thinking=True`` shows the spinner.
-        await interaction.response.defer(ephemeral=True, thinking=True)
+    async def _handle(self, ctx: commands.Context, action: Action) -> None:
+        # Defer so a slow dazebot lookup doesn't time the interaction out in
+        # front of the user. For prefix invocations Context.defer is a no-op
+        # (no interaction to ack); ephemeral is silently ignored there too.
+        await ctx.defer(ephemeral=True)
         try:
-            outcome = await execute_rsvp(interaction.user.id, action)
+            outcome = await execute_rsvp(ctx.author.id, action)
         except Exception:
             logger.exception("/rsvp %s failed unexpectedly", action)
-            await interaction.followup.send(
+            await ctx.reply(
                 "Something went wrong — staff have been notified.",
                 ephemeral=True,
             )
             return
 
-        await interaction.followup.send(outcome.private_message, ephemeral=True)
+        await ctx.reply(outcome.private_message, ephemeral=True)
 
         if outcome.public_message:
             await _post_public(self.bot, outcome.public_message)

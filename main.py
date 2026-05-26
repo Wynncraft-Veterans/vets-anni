@@ -56,6 +56,11 @@ logging.basicConfig(
     level=logging.DEBUG if get_settings().debug else logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+# Quiet third-party DEBUG noise that drowns out our own logs: full SQL strings
+# from tortoise + the same query repeated by aiosqlite, plus discord's gateway
+# heartbeats and frame dumps. Our own ``anni.*`` loggers stay at DEBUG.
+for _noisy in ("tortoise.db_client", "aiosqlite", "discord.gateway", "discord.client"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 logger = logging.getLogger("anni")
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"

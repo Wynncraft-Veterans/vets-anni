@@ -9,9 +9,10 @@ test surface is wide on purpose:
   not linked, blocked, no active event, happy paths, plus a brand-new
   fishbot user → AnniPlayer get-or-create with tier from dazebot).
 * The discord.py shim ``RsvpCog._handle`` (defers + ephemeral reply +
-  conditional public post) driven by a ``FakeInteraction``/``FakeBot``,
+  conditional public post) driven by a ``_FakeContext``/``_FakeBot``,
   mirroring how the WS layer is tested against the hub directly
-  (CLAUDE.md Phase-2 decisions).
+  (CLAUDE.md Phase-2 decisions). The cog is hybrid, so the same shim
+  serves both ``/rsvp …`` (slash) and ``\\rsvp …`` (prefix) entrypoints.
 """
 
 from __future__ import annotations
@@ -327,31 +328,27 @@ async def test_execute_refreshes_mc_username_on_rename(seeded, monkeypatch):
 
 
 @dataclass
-class _FakeResponse:
-    deferred_with: dict | None = None
-
-    async def defer(self, *, ephemeral: bool = False, thinking: bool = False):
-        self.deferred_with = {"ephemeral": ephemeral, "thinking": thinking}
-
-
-@dataclass
-class _FakeFollowup:
-    sent: list[tuple[str, bool]] = field(default_factory=list)
-
-    async def send(self, content: str, *, ephemeral: bool = False):
-        self.sent.append((content, ephemeral))
-
-
-@dataclass
-class _FakeUser:
+class _FakeAuthor:
     id: int = 123
 
 
 @dataclass
-class _FakeInteraction:
-    user: _FakeUser = field(default_factory=_FakeUser)
-    response: _FakeResponse = field(default_factory=_FakeResponse)
-    followup: _FakeFollowup = field(default_factory=_FakeFollowup)
+class _FakeContext:
+    """Stand-in for ``commands.Context``: deferral + reply + author.id.
+
+    The cog is a hybrid command now, so it talks to ``Context`` rather
+    than ``Interaction``. Slash and prefix invocations share this surface.
+    """
+
+    author: _FakeAuthor = field(default_factory=_FakeAuthor)
+    deferred_with: dict | None = None
+    replies: list[tuple[str, bool]] = field(default_factory=list)
+
+    async def defer(self, *, ephemeral: bool = False):
+        self.deferred_with = {"ephemeral": ephemeral}
+
+    async def reply(self, content: str, *, ephemeral: bool = False):
+        self.replies.append((content, ephemeral))
 
 
 class _FakeChannel:
@@ -384,13 +381,13 @@ async def test_handle_defers_ephemerally_and_replies(seeded, monkeypatch):
 
     from app.bot.cogs.rsvp import RsvpCog
     cog = RsvpCog(bot)  # type: ignore[arg-type]
-    interaction = _FakeInteraction()
+    ctx = _FakeContext()
 
-    await cog._handle(interaction, "hard")  # type: ignore[arg-type]
+    await cog._handle(ctx, "hard")  # type: ignore[arg-type]
 
-    assert interaction.response.deferred_with == {"ephemeral": True, "thinking": True}
-    assert len(interaction.followup.sent) == 1
-    msg, ephemeral = interaction.followup.sent[0]
+    assert ctx.deferred_with == {"ephemeral": True}
+    assert len(ctx.replies) == 1
+    msg, ephemeral = ctx.replies[0]
     assert ephemeral is True and "HARD" in msg
     assert len(channel.sent) == 1 and "baz" in channel.sent[0]
 
@@ -405,10 +402,10 @@ async def test_handle_skips_public_post_when_channel_unset(seeded, monkeypatch):
 
     from app.bot.cogs.rsvp import RsvpCog
     cog = RsvpCog(bot)  # type: ignore[arg-type]
-    interaction = _FakeInteraction()
+    ctx = _FakeContext()
 
-    await cog._handle(interaction, "revoke")  # type: ignore[arg-type]
+    await cog._handle(ctx, "revoke")  # type: ignore[arg-type]
 
-    # Followup still went out — only the public side is silenced.
-    assert len(interaction.followup.sent) == 1
-    assert interaction.followup.sent[0][1] is True  # ephemeral
+    # Reply still went out — only the public side is silenced.
+    assert len(ctx.replies) == 1
+    assert ctx.replies[0][1] is True  # ephemeral
