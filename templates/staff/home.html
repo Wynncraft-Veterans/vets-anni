@@ -4,11 +4,6 @@
 {% block content %}
   <div class="dash-head">
     <h1>Staff hub</h1>
-    <p class="muted">
-      <a href="/staff/logout">sign out</a> ·
-      <a href="/staff/board">organizer board</a> ·
-      <a href="/staff/roles">roles dashboard</a>
-    </p>
   </div>
 
   {% if rotate_msg %}
@@ -94,42 +89,43 @@
         <p class="muted">Nothing to show until an anni is announced.</p>
       {% endif %}
     </section>
+
+    {# ---- Reset a user's password (left column, row 2) ---- #}
+    <section class="card">
+      <h2>Reset a user's password</h2>
+      <p class="muted">A user's first password "sticks". Clear it so they can
+        sign in freely again (and set a new one if they want).</p>
+      <table class="kv staff-users">
+        <tr><th>User</th><th>Password</th><th></th></tr>
+        {% for u in users %}
+          <tr>
+            <td>{{ u.name }}</td>
+            <td>{% if u.has_password %}🔒 set{% else %}<span class="muted">none</span>{% endif %}</td>
+            <td>
+              {% if u.has_password %}
+                <form method="post" action="/staff/users/{{ u.mc_uuid }}/clear-password">
+                  <button class="btn-sm btn-danger" type="submit">Clear</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    {# ---- Rotate the staff password (right column, row 2) ---- #}
+    <section class="card">
+      <h2>Rotate the staff password</h2>
+      <p class="muted">Gated by the admin password (low-trust, per spec).</p>
+      <form method="post" action="/staff/rotate-password">
+        <label for="ap">Admin password</label>
+        <input id="ap" name="admin_password" type="password" autocomplete="off" required>
+        <label for="np">New staff password</label>
+        <input id="np" name="new_password" type="password" autocomplete="off" required>
+        <button type="submit">Rotate</button>
+      </form>
+    </section>
   </div>
-
-  {# ---- Password tools (Phase-1 spec features, kept) ---- #}
-  <section class="card">
-    <h2>Reset a user's password</h2>
-    <p class="muted">A user's first password "sticks". Clear it so they can
-      sign in freely again (and set a new one if they want).</p>
-    <table class="kv staff-users">
-      <tr><th>User</th><th>Password</th><th></th></tr>
-      {% for u in users %}
-        <tr>
-          <td>{{ u.name }}</td>
-          <td>{% if u.has_password %}🔒 set{% else %}<span class="muted">none</span>{% endif %}</td>
-          <td>
-            {% if u.has_password %}
-              <form method="post" action="/staff/users/{{ u.mc_uuid }}/clear-password">
-                <button class="btn-sm btn-danger" type="submit">Clear</button>
-              </form>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-    </table>
-  </section>
-
-  <section class="card" style="max-width:480px">
-    <h2>Rotate the staff password</h2>
-    <p class="muted">Gated by the admin password (low-trust, per spec).</p>
-    <form method="post" action="/staff/rotate-password">
-      <label for="ap">Admin password</label>
-      <input id="ap" name="admin_password" type="password" autocomplete="off" required>
-      <label for="np">New staff password</label>
-      <input id="np" name="new_password" type="password" autocomplete="off" required>
-      <button type="submit">Rotate</button>
-    </form>
-  </section>
 {% endblock %}
 
 {% block scripts %}

@@ -25,6 +25,19 @@ single asyncio loop.
 These docs are the source of truth — keep them current as the build
 progresses. Phasing/status is at the bottom of this file.
 
+## Discord bots in this workspace — command prefixes
+
+fishbot's prefix-command leader is **`\`**. The vets ecosystem runs four Discord bots, each with its own prefix; the table is duplicated across each bot's repo so the mapping is discoverable from any vantage point:
+
+| Bot | Repo | Prefix |
+|-----|------|--------|
+| dazebot | `../dazebot` | `~` |
+| nazbot | `../temporary-server` | `!` |
+| **fishbot** | `vets-anni` (this repo) | `\` |
+| dynobot | (third-party, no repo) | `?` |
+
+Slash commands (e.g. `/rsvp`) are unprefixed. The prefix only applies to text/message commands.
+
 ## Hard rules (do not violate)
 
 - **Identity anchor is the Minecraft UUID.** Never key anything on username.
@@ -47,6 +60,12 @@ progresses. Phasing/status is at the bottom of this file.
   **public** confirmation line to `RSVP_CHANNEL_ID` (a record/visibility ack).
 - One cross-repo addition to dazebot only: secret-gated
   `POST /api/internal/anni-identity` (reuses `verify_keys.resolve_tier`).
+- **API boundary:** vets-anni is one of the three server-side projects —
+  alongside `../temporary-server` and `vets-auth` — permitted to call
+  dazebot's `/api/internal/*` directly. All three live on the private
+  `verify` Docker network. Client-side / public-facing projects (notably
+  `../vetsmod`) must route through `../temporary-server` at
+  `api.wynnvets.org` and may not call dazebot directly.
 - Durable docs live in `.claude/*.md` (indexed above) and stay in version
   control; link new ones here. Use `.claude/ephemeral` for temporary work.
 - Tasteful comments throughout; every package has a one-responsibility
@@ -130,3 +149,22 @@ broken; also dodges the 72-byte cap). `domain/presence.py` is implemented now
 Phase 2. `domain/buckets.py` is intentionally absent until Phase 2 (board
 mutation path). Weapons catalog is best-effort: an empty/odd WAPI result
 degrades to "accepted, unverified" rather than blocking capability edits.
+
+## External name-resolution providers
+
+(Preemptive — no current code consumes this, but the convention is recorded so it's already in place when name → UUID or UUID → name lookups are added.)
+
+Reliability ladder: `ashcon < wynncraft < playerdb < mojang`.
+
+| Provider | Accuracy | Rate limit |
+|---|---|---|
+| ashcon | low (frequently stale) | very permissive |
+| PlayerDB | medium | medium-permissive (not unlimited) |
+| Wynncraft `/v3/player` | only authoritative for Wynncraft-internal state | shared with this service's other Wynncraft traffic |
+| Mojang | source of truth | very restrictive |
+
+**This repo is server-side.** We own the Mojang and PlayerDB quotas exclusively on this box, so load is predictable. Prefer accuracy when we have headroom — PlayerDB as the primary upstream, Mojang reserved for authoritative tiebreaks and writing fresh names to the cache. Skip ashcon (PlayerDB does the same job better). Stay well below each tier's budget so it's always available when truly needed.
+
+When using a permissive provider, treat its `username` field as potentially stale (PlayerDB and ashcon are known to retain old names). Before writing a name to any long-lived cache, confirm against Mojang; if that fails, skip the cache write rather than persisting a known-stale value.
+
+Reference implementations: dazebot's `lib/mc/mojang.py` (name → UUID via `get_mc_uuid`, UUID → name via `get_mc_username`) and temporary-server's `app/services/username_cache.py` / `app/services/guild_roster_poller.py` (Wynncraft-key-vs-cache tiebreaker pattern).
