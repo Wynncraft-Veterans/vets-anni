@@ -29,6 +29,7 @@ from app.bot.client import start_fishbot, stop_fishbot  # noqa: E402
 from app.db import lifecycle  # noqa: E402
 from app.services import (  # noqa: E402
     api_disabled,
+    dazebot_client,
     lifecycle_task,
     mojang,
     online_merge,
@@ -89,6 +90,7 @@ async def lifespan(app: FastAPI):
         await stop_fishbot(bot, bot_task)
         await get_wapi().close()
         await get_tempserver().close()
+        await dazebot_client.close()
         await mojang.close()
         await lifecycle.close()
         logger.info("vets-anni stopped")
