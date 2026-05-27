@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         description="The anni channel (where fishbot will post public RSVP confirmation lines). "
         "User replies stay ephemeral; this line is a visibility/record ack.",
     )
+    staff_role_id: int = Field(
+        default=1337993168502788216,
+        description="Discord role ID that gates staff-only subcommands "
+        "(e.g. `\\rsvp set` override). Members with this role on the invoking "
+        "guild may set other users' RSVPs; everyone else gets a CheckFailure.",
+    )
 
     # --- Wynncraft API (OWN token; separate ratelimit bucket) ----------------
     wapi_token: str = Field(default="", description="vets-anni's OWN Wynncraft token.")

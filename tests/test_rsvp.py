@@ -554,3 +554,326 @@ async def test_handle_skips_public_post_when_channel_unset(seeded, monkeypatch):
     # Reply still went out — only the public side is silenced.
     assert len(ctx.replies) == 1
     assert ctx.replies[0][1] is True  # ephemeral
+
+
+# --------------------------------------------------------------------------- #
+# \rsvp set <target> <hard|soft> — staff override                             #
+# --------------------------------------------------------------------------- #
+#
+# Decision tree: ``execute_rsvp_set`` mirrors ``execute_rsvp`` in shape — every
+# input returns an ``RsvpOutcome``, never raises. The two-path resolution
+# (Discord first, IGN fallback) is tested both ways. Gating is tested via the
+# extracted ``_is_staff_predicate``; the cog ``_handle_set`` is exercised at
+# the shim level (gating is on the ``set_`` subcommand itself, which only
+# discord.py's command machinery would invoke).
+
+
+@dataclass
+class _FakeMember:
+    """Minimal stand-in for ``discord.Member`` (what ``_resolve_member`` returns)."""
+
+    id: int = 555
+    display_name: str = "SomeMember"
+
+
+@dataclass
+class _FakeRole:
+    id: int = 0
+
+
+@dataclass
+class _FakeGuild:
+    id: int = 42
+
+
+def _patch_member(monkeypatch, member: "_FakeMember | None") -> None:
+    """Replace the cog's MemberConverter wrapper with a fixed result.
+
+    Mirrors :func:`_patch_identity` — patches the name as the cog imported
+    it so the actual ``commands.MemberConverter`` is never invoked (it
+    would introspect ctx for things our fake doesn't carry).
+    """
+    from app.bot.cogs import rsvp as cog
+
+    async def _fake(_ctx, _raw):
+        return member
+
+    monkeypatch.setattr(cog, "_resolve_member", _fake)
+
+
+async def test_execute_set_no_active_event(db, monkeypatch):
+    """No AnniEvent → friendly miss, never reaches resolution."""
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "irrelevant", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "no anni" in outcome.private_message.lower()
+    assert outcome.public_message is None
+    # No DB write, no AnniPlayer created.
+    assert await Rsvp.all().count() == 0
+
+
+async def test_execute_set_discord_member_happy_path_hard(seeded, monkeypatch):
+    """Discord member resolves → dazebot identity → HARD RSVP + [Override] line."""
+    baz = seeded["players"]["baz"]
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="BazDiscord"))
+    _patch_identity(monkeypatch, _ident(baz, tier="community"))
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@BazDiscord", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "Override recorded" in outcome.private_message
+    assert "baz" in outcome.private_message
+    assert "HARD" in outcome.private_message
+    assert outcome.public_message is not None
+    assert outcome.public_message.startswith("[Override]")
+    assert "baz" in outcome.public_message
+    assert "HARD" in outcome.public_message
+    assert "RSVP'd manually by staff" in outcome.public_message
+    assert "\\rsvp" in outcome.public_message  # nudge to self-RSVP next time
+
+    event = await get_active_event()
+    row = await Rsvp.filter(
+        event=event, player=baz, revoked_at__isnull=True
+    ).first()
+    assert row is not None and row.notice is AttendanceNotice.RSVP_HARD
+
+
+async def test_execute_set_discord_member_happy_path_soft(seeded, monkeypatch):
+    """level='soft' stores ``AttendanceNotice.RSVP_SOFT``."""
+    baz = seeded["players"]["baz"]
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="BazDiscord"))
+    _patch_identity(monkeypatch, _ident(baz, tier="community"))
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@BazDiscord", "soft", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "SOFT" in outcome.private_message
+    assert outcome.public_message is not None and "SOFT" in outcome.public_message
+    event = await get_active_event()
+    row = await Rsvp.filter(
+        event=event, player=baz, revoked_at__isnull=True
+    ).first()
+    assert row is not None and row.notice is AttendanceNotice.RSVP_SOFT
+
+
+async def test_execute_set_discord_member_not_linked(seeded, monkeypatch):
+    """Discord member with no dazebot link → friendly error, no DB write."""
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="Newbie"))
+    _patch_identity(
+        monkeypatch,
+        AnniIdentity(
+            linked=False, disc_uuid="555", mc_uuid=None, mc_username=None,
+            tier=None, blocked=False, reason="no linked minecraft account",
+        ),
+    )
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    before = await Rsvp.all().count()
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@Newbie", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "no Minecraft account linked" in outcome.private_message
+    assert "Newbie" in outcome.private_message
+    assert outcome.public_message is None
+    assert await Rsvp.all().count() == before
+
+
+async def test_execute_set_discord_member_blocked(seeded, monkeypatch):
+    """Discord member resolved but link is blocked → friendly error, no write."""
+    baz = seeded["players"]["baz"]
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="BadGuy"))
+    _patch_identity(monkeypatch, _ident(baz, blocked=True, reason="griefing"))
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    before = await Rsvp.all().count()
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@BadGuy", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "blocked" in outcome.private_message.lower()
+    assert "griefing" in outcome.private_message
+    assert outcome.public_message is None
+    assert await Rsvp.all().count() == before
+
+
+async def test_execute_set_dazebot_unavailable(seeded, monkeypatch):
+    """Discord member resolved but dazebot is down → friendly error, no write."""
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="Someone"))
+    _patch_identity(monkeypatch, None)
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    before = await Rsvp.all().count()
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@Someone", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "identity service is unavailable" in outcome.private_message.lower()
+    assert outcome.public_message is None
+    assert await Rsvp.all().count() == before
+
+
+async def test_execute_set_ign_fallback_hits(seeded, monkeypatch):
+    """No Discord match → IGN lookup succeeds → RSVP recorded."""
+    _patch_member(monkeypatch, None)  # MemberConverter would have failed
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "Wenweia", "soft", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "Override recorded" in outcome.private_message
+    assert "Wenweia" in outcome.private_message
+    assert "SOFT" in outcome.private_message
+    assert outcome.public_message is not None
+    assert "[Override]" in outcome.public_message
+    assert "Wenweia" in outcome.public_message
+
+    wen = seeded["players"]["Wenweia"]
+    event = await get_active_event()
+    row = await Rsvp.filter(
+        event=event, player=wen, revoked_at__isnull=True
+    ).first()
+    assert row is not None and row.notice is AttendanceNotice.RSVP_SOFT
+
+
+async def test_execute_set_both_paths_miss(seeded, monkeypatch):
+    """No Discord match + no IGN match → friendly error, no DB change."""
+    _patch_member(monkeypatch, None)
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    before = await Rsvp.all().count()
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "TotallyMadeUpName", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    assert "can't find" in outcome.private_message.lower()
+    assert "TotallyMadeUpName" in outcome.private_message
+    assert outcome.public_message is None
+    assert await Rsvp.all().count() == before
+
+
+# --- _is_staff predicate ---------------------------------------------------- #
+
+
+@dataclass
+class _FakeAuthorWithRoles:
+    id: int = 1
+    roles: list = field(default_factory=list)
+
+
+@dataclass
+class _FakeCtxWithGuild:
+    author: _FakeAuthorWithRoles = field(default_factory=_FakeAuthorWithRoles)
+    guild: object | None = None
+
+
+async def test_is_staff_predicate_passes_with_role():
+    from app.bot.cogs.rsvp import _is_staff_predicate
+    from app.settings import get_settings
+
+    role_id = get_settings().staff_role_id
+    ctx = _FakeCtxWithGuild(
+        author=_FakeAuthorWithRoles(roles=[_FakeRole(id=role_id)]),
+        guild=_FakeGuild(),
+    )
+    assert await _is_staff_predicate(ctx) is True  # type: ignore[arg-type]
+
+
+async def test_is_staff_predicate_fails_without_role():
+    from app.bot.cogs.rsvp import _is_staff_predicate
+
+    ctx = _FakeCtxWithGuild(
+        author=_FakeAuthorWithRoles(roles=[_FakeRole(id=1)]),
+        guild=_FakeGuild(),
+    )
+    assert await _is_staff_predicate(ctx) is False  # type: ignore[arg-type]
+
+
+async def test_is_staff_predicate_fails_in_dm():
+    """Role membership is a guild concept — no guild means no staff."""
+    from app.bot.cogs.rsvp import _is_staff_predicate
+    from app.settings import get_settings
+
+    role_id = get_settings().staff_role_id
+    ctx = _FakeCtxWithGuild(
+        author=_FakeAuthorWithRoles(roles=[_FakeRole(id=role_id)]),
+        guild=None,
+    )
+    assert await _is_staff_predicate(ctx) is False  # type: ignore[arg-type]
+
+
+async def test_is_staff_predicate_honors_settings_override(monkeypatch):
+    """Tests can change the staff role at runtime via monkeypatch."""
+    from app.bot.cogs.rsvp import _is_staff_predicate
+    from app.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "staff_role_id", 99_999)
+    ctx = _FakeCtxWithGuild(
+        author=_FakeAuthorWithRoles(roles=[_FakeRole(id=99_999)]),
+        guild=_FakeGuild(),
+    )
+    assert await _is_staff_predicate(ctx) is True  # type: ignore[arg-type]
+
+
+# --- cog shim _handle_set --------------------------------------------------- #
+
+
+async def test_handle_set_defers_replies_and_posts_override(seeded, monkeypatch):
+    """Happy path: defer ephemeral + ephemeral private reply + public override post."""
+    baz = seeded["players"]["baz"]
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="BazDiscord"))
+    _patch_identity(monkeypatch, _ident(baz, tier="community"))
+    from app.settings import get_settings
+    monkeypatch.setattr(get_settings(), "rsvp_channel_id", 999_999)
+    channel = _FakeChannel()
+    bot = _FakeBot(channel=channel)
+
+    from app.bot.cogs.rsvp import RsvpCog
+    cog = RsvpCog(bot)  # type: ignore[arg-type]
+    ctx = _FakeContext()
+
+    await cog._handle_set(ctx, "@BazDiscord", "hard")  # type: ignore[arg-type]
+
+    assert ctx.deferred_with == {"ephemeral": True}
+    assert len(ctx.replies) == 1
+    msg, ephemeral = ctx.replies[0]
+    assert ephemeral is True
+    assert "Override recorded" in msg
+    assert len(channel.sent) == 1
+    assert channel.sent[0].startswith("[Override]")
+    assert "baz" in channel.sent[0]
+
+
+async def test_handle_set_no_public_post_on_failure(seeded, monkeypatch):
+    """A resolution miss replies ephemerally and skips the public channel."""
+    _patch_member(monkeypatch, None)  # both paths miss
+    from app.settings import get_settings
+    monkeypatch.setattr(get_settings(), "rsvp_channel_id", 999_999)
+    channel = _FakeChannel()
+    bot = _FakeBot(channel=channel)
+
+    from app.bot.cogs.rsvp import RsvpCog
+    cog = RsvpCog(bot)  # type: ignore[arg-type]
+    ctx = _FakeContext()
+
+    await cog._handle_set(ctx, "NoSuchPerson", "hard")  # type: ignore[arg-type]
+
+    assert len(ctx.replies) == 1 and ctx.replies[0][1] is True
+    assert "can't find" in ctx.replies[0][0].lower()
+    assert channel.sent == []  # nothing public on a miss

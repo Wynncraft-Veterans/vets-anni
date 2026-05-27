@@ -249,6 +249,122 @@ async def _resolve_player_by_ign(name: str, state: AppState) -> AnniPlayer | Non
     return await AnniPlayer.filter(mc_uuid=uuid).first()
 
 
+async def _resolve_member(
+    ctx: commands.Context, raw: str
+) -> discord.Member | None:
+    """Wrap :class:`commands.MemberConverter` to return ``None`` on no match.
+
+    Test seam — patch this in unit tests to inject a fake member without
+    spinning up a real ctx the converter can introspect.
+    """
+    try:
+        return await commands.MemberConverter().convert(ctx, raw)
+    except commands.BadArgument:
+        return None
+
+
+async def _resolve_target(
+    ctx: commands.Context, raw: str, state: AppState
+) -> tuple[AnniPlayer | None, str | None]:
+    """Resolve a staff-supplied target to an :class:`AnniPlayer`.
+
+    Returns ``(player, None)`` on success or ``(None, friendly_error)`` on
+    miss. Strategy: try Discord first (``MemberConverter`` handles
+    ``<@id>``, raw IDs, usernames, and nicknames) → look up the linked MC
+    account via dazebot; if no Discord match, fall back to the cache-first
+    IGN lookup that ``\\rsvp check`` uses (never spends the WAPI token).
+    """
+    member = await _resolve_member(ctx, raw)
+    if member is not None:
+        identity = await get_dazebot_client().resolve_anni_identity(member.id)
+        if identity is None:
+            return None, (
+                "The identity service is unavailable right now — try again "
+                "in a minute."
+            )
+        if identity.blocked:
+            reason = f" ({identity.reason})" if identity.reason else ""
+            return None, (
+                f"`{member.display_name}`'s dazebot link is blocked{reason}."
+            )
+        if not identity.linked or not identity.mc_uuid:
+            return None, (
+                f"`{member.display_name}` has no Minecraft account linked "
+                f"via dazebot. Ask them to `~verify`, or pass their IGN "
+                f"directly."
+            )
+        return await _upsert_player(identity), None
+    # Fallback: maybe the staff member typed an IGN rather than a Discord ref.
+    player = await _resolve_player_by_ign(raw, state)
+    if player is None:
+        return None, (
+            f"I can't find `{raw}` — not a known Discord member or in-game name."
+        )
+    return player, None
+
+
+async def execute_rsvp_set(
+    ctx: commands.Context, target_raw: str, level: Literal["hard", "soft"],
+    state: AppState,
+) -> RsvpOutcome:
+    """``\\rsvp set <target> <hard|soft>`` decision tree (staff override).
+
+    Mirrors :func:`execute_rsvp` in shape — every input produces a
+    :class:`RsvpOutcome`, never raises. The cog only does Discord-side
+    glue (defer/reply/public-post); this function is the testable core.
+    """
+    event = await get_active_event()
+    if event is None:
+        return RsvpOutcome(
+            private_message=(
+                f"No anni is currently announced — there's nothing to RSVP "
+                f"for. Dashboard: {_dashboard_url()}"
+            )
+        )
+    player, err = await _resolve_target(ctx, target_raw, state)
+    if err is not None:
+        return RsvpOutcome(private_message=err)
+    assert player is not None  # err is None => player is set
+    notice = (
+        AttendanceNotice.RSVP_HARD if level == "hard"
+        else AttendanceNotice.RSVP_SOFT
+    )
+    await rsvp_domain.set_rsvp(player, event, notice)
+    label = _notice_label(notice)
+    url = _dashboard_url()
+    private = (
+        f"Override recorded: `{player.mc_username}` is now **{label}** "
+        f"RSVP'd. Dashboard: {url}"
+    )
+    public = (
+        f"[Override] `{player.mc_username}` was **{label}** RSVP'd manually "
+        f"by staff. In future, please use `\\rsvp` to indicate your intention!"
+    )
+    return RsvpOutcome(private_message=private, public_message=public)
+
+
+async def _is_staff_predicate(ctx: commands.Context) -> bool:
+    """Predicate for :func:`_is_staff` — testable directly.
+
+    DM invocations (no ``ctx.guild``) always fail — role membership is a
+    guild concept. The role ID is read from settings each call so a test
+    override via ``monkeypatch.setattr(settings, "staff_role_id", …)`` takes
+    effect without re-decorating.
+    """
+    if ctx.guild is None:
+        return False
+    role_id = get_settings().staff_role_id
+    return any(
+        getattr(r, "id", None) == role_id
+        for r in getattr(ctx.author, "roles", ())
+    )
+
+
+def _is_staff():
+    """:func:`commands.check` gating a command on the configured staff role."""
+    return commands.check(_is_staff_predicate)
+
+
 async def execute_list() -> str:
     """``\\rsvp list`` — everyone's active RSVP for the announced anni,
     split into HARD/SOFT groups."""
@@ -390,7 +506,8 @@ class RsvpCog(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.reply(
                 "Use `\\rsvp hard` / `soft` / `revoke` / `status` / `list` / "
-                "`check <username>` (or the `/rsvp …` slash form).",
+                "`check <username>` (or the `/rsvp …` slash form). "
+                "Staff: `\\rsvp set <target> <hard|soft>`.",
                 ephemeral=True,
             )
 
@@ -426,6 +543,20 @@ class RsvpCog(commands.Cog):
         # ``username`` so ``\rsvp check Some Player`` works; for the slash
         # form it becomes a normal ``username:`` parameter.
         await self._handle_public(ctx, "check", execute_check, username, _appstate())
+
+    @rsvp_group.command(
+        name="set",
+        description="[STAFF] Override-set someone else's RSVP for the announced anni.",
+    )
+    @_is_staff()
+    async def set_(
+        self, ctx: commands.Context, target: str,
+        level: Literal["hard", "soft"],
+    ) -> None:
+        # ``target`` is a free string (not ``discord.Member``) so the IGN
+        # fallback in ``_resolve_target`` stays reachable — MemberConverter
+        # would reject IGNs before we ever got to fall back.
+        await self._handle_set(ctx, target, level)
 
     async def _handle(self, ctx: commands.Context, action: Action) -> None:
         # Defer so a slow dazebot lookup doesn't time the interaction out in
@@ -469,6 +600,51 @@ class RsvpCog(commands.Cog):
             await ctx.reply("Something went wrong — staff have been notified.")
             return
         await ctx.reply(message)
+
+    async def _handle_set(
+        self, ctx: commands.Context, target: str,
+        level: Literal["hard", "soft"],
+    ) -> None:
+        """Staff-only ``\\rsvp set`` shim — defer + executor + ephemeral reply.
+
+        Mirrors :meth:`_handle` but the public ``[Override]`` line goes
+        out regardless of who the target is (set-on-behalf is always
+        an announcement, never silent).
+        """
+        await ctx.defer(ephemeral=True)
+        try:
+            outcome = await execute_rsvp_set(ctx, target, level, _appstate())
+        except Exception:
+            logger.exception("/rsvp set failed unexpectedly")
+            await ctx.reply(
+                "Something went wrong — staff have been notified.",
+                ephemeral=True,
+            )
+            return
+        await ctx.reply(outcome.private_message, ephemeral=True)
+        if outcome.public_message:
+            await _post_public(self.bot, outcome.public_message)
+
+    async def cog_command_error(
+        self, ctx: commands.Context, error: commands.CommandError
+    ) -> None:
+        """Map ``_is_staff()`` failures to a friendly ephemeral reply.
+
+        Without this, a non-staff user invoking ``\\rsvp set`` would see
+        discord.py's default "you do not have permission" traceback (or
+        nothing at all on slash). Other errors fall through to the global
+        handler unchanged.
+        """
+        if isinstance(error, commands.CheckFailure):
+            try:
+                await ctx.reply(
+                    "That subcommand is staff-only.", ephemeral=True,
+                )
+            except discord.DiscordException:
+                logger.exception("failed to send staff-only reply")
+            return
+        # Re-raise so the global error handler still sees real bugs.
+        raise error
 
 
 async def _post_public(bot: commands.Bot, content: str) -> None:
