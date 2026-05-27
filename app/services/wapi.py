@@ -14,6 +14,22 @@ We deliberately spend the token on only three things:
 
 Everything heavy (staff, roster, aliases) comes from api.wynnvets.org, which
 already paid the WAPI cost — see ``app/services/tempserver.py``.
+
+Verified endpoint headers (audit: 2026-05-27, public ``/v3/guild/Returners``):
+
+* ``Cache-Control: max-age=120`` — upstream cache TTL is 120s. Polling
+  faster yields the same cached body (free in correctness, ~zero cost in
+  bandwidth since cloudflare serves the same Etag).
+* ``ratelimit-bucket: GUILD``, ``ratelimit-limit: 50``,
+  ``ratelimit-reset: 60`` — the GUILD bucket allows 50 requests per 60s
+  rolling window. Our ``online_merge_hot_seconds=5`` ⇒ 12 requests/min, well
+  inside the limit even before our OWN-token isolation. The "OWN token"
+  doesn't lower the per-bucket TTL or limit — it gives vets-anni its own
+  quota *bucket* separate from dazebot/temp-server, so traffic patterns
+  don't compete for that 50/60 budget.
+
+If a future audit changes these numbers, re-tune ``online_merge_hot_seconds``
+and update this block.
 """
 
 from __future__ import annotations

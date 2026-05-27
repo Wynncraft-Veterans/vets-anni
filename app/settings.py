@@ -156,6 +156,27 @@ class Settings(BaseSettings):
     api_disabled_probe_seconds: int = 300
     lifecycle_poll_seconds: int = 30
 
+    # --- Hot-window cadence ramp --------------------------------------------
+    # From ``T - hot_window_open_seconds`` until ``stamp + grace`` the three
+    # "who is online now" pollers switch from their normal cadence to the
+    # ``*_hot_seconds`` variant. Goal: dashboard freshness ≥ vetsmod ``/wv list``
+    # while the anni is forming. See ``app/services/hot_window.py``.
+    #
+    # Upstream limits (verified 2026-05-27, see app/services/wapi.py docstring):
+    #
+    # * ``/v1/outbound/list``: real-time push from vetsmod inbound, no TTL.
+    # * WAPI ``/v3/guild/<name>``: ``Cache-Control: max-age=120`` (so WAPI data
+    #   freshness is bounded at 120s regardless of how often we ask) and the
+    #   GUILD ratelimit bucket allows 50 req / 60s. Our 5s hot cadence ⇒
+    #   12 req/min, well inside. The point of polling faster than the WAPI
+    #   TTL is the temp-server side (real-time), which is the source of truth
+    #   for "is X online right now".
+    hot_window_open_seconds: int = 70 * 60   # 1h10 before stamp_epoch
+    online_merge_hot_seconds: int = 5
+    presence_poll_hot_seconds: int = 2
+    auto_promoter_seconds: int = 60          # idle cadence outside hot window
+    auto_promoter_hot_seconds: int = 3       # ticks inside the hot window
+
     # Grace window (hours) for staff to record per-party results before wipe.
     grace_hours: int = 2
 

@@ -123,6 +123,10 @@ async def staff_update_capability(
     cap.confidence = _parse_conf(confidence, cap.confidence)
     cap.build_quality = _parse_conf(build_quality, cap.build_quality)
     await cap.save(update_fields=["confidence", "build_quality", "updated_at"])
+    # Staff filling in someone's capability is enough signal to upgrade
+    # them out of the auto-promoter "Unregistered" stub-card state.
+    from app.domain.identity import mark_registered
+    await mark_registered(cap.player)
     ok, err, _flagged = await _write_weapons(request, cap, weapons)
     if not ok:
         # Weapon validation rejected the input — keep the modal open with

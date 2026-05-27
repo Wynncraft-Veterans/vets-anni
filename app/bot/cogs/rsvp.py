@@ -48,12 +48,15 @@ from app.db.models import (
     RoleCapability,
     Rsvp,
 )
+from app.domain import buckets as buckets_domain
 from app.domain import capability as capability_domain
 from app.domain import identity as identity_domain
 from app.domain import rsvp as rsvp_domain
 from app.domain.membership import _DAZEBOT_TIER
 from app.domain.membership import label as tier_label
 from app.domain.roles import guidance as role_guidance
+from app.domain.schedule import EventPhase, phase_of
+from app.services import hot_window
 from app.services.dazebot_client import AnniIdentity, get_dazebot_client
 from app.services.state import AppState
 from app.settings import get_settings
@@ -106,10 +109,53 @@ async def _upsert_player(identity: AnniIdentity) -> AnniPlayer:
             "membership_tier": tier_from_daze or MembershipTier.OTHER,
         },
     )
-    if not created and identity.mc_username and player.mc_username != identity.mc_username:
-        player.mc_username = identity.mc_username
-        await player.save(update_fields=["mc_username", "updated_at"])
+    if not created:
+        fields: list[str] = []
+        if identity.mc_username and player.mc_username != identity.mc_username:
+            player.mc_username = identity.mc_username
+            fields.append("mc_username")
+        # An RSVP is the canonical "this is a real human" signal — clear the
+        # auto-promoter placeholder flag so the board upgrades the stub card
+        # to a real one on the next render.
+        if player.is_placeholder:
+            player.is_placeholder = False
+            fields.append("is_placeholder")
+        if fields:
+            await player.save(update_fields=[*fields, "updated_at"])
     return player
+
+
+async def _broadcast_board_snapshot(event: AnniEvent) -> None:
+    """Lazy-broadcast the board snapshot after an RSVP-driven mutation.
+
+    Silently no-ops when called outside the lifespan (e.g. unit tests) where
+    ``main.app`` has no ``appstate`` attached or the hub singleton hasn't
+    been created. Tests assert on DB state rather than on the WS pipe; the
+    live process picks up the broadcast normally.
+    """
+    try:
+        from main import app  # local import: avoids cog↔main circular at load
+
+        state: AppState = app.state.appstate
+        from app.web.ws.board_hub import get_board_hub
+
+        await get_board_hub().broadcast_snapshot(event, state)
+    except Exception:
+        logger.debug("rsvp broadcast skipped (no live hub in this context)",
+                     exc_info=True)
+
+
+async def _auto_place_after_rsvp(player: AnniPlayer, event: AnniEvent) -> bool:
+    """Land the player in Unassigned after an RSVP, respecting the T-60
+    LATE-bucket switch and the EXPIRED phase gate. Returns whether a row was
+    inserted. Idempotent for an already-placed player (no-op).
+    """
+    settings = get_settings()
+    grace_seconds = max(0, settings.grace_hours) * 3600
+    if phase_of(event.stamp_epoch, grace_seconds) is EventPhase.EXPIRED:
+        return False
+    is_late = hot_window.is_late_bucket(event)
+    return await buckets_domain.ensure_placed(event, player, is_late=is_late)
 
 
 async def _render_status(player: AnniPlayer, event: AnniEvent) -> RsvpOutcome:
@@ -132,6 +178,12 @@ async def _do_set(
     player: AnniPlayer, event: AnniEvent, notice: AttendanceNotice
 ) -> RsvpOutcome:
     await rsvp_domain.set_rsvp(player, event, notice)
+    # spec.md "auto-populated from RSVP" — the moment the user commits, land
+    # them in Unassigned (or LATE if we're past the T-60 cutoff). Idempotent
+    # for an already-placed user; staff intent wins (no reshuffle).
+    inserted = await _auto_place_after_rsvp(player, event)
+    if inserted:
+        await _broadcast_board_snapshot(event)
     label = _notice_label(notice)
     url = _dashboard_url()
     private = (
@@ -157,6 +209,14 @@ async def _do_revoke(player: AnniPlayer, event: AnniEvent) -> RsvpOutcome:
                 f"You had no active RSVP to withdraw. Dashboard: {url}"
             )
         )
+    # Demote out of Unassigned if they were still there; otherwise leave
+    # them placed (a party slot, volunteers, won't-assign — staff intent
+    # wins). The red "Retracted" pill comes from the view layer reading
+    # ``Rsvp.revoked_at``, so it appears regardless of bucket.
+    await buckets_domain.demote_on_revoke(event, player)
+    # Always broadcast — even when no demote happened, surviving cards need
+    # the Retracted pill to surface on the next render.
+    await _broadcast_board_snapshot(event)
     return RsvpOutcome(
         private_message=(
             f"Your **{_notice_label(prior.notice)}** RSVP has been withdrawn. "
@@ -330,6 +390,9 @@ async def execute_rsvp_set(
         else AttendanceNotice.RSVP_SOFT
     )
     await rsvp_domain.set_rsvp(player, event, notice)
+    inserted = await _auto_place_after_rsvp(player, event)
+    if inserted:
+        await _broadcast_board_snapshot(event)
     label = _notice_label(notice)
     url = _dashboard_url()
     private = (

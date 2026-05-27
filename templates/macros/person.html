@@ -30,7 +30,7 @@
     <div class="person-main">
       <span class="person-name">
         {{ p.name }}
-        {% if p.desynced %}
+        {% if p.desynced and not p.is_placeholder %}
           <span class="muted" title="in-game name differs">| {{ p.wynn_username }}</span>
         {% endif %}
         {# Capability dots — the roles this user *can* do (distinct from the
@@ -48,7 +48,7 @@
            outside CB so the colour-only default reads as a clean dot, and
            shows it under body.cb so the channel is non-colour there (spec
            hard rule). #}
-        {% if p.capability_dots %}
+        {% if p.capability_dots and not p.is_placeholder %}
           <span class="cap-dots" role="group" aria-label="Capable roles">
             {% for c in p.capability_dots %}
               <span class="cap-dot-wrap">
@@ -84,38 +84,56 @@
         {% endif %}
       </span>
       <span class="person-tags">
-        <span class="role-tag" role="img" aria-label="Assigned role: {{ p.role_chip.label }}">
-          <span class="glyph" style="background-color: var({{ p.role_chip.css_var }})">{{ p.role_chip.glyph }}</span>
-          {{ p.assigned_role | capitalize if p.assigned_role else "Unassigned" }}
-        </span>
-        <span class="status-tag" role="img" aria-label="Status: {{ p.status_chip.label }}">
-          <span class="glyph">{{ p.status_chip.glyph }}</span>{{ p.status.replace('_', ' ') }}
-        </span>
-        <span class="pill pill-muted">{{ p.tier_label }}</span>
+        {# Placeholder cards are stubs for guild members the auto-promoter saw
+           online inside the hot window but who have no AnniPlayer row yet —
+           render a minimal pill set (status-border on the root carries the
+           presence channel) and let them silently swap to a real card once
+           they register (RSVP, dashboard login, capability edit, walk-in).
+           LATE + Retracted pills are always shown when applicable. #}
+        {% if not p.is_placeholder %}
+          <span class="role-tag" role="img" aria-label="Assigned role: {{ p.role_chip.label }}">
+            <span class="glyph" style="background-color: var({{ p.role_chip.css_var }})">{{ p.role_chip.glyph }}</span>
+            {{ p.assigned_role | capitalize if p.assigned_role else "Unassigned" }}
+          </span>
+          <span class="status-tag" role="img" aria-label="Status: {{ p.status_chip.label }}">
+            <span class="glyph">{{ p.status_chip.glyph }}</span>{{ p.status.replace('_', ' ') }}
+          </span>
+          <span class="pill pill-muted">{{ p.tier_label }}</span>
+        {% else %}
+          <span class="pill pill-muted"
+                title="Has not yet registered on anni.wynnvets.org">Unregistered</span>
+        {% endif %}
         {% if p.is_late %}
           <span class="pill pill-danger" title="Joined late">LATE</span>
         {% endif %}
-        {% for r in p.regions %}
-          <span class="pill pill-region" title="{{ r.label }}">{{ r.glyph }} {{ r.code }}</span>
-        {% endfor %}
+        {% if p.rsvp_revoked %}
+          <span class="pill pill-danger" title="RSVP retracted">Retracted</span>
+        {% endif %}
+        {% if not p.is_placeholder %}
+          {% for r in p.regions %}
+            <span class="pill pill-region" title="{{ r.label }}">{{ r.glyph }} {{ r.code }}</span>
+          {% endfor %}
+        {% endif %}
       </span>
     </div>
 
     {# No-JS / socket-dropped controls: role + move both POST a REST twin and
        swap #board back in. board.js intercepts the drag for the WS path; both
        routes funnel through board_hub (single-instance UPSERT). #}
-    <div class="person-actions">
-      <select class="person-role" aria-label="Assign role to {{ p.name }}"
-              hx-post="/staff/board/assign-role" hx-target="#board"
-              hx-swap="outerHTML" hx-include="this"
-              name="role" hx-vals='{"player_uuid": "{{ p.uuid }}"}'>
-        <option value="" {{ 'selected' if not p.assigned_role }}>— role —</option>
-        {% for role in assignable_roles %}
-          <option value="{{ role.value }}"
-                  {{ 'selected' if p.assigned_role == role.value }}>
-            {{ role.value | capitalize }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    {% if not p.is_placeholder %}
+      <div class="person-actions">
+        <select class="person-role" aria-label="Assign role to {{ p.name }}"
+                hx-post="/staff/board/assign-role" hx-target="#board"
+                hx-swap="outerHTML" hx-include="this"
+                name="role" hx-vals='{"player_uuid": "{{ p.uuid }}"}'>
+          <option value="" {{ 'selected' if not p.assigned_role }}>— role —</option>
+          {% for role in assignable_roles %}
+            <option value="{{ role.value }}"
+                    {{ 'selected' if p.assigned_role == role.value }}>
+              {{ role.value | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
   </div>
 {% endmacro %}

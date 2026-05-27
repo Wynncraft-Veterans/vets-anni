@@ -59,6 +59,13 @@ class AnniPlayer(Model):
     # First password set "sticks"; null => zero-friction login. Staff-resettable.
     password_hash = fields.CharField(max_length=128, null=True)
 
+    # True iff this row was materialised by the auto-promoter for an online
+    # player we'd never seen before (so the board can show a stub card with
+    # blank stats + an "Unregistered" pill). Cleared on first meaningful
+    # interaction (dashboard login, RSVP, capability edit, staff walk-in) by
+    # ``app.domain.identity.mark_registered``; once cleared, never re-set.
+    is_placeholder = fields.BooleanField(default=False)
+
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 

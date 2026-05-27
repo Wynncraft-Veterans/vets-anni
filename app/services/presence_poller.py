@@ -28,6 +28,7 @@ from app.db.lifecycle import get_active_event
 from app.db.models import BoardPlacement, Rsvp
 from app.domain import identity, presence
 from app.domain.colourblind import status_chip
+from app.services import hot_window
 from app.services.loop import poll_forever
 from app.services.state import AppState
 from app.settings import Settings
@@ -122,8 +123,15 @@ async def _tick(state: AppState, settings: Settings) -> None:
 
 
 async def run(state: AppState, settings: Settings) -> None:
-    await poll_forever(
-        "presence",
-        lambda: settings.presence_poll_seconds,
-        lambda: _tick(state, settings),
-    )
+    def _interval() -> float:
+        # Pure-in-memory recompute over ``state.online_by_uuid``; cheap. We
+        # ramp inside the hot window so the WS clients see status changes
+        # within ~one online_merge tick (also ramped). Outside the window
+        # the normal 10s cadence is plenty.
+        return float(
+            settings.presence_poll_hot_seconds
+            if hot_window.is_currently_hot()
+            else settings.presence_poll_seconds
+        )
+
+    await poll_forever("presence", _interval, lambda: _tick(state, settings))

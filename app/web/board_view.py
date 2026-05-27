@@ -24,11 +24,13 @@ from app.constants import (
     PresenceStatus,
     Role,
 )
+from app.db.models import Rsvp
 from app.domain import buckets
 from app.domain import regions as regions_domain
 from app.domain.colourblind import role_chip, status_chip
 from app.domain.membership import label as tier_label
 from app.domain.schedule import phase_of
+from app.services import hot_window
 from app.services.state import AppState
 from app.settings import get_settings
 
@@ -111,10 +113,21 @@ def avatar(uuid: str, size: int = 40) -> str:
     return f"https://mc-heads.net/avatar/{uuid}/{size}"
 
 
-def _person(row: dict, presence_by_uuid: dict[str, str]) -> dict:
+def _person(
+    row: dict,
+    presence_by_uuid: dict[str, str],
+    revoked_uuids: frozenset[str],
+) -> dict:
     """One person-object card. Carries the colour-independent channels (glyph,
     label, border pattern, the name, regions text) so it reads with no colour
-    at all — the spec's colourblind hard rule, via the shared chip builders."""
+    at all — the spec's colourblind hard rule, via the shared chip builders.
+
+    ``rsvp_revoked`` is derived from ``Rsvp.revoked_at`` (the set is built
+    once per snapshot) so the red "Retracted" pill follows the player
+    wherever their placement currently sits (Unassigned-LATE, wontassign,
+    or a party). ``is_placeholder`` propagates the auto-promoter's
+    "stub card" flag straight from ``AnniPlayer.is_placeholder``.
+    """
     try:
         status = PresenceStatus(presence_by_uuid.get(row["uuid"], "unknown"))
     except ValueError:  # a stale/unknown cached value never breaks the board
@@ -133,6 +146,8 @@ def _person(row: dict, presence_by_uuid: dict[str, str]) -> dict:
         "status": status.value,
         "status_chip": status_chip(status),
         "is_late": row["is_late"],
+        "is_placeholder": row.get("is_placeholder", False),
+        "rsvp_revoked": row["uuid"] in revoked_uuids,
         "sort_index": row["sort_index"],
         "capability_dots": _capability_dots(row.get("capabilities") or []),
     }
@@ -148,6 +163,13 @@ async def snapshot(event, state: AppState) -> dict:
 
     rows = await buckets.board_rows(event)
     pres = state.presence_by_uuid
+    # Revoked-RSVP UUIDs power the red "Retracted" pill on the person card.
+    # Built once per snapshot so every _person() call is O(1).
+    revoked_uuids = frozenset(
+        r.player_id for r in await Rsvp.filter(
+            event=event, revoked_at__isnull=False,
+        ).only("player_id")
+    )
     by_party: dict[str, list[dict]] = {}
     bucket_members: dict[str, list[dict]] = {
         BucketKind.UNASSIGNED.value: [],
@@ -155,7 +177,7 @@ async def snapshot(event, state: AppState) -> dict:
         BucketKind.WONTASSIGN.value: [],
     }
     for row in rows:
-        person = _person(row, pres)
+        person = _person(row, pres, revoked_uuids)
         if row["party_id"]:
             by_party.setdefault(row["party_id"], []).append(person)
         elif row["bucket"] in bucket_members:
@@ -201,12 +223,19 @@ async def snapshot(event, state: AppState) -> dict:
             "name": event.organizer.mc_username,
             "avatar": avatar(event.organizer.mc_uuid, 24),
         }
+    monitoring = hot_window.monitoring_state(
+        event,
+        hot_window_open_seconds=settings.hot_window_open_seconds,
+        grace_seconds=grace_seconds,
+    )
     return {
         "event": {
             "stamp_epoch": event.stamp_epoch,
             "phase": phase.value,
             "frozen": phase.value == "grace",
             "organizer": organizer,
+            "monitoring": monitoring,
+            "monitoring_label": hot_window.MONITORING_LABEL[monitoring],
         },
         "parties": parties,
         # UNASSIGNED carries the LATE sub-bucket; the other two are flat.

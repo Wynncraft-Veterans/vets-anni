@@ -84,3 +84,27 @@ async def test_resolve_identity_falls_back_to_mojang_and_handles_no_wapi(monkeyp
 
 async def _no_mojang(ign: str) -> str | None:
     raise AssertionError("Mojang must not be called when the roster resolves it")
+
+
+async def test_mark_registered_flips_true_to_false(seeded):
+    """One-way flip: placeholder -> registered, persisted."""
+    from app.db.models import AnniPlayer
+    p = await AnniPlayer.create(
+        mc_uuid="uuid-stubmark", mc_username="Stub", is_placeholder=True,
+    )
+    flipped = await identity.mark_registered(p)
+    assert flipped is True
+    await p.refresh_from_db()
+    assert p.is_placeholder is False
+
+
+async def test_mark_registered_noop_when_already_registered(seeded):
+    """Calling on a non-placeholder is a cheap no-op (no DB write)."""
+    from app.db.models import AnniPlayer
+    p = await AnniPlayer.create(
+        mc_uuid="uuid-realmark", mc_username="Real", is_placeholder=False,
+    )
+    flipped = await identity.mark_registered(p)
+    assert flipped is False
+    await p.refresh_from_db()
+    assert p.is_placeholder is False

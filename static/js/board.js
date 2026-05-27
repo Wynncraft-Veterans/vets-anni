@@ -31,6 +31,22 @@
     el.className = "pill " + (cls || "pill-muted");
   }
 
+  /* Auto-promoter monitoring pill — its label/state is driven by the server's
+   * snapshot.event.monitoring_label string. We update it whenever a frame
+   * carries a snapshot (WELCOME, or PATCH with op="snapshot"). The pill lives
+   * outside #board so the HTMX re-fetch can't touch it; this is the one
+   * place it gets updated client-side. */
+  function applyMonitoring(snapshot) {
+    var pill = document.getElementById("monitor-state");
+    if (!pill || !snapshot || !snapshot.event) return;
+    if (snapshot.event.monitoring_label) {
+      pill.textContent = snapshot.event.monitoring_label;
+    }
+    if (snapshot.event.monitoring) {
+      pill.setAttribute("data-state", snapshot.event.monitoring);
+    }
+  }
+
   /* Coalesce bursts of signals (a multi-op change, or our own POST echoing
    * back as a broadcast) into one fragment fetch. */
   function scheduleRefresh() {
@@ -79,11 +95,23 @@
       }
       // WELCOME / PATCH (snapshot or presence) / BOARD_WIPE all just mean
       // "the server state changed" — re-render from the server.
-      if (
-        msg.type === "WELCOME" ||
-        msg.type === "PATCH" ||
-        msg.type === "BOARD_WIPE"
-      ) {
+      if (msg.type === "WELCOME") {
+        applyMonitoring(msg.snapshot);
+        scheduleRefresh();
+      } else if (msg.type === "PATCH") {
+        // The post-mutation reconcile carries a full snapshot under
+        // ops[0].snapshot; presence-only PATCH frames don't, and that's fine
+        // (monitoring stays as last seen, the pill never wipes).
+        if (msg.ops && msg.ops.length) {
+          for (var i = 0; i < msg.ops.length; i++) {
+            if (msg.ops[i] && msg.ops[i].op === "snapshot") {
+              applyMonitoring(msg.ops[i].snapshot);
+              break;
+            }
+          }
+        }
+        scheduleRefresh();
+      } else if (msg.type === "BOARD_WIPE") {
         scheduleRefresh();
       } else if (msg.type === "REJECTED") {
         // The optimistic DOM move is undone by the reconciling snapshot the

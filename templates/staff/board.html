@@ -5,8 +5,17 @@
 {% block content %}
   <div class="board-head">
     <h1 class="board-title">Organizer Board
+      {# Two pills: the connection state (overwritten by board.js on
+         connect/drop) and the auto-promoter's monitoring phase
+         (snapshot-driven; board.js re-fetches the #board fragment, but
+         this pill lives outside it and is updated on each PATCH frame). #}
       <span id="ws-state" class="pill pill-muted"
             title="Live-sync status">connecting…</span>
+      {% if snapshot.event and snapshot.event.monitoring_label %}
+        <span id="monitor-state" class="pill pill-muted"
+              title="Auto-promoter window"
+              data-state="{{ snapshot.event.monitoring }}">{{ snapshot.event.monitoring_label }}</span>
+      {% endif %}
     </h1>
     {% if has_event %}
       {# One line, aligned right: "Lead organiser [dropdown]". Auto-submits on

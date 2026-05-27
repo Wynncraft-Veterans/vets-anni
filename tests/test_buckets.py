@@ -95,6 +95,106 @@ async def test_add_walkin_unknown_ign_is_a_friendly_reject(seeded):
     assert not r.ok and "Couldn't find" in r.reason
 
 
+# --- ensure_placed + demote_on_revoke (auto-promoter + RSVP support) --------
+async def test_ensure_placed_creates_in_main_lane(seeded):
+    """A brand-new auto-place lands in Unassigned with is_late as supplied."""
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    fresh = await AnniPlayer.create(mc_uuid="uuid-fresh", mc_username="Fresh")
+
+    inserted = await buckets.ensure_placed(event, fresh, is_late=False)
+    assert inserted is True
+    placed = await BoardPlacement.get(event=event, player=fresh)
+    assert placed.bucket is BucketKind.UNASSIGNED
+    assert placed.is_late is False
+
+
+async def test_ensure_placed_creates_in_late_lane(seeded):
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    latecomer = await AnniPlayer.create(mc_uuid="uuid-late", mc_username="Late")
+
+    inserted = await buckets.ensure_placed(event, latecomer, is_late=True)
+    assert inserted is True
+    placed = await BoardPlacement.get(event=event, player=latecomer)
+    assert placed.bucket is BucketKind.UNASSIGNED
+    assert placed.is_late is True
+
+
+async def test_ensure_placed_is_idempotent_no_reshuffle(seeded):
+    """A second call must never yank an existing placement back to Unassigned
+    or flip is_late retroactively. Single-instance + staff-intent wins."""
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    p = await AnniPlayer.create(mc_uuid="uuid-shuffled", mc_username="Shuf")
+
+    assert await buckets.ensure_placed(event, p, is_late=False) is True
+    # Staff (or another path) moves them to a party slot.
+    party = await buckets.create_party(event)
+    assert (await buckets.move(event, p.mc_uuid, party_id=str(party.id))).ok
+
+    # A subsequent ensure_placed during the LATE window MUST NOT yank them
+    # out of their party — the auto-promoter is idempotent on placed users.
+    assert await buckets.ensure_placed(event, p, is_late=True) is False
+    placed = await BoardPlacement.get(event=event, player=p)
+    assert placed.party_id == party.id
+    assert placed.bucket is None
+    # And of course no duplicate row.
+    assert await BoardPlacement.filter(event=event, player=p).count() == 1
+
+
+async def test_ensure_placed_late_lane_sort_index_tails(seeded):
+    """is_late lane order: each new auto-place lands at the tail of its lane."""
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    a = await AnniPlayer.create(mc_uuid="uuid-a", mc_username="A")
+    b = await AnniPlayer.create(mc_uuid="uuid-b", mc_username="B")
+
+    await buckets.ensure_placed(event, a, is_late=True)
+    await buckets.ensure_placed(event, b, is_late=True)
+    pa = await BoardPlacement.get(event=event, player=a)
+    pb = await BoardPlacement.get(event=event, player=b)
+    assert pa.sort_index != pb.sort_index  # distinct tail slots
+    assert pa.is_late and pb.is_late
+
+
+async def test_demote_on_revoke_moves_unassigned_to_wontassign(seeded):
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    p = await AnniPlayer.create(mc_uuid="uuid-rev", mc_username="Rev")
+    await buckets.ensure_placed(event, p, is_late=False)
+
+    demoted = await buckets.demote_on_revoke(event, p)
+    assert demoted is True
+    placed = await BoardPlacement.get(event=event, player=p)
+    assert placed.bucket is BucketKind.WONTASSIGN
+    assert placed.party_id is None
+
+
+async def test_demote_on_revoke_noop_when_in_party(seeded):
+    """Staff intent wins: if they've already placed the user in a party,
+    a revoke MUST NOT yank them out (the Retracted pill on the card is the
+    only visible signal)."""
+    event = seeded["event"]
+    wen = seeded["players"]["Wenweia"]  # seeded into party 1
+
+    demoted = await buckets.demote_on_revoke(event, wen)
+    assert demoted is False
+    placed = await BoardPlacement.get(event=event, player=wen)
+    assert placed.party_id is not None  # unchanged
+
+
+async def test_demote_on_revoke_noop_when_no_placement(seeded):
+    """No placement at all -> no-op (a revoke of an RSVP that never landed)."""
+    from app.db.models import AnniPlayer
+    event = seeded["event"]
+    ghost = await AnniPlayer.create(mc_uuid="uuid-ghost", mc_username="Ghost")
+
+    demoted = await buckets.demote_on_revoke(event, ghost)
+    assert demoted is False
+    assert await BoardPlacement.filter(event=event, player=ghost).count() == 0
+
+
 async def test_party_create_rename_and_set(seeded):
     event = seeded["event"]
     party = await buckets.create_party(event)

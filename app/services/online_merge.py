@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import time
 
+from app.services import hot_window
 from app.services.loop import poll_forever
 from app.services.state import AppState, OnlinePlayer
 from app.services.tempserver import get_tempserver
@@ -157,8 +158,15 @@ async def _tick(state: AppState, settings: Settings) -> None:
 
 
 async def run(state: AppState, settings: Settings) -> None:
-    await poll_forever(
-        "online_merge",
-        lambda: settings.online_merge_seconds,
-        lambda: _tick(state, settings),
-    )
+    def _interval() -> float:
+        # Ramped during the T-70 → grace-end window so the dashboard's
+        # online list stays at least as fresh as vetsmod ``/wv list``. The
+        # hot-window flag is updated by the auto-promoter's tick (worst-
+        # case lag bounded by its cadence).
+        return float(
+            settings.online_merge_hot_seconds
+            if hot_window.is_currently_hot()
+            else settings.online_merge_seconds
+        )
+
+    await poll_forever("online_merge", _interval, lambda: _tick(state, settings))

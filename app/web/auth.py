@@ -116,6 +116,10 @@ async def login_user(
     player.guild = ident.guild_name
     player.membership_tier = tier
     player.last_online = ident.last_online
+    # A dashboard login is the canonical "this is a real user" signal —
+    # clear the auto-promoter placeholder flag (one-way). The board's next
+    # snapshot replaces their stub card with the real one.
+    player.is_placeholder = False
 
     logger.debug(
         "login: %s -> uuid=%s tier=%s %s (pw %s)",

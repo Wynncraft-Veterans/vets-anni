@@ -877,3 +877,114 @@ async def test_handle_set_no_public_post_on_failure(seeded, monkeypatch):
     assert len(ctx.replies) == 1 and ctx.replies[0][1] is True
     assert "can't find" in ctx.replies[0][0].lower()
     assert channel.sent == []  # nothing public on a miss
+
+
+# ---------------------------------------------------------------------------
+# Auto-place side effects (spec.md "auto-populated from RSVP or 1hr-early"). #
+# These cover the wiring between ``_do_set`` / ``_do_revoke`` and the board: #
+# every RSVP that's accepted MUST result in a BoardPlacement; every revoke   #
+# MUST either demote out of Unassigned or leave the placement intact so the  #
+# view-layer "Retracted" pill can surface the state.                         #
+# ---------------------------------------------------------------------------
+import time as _time
+
+from app.constants import BucketKind
+from app.db.models import BoardPlacement
+
+
+async def test_execute_hard_creates_board_placement(seeded, monkeypatch):
+    """``/rsvp hard`` lands the user in Unassigned immediately.
+
+    Holidaze is the seed's "organiser, intentionally not placed" — the only
+    seeded player with no existing BoardPlacement, so a fresh RSVP is the
+    *first* row for them and we can assert its shape directly.
+    """
+    holidaze = seeded["players"]["Holidaze"]
+    _patch_identity(monkeypatch, _ident(holidaze, tier="member"))
+    # Pin the event far enough in the future that we're in the EARLY lane.
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 4 * 3600
+    await event.save(update_fields=["stamp_epoch"])
+
+    assert await BoardPlacement.filter(event=event, player=holidaze).count() == 0
+
+    from app.bot.cogs.rsvp import execute_rsvp
+    await execute_rsvp(123, "hard")
+
+    placed = await BoardPlacement.get(event=event, player=holidaze)
+    assert placed.bucket is BucketKind.UNASSIGNED
+    assert placed.is_late is False
+
+
+async def test_execute_hard_inside_late_window_uses_late_lane(seeded, monkeypatch):
+    """At T-30min, an RSVP lands in the LATE sub-bucket (``is_late=True``)."""
+    holidaze = seeded["players"]["Holidaze"]
+    _patch_identity(monkeypatch, _ident(holidaze, tier="member"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 30 * 60  # T-30 = late lane
+    await event.save(update_fields=["stamp_epoch"])
+
+    from app.bot.cogs.rsvp import execute_rsvp
+    await execute_rsvp(123, "hard")
+
+    placed = await BoardPlacement.get(event=event, player=holidaze)
+    assert placed.bucket is BucketKind.UNASSIGNED
+    assert placed.is_late is True
+
+
+async def test_execute_revoke_demotes_from_unassigned_to_wontassign(seeded, monkeypatch):
+    """A user revoking their RSVP from the Unassigned bucket hops to
+    Won't-assign — staff don't have to clean it up manually."""
+    holidaze = seeded["players"]["Holidaze"]
+    _patch_identity(monkeypatch, _ident(holidaze, tier="member"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 4 * 3600
+    await event.save(update_fields=["stamp_epoch"])
+
+    from app.bot.cogs.rsvp import execute_rsvp
+    await execute_rsvp(123, "hard")
+    # Confirm setup.
+    placed = await BoardPlacement.get(event=event, player=holidaze)
+    assert placed.bucket is BucketKind.UNASSIGNED
+
+    await execute_rsvp(123, "revoke")
+    placed = await BoardPlacement.get(event=event, player=holidaze)
+    assert placed.bucket is BucketKind.WONTASSIGN
+
+
+async def test_execute_revoke_keeps_party_placement(seeded, monkeypatch):
+    """A user in a party slot stays put on revoke (staff intent wins); only
+    the view layer surfaces the retraction via the Retracted pill."""
+    wen = seeded["players"]["Wenweia"]  # seeded into a party with HARD RSVP
+    _patch_identity(monkeypatch, _ident(wen, tier="member"))
+
+    from app.bot.cogs.rsvp import execute_rsvp
+    before = await BoardPlacement.get(event=seeded["event"], player=wen)
+    party_id = before.party_id
+
+    await execute_rsvp(123, "revoke")
+
+    after = await BoardPlacement.get(event=seeded["event"], player=wen)
+    assert after.party_id == party_id  # still in the same party
+    assert after.bucket is None
+
+
+async def test_rsvp_clears_placeholder_on_existing_player(seeded, monkeypatch):
+    """When a placeholder user RSVPs via dazebot, their AnniPlayer row is
+    upgraded out of the placeholder state (silent swap on next render)."""
+    from app.bot.cogs.rsvp import _upsert_player
+    from app.services.dazebot_client import AnniIdentity
+
+    stub = await AnniPlayer.create(
+        mc_uuid="uuid-stubrsvp", mc_username="StubRsvp", is_placeholder=True,
+    )
+    ident = AnniIdentity(
+        linked=True, disc_uuid="d", mc_uuid=stub.mc_uuid,
+        mc_username="StubRsvp", tier="other", blocked=False, reason=None,
+    )
+
+    p = await _upsert_player(ident)
+    assert p.is_placeholder is False
+    # Persisted, not just in-memory.
+    await p.refresh_from_db()
+    assert p.is_placeholder is False

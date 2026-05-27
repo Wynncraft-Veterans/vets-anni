@@ -140,6 +140,74 @@ async def assign_role(
     return OpResult(True, player_uuid=player_uuid)
 
 
+async def ensure_placed(
+    event: AnniEvent,
+    player: AnniPlayer,
+    *,
+    is_late: bool,
+) -> bool:
+    """Idempotent auto-place: if ``(event, player)`` has no placement,
+    insert one in the UNASSIGNED bucket and return ``True``; otherwise
+    leave the existing row alone and return ``False``.
+
+    Single-instance invariant: this is the shared "land them on the board"
+    path for both the RSVP cog and the 1hr-early auto-promoter. ``is_late``
+    chooses the lane at *insert time only* — already-placed players are
+    never reshuffled from main → LATE by a subsequent tick; staff intent
+    (or the original auto-place) wins.
+
+    ``sort_index`` is the tail count of the matching ``is_late`` lane within
+    UNASSIGNED so a new card lands at the bottom of its dropzone, mirroring
+    :func:`add_walkin`'s ordering.
+    """
+    existing = await BoardPlacement.filter(event=event, player=player).first()
+    if existing is not None:
+        return False
+    tail = await BoardPlacement.filter(
+        event=event, bucket=BucketKind.UNASSIGNED, is_late=is_late
+    ).count()
+    await _upsert(
+        event,
+        player,
+        bucket=BucketKind.UNASSIGNED,
+        party=None,
+        sort_index=tail,
+        is_late=is_late,
+    )
+    logger.info(
+        "auto-place: %s -> Unassigned%s",
+        player.mc_username,
+        " (LATE)" if is_late else "",
+    )
+    return True
+
+
+async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
+    """If the player's placement is in the UNASSIGNED bucket (either lane),
+    move it to WONTASSIGN and return ``True``. Any other placement (party,
+    WONTASSIGN, VOLUNTEERS) or no placement at all is a no-op (False) — staff
+    intent wins, and the "Retracted" pill (driven by ``Rsvp.revoked_at`` in
+    the view layer) surfaces the retraction regardless of where the card
+    physically sits.
+    """
+    placement = await BoardPlacement.filter(event=event, player=player).first()
+    if placement is None or placement.bucket is not BucketKind.UNASSIGNED:
+        return False
+    tail = await BoardPlacement.filter(
+        event=event, bucket=BucketKind.WONTASSIGN
+    ).count()
+    await _upsert(
+        event,
+        player,
+        bucket=BucketKind.WONTASSIGN,
+        party=None,
+        sort_index=tail,
+        is_late=False,
+    )
+    logger.info("rsvp revoke demote: %s -> Wont-assign", player.mc_username)
+    return True
+
+
 async def add_walkin(
     event: AnniEvent,
     ign: str,
@@ -196,9 +264,13 @@ async def add_walkin(
         player.wynn_username = ident.wynn_username
         player.guild = ident.guild_name
         player.membership_tier = tier
+        # A staff walk-in routes through ``identity.resolve_identity`` — it's
+        # the canonical "this is a real person, here's their data" path, so
+        # we clear the auto-promoter placeholder flag if it was set.
+        player.is_placeholder = False
         await player.save(update_fields=[
             "mc_username", "wynn_username", "guild", "membership_tier",
-            "updated_at",
+            "is_placeholder", "updated_at",
         ])
 
     existing = await BoardPlacement.filter(event=event, player=player).first()
@@ -366,6 +438,7 @@ async def board_rows(event: AnniEvent) -> list[dict]:
                 "tier": r.player.membership_tier,
                 "preferred_regions": r.player.preferred_regions,
                 "last_online": r.player.last_online,
+                "is_placeholder": r.player.is_placeholder,
                 "bucket": r.bucket.value if r.bucket else None,
                 "party_id": str(r.party.id) if r.party else None,
                 "party_ordinal": r.party.ordinal if r.party else None,

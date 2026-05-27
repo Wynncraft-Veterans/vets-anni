@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.constants import API_DISABLED_LAST_ONLINE_MAX
+from app.db.models import AnniPlayer
 from app.services.state import AppState
 from app.services.wapi import PRIO_HIGH, WapiError, get_wapi
 
@@ -34,6 +35,23 @@ UTC = timezone.utc
 EPOCH = datetime.fromtimestamp(0, tz=UTC)
 
 MojangResolver = Callable[[str], Awaitable[str | None]]
+
+
+async def mark_registered(player: AnniPlayer) -> bool:
+    """Clear the auto-promoter's ``is_placeholder`` flag on ``player``.
+
+    Called from every "real human did something" touch-point (dashboard
+    login / RSVP / capability edit / staff walk-in). One-way True → False
+    transition — once cleared the flag never goes back on, even if a
+    subsequent tick of the auto-promoter sees the player again. Returns
+    ``True`` iff the flag actually flipped (and a board re-render is worth
+    triggering); ``False`` means the player was already registered (no-op).
+    """
+    if not player.is_placeholder:
+        return False
+    player.is_placeholder = False
+    await player.save(update_fields=["is_placeholder", "updated_at"])
+    return True
 
 
 def is_api_disabled(dt: datetime | None) -> bool:
