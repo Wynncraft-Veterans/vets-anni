@@ -25,6 +25,7 @@ from app.domain.roles import capability_roles, guidance, parse as parse_role
 from app.web import auth
 from app.web.deps import render
 from app.web.routers.user import _capability_rows
+from app.web.ws.board_hub import maybe_broadcast_for
 
 logger = logging.getLogger("anni.web.capability")
 router = APIRouter()
@@ -195,6 +196,7 @@ async def create_capability(
                      player.mc_username, parsed.value, err)
         return await _capacity_fragment(request, player, error=err)
     logger.info("capability added: %s -> %s", player.mc_username, parsed.value)
+    await maybe_broadcast_for(player.mc_uuid)
     return await _capacity_fragment(request, player, flagged=flagged)
 
 
@@ -219,6 +221,7 @@ async def update_capability(
     if not ok:
         return await _capacity_fragment(request, player, error=err)
     logger.info("capability updated: %s -> %s", player.mc_username, cap.role.value)
+    await maybe_broadcast_for(player.mc_uuid)
     return await _capacity_fragment(request, player, flagged=flagged)
 
 
@@ -229,6 +232,8 @@ async def delete_capability(request: Request, cap_id: str):
         return RedirectResponse("/", status_code=303)
     deleted = await RoleCapability.filter(id=cap_id, player=player).delete()
     logger.info("capability deleted: %s (%s rows)", player.mc_username, deleted)
+    if deleted:
+        await maybe_broadcast_for(player.mc_uuid)
     return await _capacity_fragment(request, player)
 
 

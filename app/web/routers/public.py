@@ -17,6 +17,7 @@ from app.db.lifecycle import get_active_event
 from app.db.models import Party
 from app.web import auth
 from app.web.routers.user import _avatar
+from app.web.ws.board_hub import maybe_broadcast_for
 from app.web.deps import (
     clear_session,
     colourblind,
@@ -85,6 +86,13 @@ async def login_submit(
             request, "public/login.html", event=event,
             organizer=_organizer(event), error=outcome.error, prefill=username,
         )
+    # A first-time login flips the auto-promoter's placeholder flag inside
+    # ``auth.login_user`` (one-way True → False). Snapshot the board so any
+    # open staff tab swaps the stub card for the now-registered one without
+    # waiting for a refresh. ``maybe_broadcast_for`` is gated on the player
+    # actually having a current-event placement, so a returning user logging
+    # in from off-board doesn't churn the broadcast.
+    await maybe_broadcast_for(outcome.player.mc_uuid)
     resp = RedirectResponse("/me", status_code=303)
     write_session(resp, {"kind": "user", "mc_uuid": outcome.player.mc_uuid,
                          "name": outcome.player.mc_username})

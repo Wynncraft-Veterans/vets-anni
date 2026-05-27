@@ -30,6 +30,7 @@ from app.domain.roles import guidance
 from app.settings import get_settings
 from app.web import auth
 from app.web.deps import render
+from app.web.ws.board_hub import maybe_broadcast_for
 
 logger = logging.getLogger("anni.web.user")
 router = APIRouter()
@@ -345,5 +346,6 @@ async def regions_save(request: Request, regions: list[str] = Form(default=[])):
     await player.save(update_fields=["preferred_regions", "updated_at"])
     logger.info("regions updated: %s -> %s", player.mc_username,
                 player.preferred_regions or "(any)")
+    await maybe_broadcast_for(player.mc_uuid)
     return render(request, "user/_regions.html",
                   **_regions_ctx(player, saved=True))

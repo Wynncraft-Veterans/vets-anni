@@ -256,3 +256,39 @@ def get_board_hub() -> BoardHub:
     if _hub is None:
         _hub = BoardHub()
     return _hub
+
+
+async def maybe_broadcast_for(player_uuid: str) -> None:
+    """Snapshot the board iff ``player_uuid`` has a placement on the active
+    event.
+
+    Cheap fan-out hook for "user changed something that the board renders"
+    edits (capability dots, region pills, the placeholder → registered swap
+    on login). The placement gate is what keeps a logged-in user with no
+    board presence from triggering wasted re-renders on every staff tab.
+
+    Safe to call from any route handler — no-ops when there's no active
+    event, no live hub, or no appstate (unit tests). Same try/except
+    posture as :func:`app.bot.cogs.rsvp._broadcast_board`.
+    """
+    try:
+        from app.db.lifecycle import get_active_event
+        from app.db.models import BoardPlacement
+
+        event = await get_active_event()
+        if event is None:
+            return
+        on_board = await BoardPlacement.filter(
+            event=event, player__mc_uuid=player_uuid,
+        ).exists()
+        if not on_board:
+            return
+        from main import app  # local import: avoid web↔main circular at load
+
+        state: AppState = app.state.appstate
+        await get_board_hub().broadcast_snapshot(event, state)
+    except Exception:
+        logger.debug(
+            "maybe_broadcast_for skipped (no live hub/appstate in this context)",
+            exc_info=True,
+        )

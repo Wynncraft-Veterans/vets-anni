@@ -30,6 +30,7 @@ from app.web import auth
 from app.web.deps import render
 from app.web.routers.capability import _parse_conf, _write_weapons
 from app.web.routers.roles_dash import row_for, view_signals
+from app.web.ws.board_hub import maybe_broadcast_for
 
 logger = logging.getLogger("anni.web.staff_capability")
 router = APIRouter()
@@ -141,6 +142,7 @@ async def staff_update_capability(
         "staff edited capability: %s -> %s",
         cap.player.mc_username, cap.role.value,
     )
+    await maybe_broadcast_for(cap.player.mc_uuid)
     return await _row_response(request, cap.player.mc_uuid)
 
 
@@ -162,6 +164,7 @@ async def staff_delete_capability(request: Request, cap_id: str):
     logger.info(
         "staff deleted capability: %s / %s", player_name, role_value
     )
+    await maybe_broadcast_for(player_uuid)
     return await _row_response(request, player_uuid)
 
 
