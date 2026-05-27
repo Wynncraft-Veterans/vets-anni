@@ -36,6 +36,16 @@ GRACE_SECONDS = 35.0
 #: window survives across ticks.
 _recent: dict[str, tuple[float, OnlinePlayer]] = {}
 
+#: Last successful WAPI guild fetch — payload + monotonic timestamp. We poll
+#: temp-server every tick (~5s in the hot window) but only **re-fetch** the
+#: WAPI guild endpoint once its 120s ``Cache-Control: max-age`` has elapsed.
+#: Polite to upstream + indistinguishable from polling at TTL since cloudflare
+#: would serve the same body anyway. Cached payload is re-parsed every tick
+#: so the merged dict still includes WAPI-only online members (they don't
+#: vanish from ``state.online_by_uuid`` just because we skipped the fetch).
+_wapi_guild_cache: dict | None = None
+_wapi_guild_fetched_at: float = 0.0
+
 
 def _parse_guild_online(payload: dict) -> dict[str, str]:
     """Return ``{uuid: username}`` for WAPI guild members flagged online.
@@ -112,12 +122,27 @@ async def _tick(state: AppState, settings: Settings) -> None:
             queued=bool(row.get("queued", False)),
         )
 
-    # (2) WAPI guild online (own token, low priority — never block a login).
-    try:
-        guild = await get_wapi().get_json(
-            f"guild/{settings.returners_guild_name}", priority=PRIO_LOW
-        )
-        for uuid, name in _parse_guild_online(guild).items():
+    # (2) WAPI guild online — but only re-fetch once per ``wapi_guild_ttl_seconds``
+    # (default 120s, matching the endpoint's ``Cache-Control: max-age``). Inside
+    # the hot window we tick every 5s; hammering the guild endpoint at that
+    # cadence would just yield the same cached body for ~24 ticks out of 25.
+    # We cache the payload locally and re-parse it every tick so WAPI-only
+    # online members stay in the merged dict between fetches.
+    global _wapi_guild_cache, _wapi_guild_fetched_at
+    now_mono = time.monotonic()
+    if now_mono - _wapi_guild_fetched_at >= settings.wapi_guild_ttl_seconds:
+        try:
+            _wapi_guild_cache = await get_wapi().get_json(
+                f"guild/{settings.returners_guild_name}", priority=PRIO_LOW
+            )
+            _wapi_guild_fetched_at = now_mono
+        except WapiError as exc:
+            logger.info("guild-online fetch skipped (%s) — using cached payload", exc)
+        except Exception:  # noqa: BLE001
+            logger.warning("guild-online fetch failed — using cached payload",
+                           exc_info=True)
+    if _wapi_guild_cache is not None:
+        for uuid, name in _parse_guild_online(_wapi_guild_cache).items():
             if uuid not in merged:
                 merged[uuid] = OnlinePlayer(
                     uuid=uuid,
@@ -125,15 +150,13 @@ async def _tick(state: AppState, settings: Settings) -> None:
                     tier="guild",
                 )
         # Same payload also yields the FULL staff list (offline included) —
-        # the lead-organiser candidates. Last-good: only replace on success.
-        staff = _parse_guild_staff(guild, settings.staff_guild_rank_set)
+        # the lead-organiser candidates. Refresh each tick from the cached
+        # payload (cheap pure parse) so a freshly cached fetch propagates
+        # without waiting a second tick.
+        staff = _parse_guild_staff(_wapi_guild_cache, settings.staff_guild_rank_set)
         if staff:
             state.guild_staff = staff
             state.touch("guild_staff_fetched_at")
-    except WapiError as exc:
-        logger.info("guild-online fetch skipped (%s) — list-only this tick", exc)
-    except Exception:  # noqa: BLE001
-        logger.warning("guild-online fetch failed — list-only this tick", exc_info=True)
 
     # (3) grace window: re-add anyone seen very recently but missing now.
     now = time.monotonic()

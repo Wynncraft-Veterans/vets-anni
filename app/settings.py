@@ -177,6 +177,14 @@ class Settings(BaseSettings):
     auto_promoter_seconds: int = 60          # idle cadence outside hot window
     auto_promoter_hot_seconds: int = 3       # ticks inside the hot window
 
+    # Minimum interval between WAPI ``/v3/guild/<name>`` re-fetches inside
+    # ``online_merge``. Matches the endpoint's ``Cache-Control: max-age=120``
+    # so we don't burn calls (or upstream cloudflare bandwidth) on requests
+    # that would return the same cached body. The cached payload is re-parsed
+    # every tick so freshness between fetches still merges into the live
+    # ``state.online_by_uuid``.
+    wapi_guild_ttl_seconds: int = 120
+
     # Grace window (hours) for staff to record per-party results before wipe.
     grace_hours: int = 2
 
