@@ -24,6 +24,15 @@
   var refreshTimer = null;
   var pingTimer = null;
 
+  /* One pill — #ws-state — carries both the WS connection state and the
+   * auto-promoter monitoring phase. Connection problems always win
+   * (reconnecting / offline override the monitoring label) because if we
+   * can't trust the socket, the monitoring info is stale anyway. When
+   * connected, the pill renders the server's snapshot.event.monitoring_label
+   * with a colour matching the phase (idle = muted, early/late = ok). */
+  var lastMonitoring = { label: null, state: null };
+  var wsOpen = false;
+
   function setState(text, cls) {
     var el = document.getElementById("ws-state");
     if (!el) return;
@@ -31,20 +40,37 @@
     el.className = "pill " + (cls || "pill-muted");
   }
 
-  /* Auto-promoter monitoring pill — its label/state is driven by the server's
-   * snapshot.event.monitoring_label string. We update it whenever a frame
-   * carries a snapshot (WELCOME, or PATCH with op="snapshot"). The pill lives
-   * outside #board so the HTMX re-fetch can't touch it; this is the one
-   * place it gets updated client-side. */
+  function classForMonitoring(state) {
+    /* idle = not yet in the hot window; muted (informational, no signal
+     * for staff). early / late = actively monitoring; ok-green so the pill
+     * matches the legacy "live" colour the screen used to show. */
+    return state === "idle" ? "pill-muted" : "pill-ok";
+  }
+
+  function renderConnectedPill() {
+    /* Only call this when ws is OPEN. Renders the last-known monitoring
+     * state; falls back to a generic "live" when no snapshot has arrived
+     * yet. */
+    if (!wsOpen) return;
+    if (lastMonitoring.label) {
+      setState(lastMonitoring.label, classForMonitoring(lastMonitoring.state));
+    } else {
+      setState("live", "pill-ok");
+    }
+  }
+
   function applyMonitoring(snapshot) {
-    var pill = document.getElementById("monitor-state");
-    if (!pill || !snapshot || !snapshot.event) return;
+    /* Snapshot frames update the cached monitoring state. If the socket is
+     * still open, re-render the pill; if not, the next ws.onopen will
+     * pick up the cached label. */
+    if (!snapshot || !snapshot.event) return;
     if (snapshot.event.monitoring_label) {
-      pill.textContent = snapshot.event.monitoring_label;
+      lastMonitoring.label = snapshot.event.monitoring_label;
     }
     if (snapshot.event.monitoring) {
-      pill.setAttribute("data-state", snapshot.event.monitoring);
+      lastMonitoring.state = snapshot.event.monitoring;
     }
+    renderConnectedPill();
   }
 
   /* Coalesce bursts of signals (a multi-op change, or our own POST echoing
@@ -79,7 +105,8 @@
     }
     ws.onopen = function () {
       backoff = 1000;
-      setState("live", "pill-ok");
+      wsOpen = true;
+      renderConnectedPill();  // shows monitoring label, or "live" if no snap yet
       send({ v: 1, type: "HELLO" });
       clearInterval(pingTimer);
       pingTimer = setInterval(function () {
@@ -122,6 +149,7 @@
     };
     ws.onclose = function () {
       clearInterval(pingTimer);
+      wsOpen = false;
       setState("reconnecting… (forms still work)", "pill-muted");
       setTimeout(connect, backoff);
       backoff = Math.min(backoff * 2, 15000);

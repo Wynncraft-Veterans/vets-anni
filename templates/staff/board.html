@@ -5,17 +5,16 @@
 {% block content %}
   <div class="board-head">
     <h1 class="board-title">Organizer Board
-      {# Two pills: the connection state (overwritten by board.js on
-         connect/drop) and the auto-promoter's monitoring phase
-         (snapshot-driven; board.js re-fetches the #board fragment, but
-         this pill lives outside it and is updated on each PATCH frame). #}
-      <span id="ws-state" class="pill pill-muted"
-            title="Live-sync status">connecting…</span>
-      {% if snapshot.event and snapshot.event.monitoring_label %}
-        <span id="monitor-state" class="pill pill-muted"
-              title="Auto-promoter window"
-              data-state="{{ snapshot.event.monitoring }}">{{ snapshot.event.monitoring_label }}</span>
-      {% endif %}
+      {# One pill carries both the WS connection state AND the auto-promoter
+         phase. Priority: a connection problem (reconnecting / offline)
+         always wins — that supersedes anything else. When connected, the
+         pill shows the monitoring label and its colour reflects whether
+         we're actively monitoring (ok = green) or idle (muted). board.js
+         re-renders this on every WS event AND on every snapshot frame. #}
+      <span id="ws-state"
+            class="pill {{ 'pill-muted' if not snapshot.event or snapshot.event.monitoring == 'idle' else 'pill-ok' }}"
+            title="Live-sync + auto-promoter status"
+            data-state="{{ snapshot.event.monitoring if snapshot.event else 'idle' }}">{{ snapshot.event.monitoring_label if snapshot.event and snapshot.event.monitoring_label else "connecting…" }}</span>
     </h1>
     {% if has_event %}
       {# One line, aligned right: "Lead organiser [dropdown]". Auto-submits on
