@@ -74,16 +74,17 @@ The board/dashboards remain fully usable in greyscale or any CVD type (with
 colourblind variant is never colour-only at the DOM level). This is verified
 by DOM inspection in the Phase 1/2 checks.
 
-### Board label-density toggles
-The organizer board's **Configs** box has per-user "Role Labels" / "Status
-Labels" toggles (`lbl_roles`/`lbl_status` cookies, `GET /toggle-label`,
-`deps.label_visible`; a sibling "Pin to top" config — `cfg_pin`, default on —
-shares the same route/box but is unrelated to CB). They hide the *text tag*
-on a person card. Default is **off in both modes**, opt-in: the card
-background (role colour), border colour+pattern (status), and capability
+### Board label-density toggle
+The organizer board's **Configs** box has a per-user "Role and Status Labels"
+toggle (`lbl_tags` cookie, `GET /toggle-label?which=tags`,
+`deps.labels_visible`; a sibling "Pin to top" config — `cfg_pin`, default on —
+shares the same route/box but is unrelated to CB). It hides the *text tags*
+on a person card (both the role tag and the status tag move together — they
+are the same density choice). Default is **off in both modes**, opt-in: the
+card background (role colour), border colour+pattern (status), and capability
 dots already carry the signal, and the person root's `aria-label` is
-unaffected. CB does not lock these toggles; a CB user opting out is making
-an informed density choice.
+unaffected. CB does not lock this toggle; a CB user opting out is making an
+informed density choice.
 
 ## Role-chip rendering (legibility)
 In **normal** mode a role chip's **body** uses the `--role-*-dark` shade

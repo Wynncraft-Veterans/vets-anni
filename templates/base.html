@@ -27,7 +27,7 @@ You can also follow along with the status of the current anni (if announced).{% 
   <meta property="og:image" content="{{ PUBLIC_BASE_URL }}{{ asset('img/favicon.png') }}">
   <meta name="twitter:card" content="summary">
 </head>
-<body class="{% if cb %}cb{% endif %}{% if not label_roles %} hide-rolelabel{% endif %}{% if not label_status %} hide-statuslabel{% endif %}{% if dot_click_mode %} dotmode-click{% endif %}">
+<body class="{% if cb %}cb{% endif %}{% if not label_tags %} hide-rolelabel hide-statuslabel{% endif %}">
   <nav class="navbar">
     <div class="nav-inner">
       <a class="nav-brand" href="/">WYNNVETS · ANNI</a>

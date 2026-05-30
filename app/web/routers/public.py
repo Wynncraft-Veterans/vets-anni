@@ -21,15 +21,13 @@ from app.web.ws.board_hub import maybe_broadcast_for
 from app.web.deps import (
     clear_session,
     colourblind,
-    dot_click_mode,
     dropdown_assign,
-    label_visible,
+    labels_visible,
     pin_legend,
     render,
     set_colourblind,
-    set_dot_click_mode,
     set_dropdown_assign,
-    set_label_pref,
+    set_labels_pref,
     set_pin,
     write_session,
 )
@@ -153,19 +151,17 @@ async def toggle_colourblind(request: Request):
 
 @router.get("/toggle-label", include_in_schema=False)
 async def toggle_label(request: Request):
-    """Flip a board label-density preference (``which`` = roles|status) and
-    bounce back. Works in both modes; we flip the *effective* visibility so the
-    new explicit cookie matches what the user sees toggle to, regardless of
-    whether the prior state was a cookie or the mode default."""
+    """Flip a board-controls preference (``which`` = tags|pin|
+    dropdown_assign) and bounce back. ``tags`` is the combined role+status
+    text-label density switch; the others are unrelated configs that share
+    this route/box for routing symmetry."""
     which = request.query_params.get("which")
     target = request.query_params.get("next") or "/staff/board"
     resp = RedirectResponse(target, status_code=303)
-    if which in ("roles", "status"):
-        set_label_pref(resp, which, not label_visible(request, which))
+    if which == "tags":
+        set_labels_pref(resp, not labels_visible(request))
     elif which == "pin":
         set_pin(resp, not pin_legend(request))
-    elif which == "dotmode":
-        set_dot_click_mode(resp, not dot_click_mode(request))
     elif which == "dropdown_assign":
         set_dropdown_assign(resp, not dropdown_assign(request))
     # Unknown facet -> a safe bounce, no cookie change, never a crash.

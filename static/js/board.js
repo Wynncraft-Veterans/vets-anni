@@ -272,43 +272,6 @@
     });
   }
 
-  /* ---- capability-dot click mode ---------------------------------------- */
-  /* In click mode (body.dotmode-click), clicking a dot toggles its sibling
-     popover's `.open` class; an outside click dismisses any open popover.
-     Hover mode is pure CSS — this handler is a no-op there. The handler is
-     bound once on document.body so it survives the WS-driven #board
-     refreshes (which destroy and recreate every dot). */
-  function closeAllPopovers() {
-    document.querySelectorAll(".cap-popover.open").forEach(function (el) {
-      el.classList.remove("open");
-    });
-  }
-
-  document.addEventListener("click", function (ev) {
-    if (!document.body.classList.contains("dotmode-click")) return;
-    var dot = ev.target.closest && ev.target.closest(".cap-dot");
-    if (dot) {
-      ev.preventDefault();
-      var wrap = dot.parentElement;
-      var pop = wrap && wrap.querySelector(".cap-popover");
-      if (!pop) return;
-      var wasOpen = pop.classList.contains("open");
-      closeAllPopovers();
-      if (!wasOpen) pop.classList.add("open");
-      return;
-    }
-    /* Click landed somewhere that's neither a dot nor the popover itself —
-       treat it as "dismiss" so popovers don't linger after the user has
-       moved on (the natural escape for a click-to-open UI). */
-    if (!(ev.target.closest && ev.target.closest(".cap-popover"))) {
-      closeAllPopovers();
-    }
-  });
-  /* Escape always closes (a11y); harmless in hover mode. */
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") closeAllPopovers();
-  });
-
   // Re-init after every #board swap (HTMX replaces the node, so the old
   // Sortable instances are dead) and dismiss the add-player popup once its
   // submit has swapped the board back in (same pattern as the dashboard

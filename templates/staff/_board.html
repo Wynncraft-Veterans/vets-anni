@@ -63,18 +63,10 @@
       <ul class="cfg-list">
         <li>
           <a class="cfg-row" role="switch"
-             aria-checked="{{ 'true' if label_roles else 'false' }}"
-             href="/toggle-label?which=roles&next=/staff/board">
-            <span class="cfg-name">Role Labels</span>
-            <span class="cfg-switch{{ ' on' if label_roles }}" aria-hidden="true"></span>
-          </a>
-        </li>
-        <li>
-          <a class="cfg-row" role="switch"
-             aria-checked="{{ 'true' if label_status else 'false' }}"
-             href="/toggle-label?which=status&next=/staff/board">
-            <span class="cfg-name">Status Labels</span>
-            <span class="cfg-switch{{ ' on' if label_status }}" aria-hidden="true"></span>
+             aria-checked="{{ 'true' if label_tags else 'false' }}"
+             href="/toggle-label?which=tags&next=/staff/board">
+            <span class="cfg-name">Role and Status Labels</span>
+            <span class="cfg-switch{{ ' on' if label_tags }}" aria-hidden="true"></span>
           </a>
         </li>
         <li>
@@ -83,18 +75,6 @@
              href="/toggle-label?which=pin&next=/staff/board">
             <span class="cfg-name">Pin to top</span>
             <span class="cfg-switch{{ ' on' if pin_legend }}" aria-hidden="true"></span>
-          </a>
-        </li>
-        {# Capability-dot info trigger — hover (default) vs click. The switch
-           is "Click to open" so OFF = the default hover and ON = the opt-in
-           click mode (same direction as the other prefs). #}
-        <li>
-          <a class="cfg-row" role="switch"
-             aria-checked="{{ 'true' if dot_click_mode else 'false' }}"
-             href="/toggle-label?which=dotmode&next=/staff/board"
-             title="Off: hover a role dot to see its info. On: click a dot instead.">
-            <span class="cfg-name">Click for role info</span>
-            <span class="cfg-switch{{ ' on' if dot_click_mode }}" aria-hidden="true"></span>
           </a>
         </li>
         {# Destination dropdown on each card — an alt to drag-drop for staff

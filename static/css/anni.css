@@ -525,9 +525,10 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
    which applies in both modes; colour is the inline var(--st-*)). */
 .person.status-border { border-width:3px; }
 
-/* Label-density toggles (deps.label_visible -> base.html body class). Default
-   off in both modes — the role card background, status border colour+pattern,
-   and capability dots already carry the signal; the text tag is opt-in. */
+/* Label-density toggle (deps.labels_visible -> base.html body classes; one
+   switch covers both tags). Default off in both modes — the role card
+   background, status border colour+pattern, and capability dots already carry
+   the signal; the text tags are opt-in. */
 body.hide-rolelabel  .person .role-tag    { display:none; }
 body.hide-statuslabel .person .status-tag { display:none; }
 
@@ -594,15 +595,12 @@ body.hide-statuslabel .person .status-tag { display:none; }
 .cap-popover-weapons { display:flex; flex-wrap:wrap; gap:.25rem; }
 .cap-popover .muted { color:#6b7280; font-size:.75rem; }
 
-/* Default (hover) mode: open on pointer hover OR keyboard focus-within so
-   the dot stays usable with no mouse. */
-body:not(.dotmode-click) .cap-dot-wrap:hover > .cap-popover,
-body:not(.dotmode-click) .cap-dot-wrap:focus-within > .cap-popover {
+/* Open on pointer hover OR keyboard focus-within so the dot stays usable
+   with no mouse. */
+.cap-dot-wrap:hover > .cap-popover,
+.cap-dot-wrap:focus-within > .cap-popover {
   display:block;
 }
-/* Click mode: only the JS-applied .open class shows the popover. board.js
-   handles the toggle + outside-click dismissal. */
-body.dotmode-click .cap-popover.open { display:block; }
 
 /* Stacking-order fix.
    (1) `.cap-dots` has a `transform` (the upward nudge), so it forms its own
@@ -619,9 +617,8 @@ body.dotmode-click .cap-popover.open { display:block; }
    sibling .person (auto) but below the navbar (20), so the popover never
    overlays page chrome. */
 .person { position: relative; isolation: isolate; }
-body:not(.dotmode-click) .person:has(.cap-dot-wrap:hover),
-body:not(.dotmode-click) .person:has(.cap-dot-wrap:focus-within),
-body.dotmode-click .person:has(.cap-popover.open) { z-index: 18; }
+.person:has(.cap-dot-wrap:hover),
+.person:has(.cap-dot-wrap:focus-within) { z-index: 18; }
 
 /* Legend (~90%) beside the Configs box (~10%). */
 .legend-wrap {

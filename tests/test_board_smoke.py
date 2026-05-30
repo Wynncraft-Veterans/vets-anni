@@ -35,45 +35,47 @@ async def test_staff_hub_renders_status_and_tools(as_staff, seeded):
     assert "Rotate the staff password" in body       # Phase-1 tools kept
 
 
-async def test_label_toggles_default_hidden_off_cb_and_flip(as_staff, seeded):
+async def test_label_toggle_default_hidden_off_cb_and_flip(as_staff, seeded):
     """CB off: labels hidden by default (colour conveys it); the Configs box
-    renders radio rows and the toggle round-trips a cookie."""
+    renders the combined Role+Status switch and the toggle round-trips a
+    cookie that flips both body classes together."""
     r = await as_staff.get("/staff/board")
     assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
     assert "<h3>Configs</h3>" in r.text
-    assert "Role Labels" in r.text and "Status Labels" in r.text
+    assert "Role and Status Labels" in r.text
     assert "cfg-switch" in r.text                  # the switch control
     assert "Hide the text tags" not in r.text      # subheading removed
 
-    r = await as_staff.get("/toggle-label?which=roles&next=/staff/board",
+    r = await as_staff.get("/toggle-label?which=tags&next=/staff/board",
                             follow_redirects=False)
-    assert r.status_code == 303 and r.cookies.get("lbl_roles") == "1"
+    assert r.status_code == 303 and r.cookies.get("lbl_tags") == "1"
 
     r = await as_staff.get("/staff/board")
-    assert "hide-rolelabel" not in r.text          # roles now labelled
-    assert "hide-statuslabel" in r.text            # status still hidden
-    assert 'aria-checked="true"' in r.text         # the roles switch is on
+    # The combined switch flips both body classes in lockstep.
+    assert "hide-rolelabel" not in r.text
+    assert "hide-statuslabel" not in r.text
+    assert 'aria-checked="true"' in r.text         # the combined switch is on
 
     r = await as_staff.get("/toggle-label?which=bogus", follow_redirects=False)
     assert r.status_code == 303  # unknown facet -> safe bounce, no crash
 
 
-async def test_label_toggles_unlocked_under_cb_and_default_hidden(as_staff, seeded):
-    """CB no longer locks the label toggles — they default hidden in both modes
+async def test_label_toggle_unlocked_under_cb_and_default_hidden(as_staff, seeded):
+    """CB no longer locks the label toggle — it defaults hidden in both modes
     (the role-card background, status border colour+pattern, and capability
-    dots still carry the signal) and stay interactive under CB."""
+    dots still carry the signal) and stays interactive under CB."""
     as_staff.cookies.set("cb", "1")
     r = await as_staff.get("/staff/board")
     assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
     assert "cfg-locked" not in r.text and "🔒" not in r.text  # no lock under CB
-    assert "/toggle-label?which=roles" in r.text             # row is a real link
+    assert "/toggle-label?which=tags" in r.text              # row is a real link
 
-    r = await as_staff.get("/toggle-label?which=roles&next=/staff/board",
+    r = await as_staff.get("/toggle-label?which=tags&next=/staff/board",
                             follow_redirects=False)
-    assert r.status_code == 303 and r.cookies.get("lbl_roles") == "1"
+    assert r.status_code == 303 and r.cookies.get("lbl_tags") == "1"
 
     r = await as_staff.get("/staff/board")
-    assert "hide-rolelabel" not in r.text   # CB user opted labels on
+    assert "hide-rolelabel" not in r.text and "hide-statuslabel" not in r.text
 
 
 async def test_pin_legend_defaults_on_and_toggles_off(as_staff, seeded):

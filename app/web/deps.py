@@ -114,27 +114,27 @@ def set_colourblind(response: Response, on: bool) -> None:
         response.delete_cookie(_CB_COOKIE)
 
 
-# --- board label-density toggles -------------------------------------------
-# Per-user "show the text tag?" prefs for the board person cards. Default OFF
-# in both modes — the role-card background, status border colour+pattern, and
-# capability dots already carry the signal, so the text tag is opt-in density.
-# The toggle is interactive in CB too: aria-label on the person root still
-# announces role+status for screen-reader users regardless.
-_LABEL_COOKIES = {"roles": "lbl_roles", "status": "lbl_status"}
+# --- board label-density toggle --------------------------------------------
+# Per-user "show the text tags?" pref for the board person cards (a single
+# switch that governs both the role tag and the status tag — they're the same
+# density choice). Default OFF in both modes: the role-card background, status
+# border colour+pattern, and capability dots already carry the signal, so the
+# text tag is opt-in density. The toggle is interactive in CB too; the person
+# root's aria-label still announces role+status for screen-reader users.
+_LABEL_COOKIE = "lbl_tags"
 
 
-def label_visible(request: Request, which: str) -> bool:
-    """Whether the role/status text tag actually renders on a person card."""
-    return request.cookies.get(_LABEL_COOKIES[which]) == "1"
+def labels_visible(request: Request) -> bool:
+    """Whether the role + status text tags render on a person card."""
+    return request.cookies.get(_LABEL_COOKIE) == "1"
 
 
-def set_label_pref(response: Response, which: str, on: bool) -> None:
-    name = _LABEL_COOKIES[which]
+def set_labels_pref(response: Response, on: bool) -> None:
     if on:
-        response.set_cookie(name, "1", max_age=60 * 60 * 24 * 365,
+        response.set_cookie(_LABEL_COOKIE, "1", max_age=60 * 60 * 24 * 365,
                             samesite="lax")
     else:
-        response.delete_cookie(name)
+        response.delete_cookie(_LABEL_COOKIE)
 
 
 # Pin the legend/configs bar to the top while scrolling. Unlike the label
@@ -154,27 +154,6 @@ def set_pin(response: Response, on: bool) -> None:
     else:
         response.set_cookie(_PIN_COOKIE, "0", max_age=60 * 60 * 24 * 365,
                             samesite="lax")
-
-
-# Capability-dot popover trigger — hover (default, cookie absent/"") or click
-# ("click"). Same cookie family as cb/pin/label prefs; we only store the
-# explicit non-default ("click") so clearing the cookie reverts to hover. The
-# value is exposed as a body class so the choice survives the WS-driven
-# #board refreshes with no JS needed for the hover path.
-_DOT_MODE_COOKIE = "cfg_dot_mode"
-
-
-def dot_click_mode(request: Request) -> bool:
-    """True when the user opted into click-based capability-dot info popups."""
-    return request.cookies.get(_DOT_MODE_COOKIE) == "click"
-
-
-def set_dot_click_mode(response: Response, on: bool) -> None:
-    if on:
-        response.set_cookie(_DOT_MODE_COOKIE, "click",
-                            max_age=60 * 60 * 24 * 365, samesite="lax")
-    else:
-        response.delete_cookie(_DOT_MODE_COOKIE)   # back to default (hover)
 
 
 # Per-user opt-in: a destination dropdown on each person card as an
@@ -231,12 +210,11 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "user_uuid": session.get("mc_uuid") if session.get("kind") == "user" else None,
         "is_staff": session.get("kind") == "staff",
         "debug": _settings.debug,
-        # Effective board label visibility (CB forces both on); base.html turns
-        # these into body classes, the board controls box reflects them.
-        "label_roles": label_visible(request, "roles"),
-        "label_status": label_visible(request, "status"),
+        # Effective board label visibility (a single combined switch covers
+        # both the role and status text tags); base.html turns it into the
+        # body classes, the board controls box reflects it.
+        "label_tags": labels_visible(request),
         "pin_legend": pin_legend(request),
-        "dot_click_mode": dot_click_mode(request),
         "dropdown_assign": dropdown_assign(request),
         # Cookie-derived by default; the collapse toggle route passes a fresh
         # set via **context so its own response reflects the new state (the
