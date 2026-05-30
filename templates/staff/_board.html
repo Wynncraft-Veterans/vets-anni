@@ -97,6 +97,18 @@
             <span class="cfg-switch{{ ' on' if dot_click_mode }}" aria-hidden="true"></span>
           </a>
         </li>
+        {# Destination dropdown on each card — an alt to drag-drop for staff
+           who prefer keyboard / pointer-precision over dragging. OFF by
+           default; the dropdown is hidden until this is flipped on. #}
+        <li>
+          <a class="cfg-row" role="switch"
+             aria-checked="{{ 'true' if dropdown_assign else 'false' }}"
+             href="/toggle-label?which=dropdown_assign&next=/staff/board"
+             title="Off: drag cards to move them. On: each card gets a dropdown of every party + bucket.">
+            <span class="cfg-name">Dropdown move</span>
+            <span class="cfg-switch{{ ' on' if dropdown_assign }}" aria-hidden="true"></span>
+          </a>
+        </li>
       </ul>
     </section>
     </div>

@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     #   12 req/min, well inside. The point of polling faster than the WAPI
     #   TTL is the temp-server side (real-time), which is the source of truth
     #   for "is X online right now".
-    hot_window_open_seconds: int = 70 * 60   # 1h10 before stamp_epoch
+    hot_window_open_seconds: int = 120 * 60  # 2h before stamp_epoch
     online_merge_hot_seconds: int = 5
     presence_poll_hot_seconds: int = 2
     auto_promoter_seconds: int = 60          # idle cadence outside hot window

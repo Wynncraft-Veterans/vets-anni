@@ -119,21 +119,43 @@
 
     {# No-JS / socket-dropped controls: role + move both POST a REST twin and
        swap #board back in. board.js intercepts the drag for the WS path; both
-       routes funnel through board_hub (single-instance UPSERT). #}
-    {% if not p.is_placeholder %}
-      <div class="person-actions">
-        <select class="person-role" aria-label="Assign role to {{ p.name }}"
-                hx-post="/staff/board/assign-role" hx-target="#board"
-                hx-swap="outerHTML" hx-include="this"
-                name="role" hx-vals='{"player_uuid": "{{ p.uuid }}"}'>
-          <option value="" {{ 'selected' if not p.assigned_role }}>— role —</option>
-          {% for role in assignable_roles %}
-            <option value="{{ role.value }}"
-                    {{ 'selected' if p.assigned_role == role.value }}>
-              {{ role.value | capitalize }}</option>
-          {% endfor %}
+       routes funnel through board_hub (single-instance UPSERT). Role assign
+       works for placeholders too — registration and role are independent
+       axes; the "Unregistered" pill keeps showing until they actually
+       register via RSVP / dashboard login. #}
+    <div class="person-actions">
+      <select class="person-role" aria-label="Assign role to {{ p.name }}"
+              hx-post="/staff/board/assign-role" hx-target="#board"
+              hx-swap="outerHTML" hx-include="this"
+              name="role" hx-vals='{"player_uuid": "{{ p.uuid }}"}'>
+        <option value="" {{ 'selected' if not p.assigned_role }}>— role —</option>
+        {% for role in assignable_roles %}
+          <option value="{{ role.value }}"
+                  {{ 'selected' if p.assigned_role == role.value }}>
+            {{ role.value | capitalize }}</option>
+        {% endfor %}
+      </select>
+      {# Opt-in destination dropdown — alternative to drag-drop. Off by default
+         (cookie cfg_dropdown_assign). Fires window.__moveViaSelect, defined in
+         board.js, which parses the value and POSTs the move via HTMX. #}
+      {% if dropdown_assign and snapshot %}
+        <select class="person-move" aria-label="Move {{ p.name }}"
+                data-uuid="{{ p.uuid }}"
+                onchange="window.__moveViaSelect && window.__moveViaSelect(this)">
+          <option value="" selected>— move to —</option>
+          <optgroup label="Parties">
+            {% for party in snapshot.parties %}
+              <option value="party:{{ party.id }}">Party {{ party.ordinal }}{% if party.host %} (host: {{ party.host.name }}){% endif %}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Buckets">
+            <option value="bucket:unassigned:0">Unassigned</option>
+            <option value="bucket:unassigned:1">Unassigned (Late)</option>
+            <option value="bucket:wontassign:0">Won't assign</option>
+            <option value="bucket:volunteers:0">Volunteers</option>
+          </optgroup>
         </select>
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
 {% endmacro %}

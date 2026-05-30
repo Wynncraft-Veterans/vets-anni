@@ -357,26 +357,28 @@ UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "Unassigned")
 
 
 # Status border → the SAME shared colour as its paired role (spec.md [^6]):
-# GONE↔PRIMARY(red), SOFT↔SECONDARY(yellow), HARD↔HEALER(green),
-# ELSEWHERE↔TANK(blue), WORLD↔FILL(cyan), PARTY↔TERTIARY(magenta).
+# GONE↔TANK(blue), SOFT↔PRIMARY(red), HARD↔TERTIARY(magenta),
+# ELSEWHERE↔HEALER(green), WORLD↔FILL(cyan), PARTY↔SECONDARY(yellow).
+# (Pairings re-aligned post test-run to match revised status semantics; role
+# colours stayed put, only which status each role pairs with changed.)
 STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
     PresenceStatus.OFFLINE_GONE: _status(
-        STYLES[PaletteColor.RED], "dot", "!",
+        STYLES[PaletteColor.BLUE], "dot", "!",
         "A user who was here but has since logged out"),
     PresenceStatus.OFFLINE_HARD: _status(
-        STYLES[PaletteColor.GREEN], "dash-dash-dot", "✓",
+        STYLES[PaletteColor.MAGENTA], "dash-dash-dot", "✓",
         "A hard RSVP'd user who is not here yet"),
     PresenceStatus.OFFLINE_SOFT: _status(
-        STYLES[PaletteColor.YELLOW], "dash-dot", "~",
+        STYLES[PaletteColor.RED], "dash-dot", "~",
         "A soft RSVP'd user who is not here yet"),
     PresenceStatus.ONLINE_ELSEWHERE: _status(
-        STYLES[PaletteColor.BLUE], "dash", "→",
+        STYLES[PaletteColor.GREEN], "dash", "→",
         "An online user not on their party's world"),
     PresenceStatus.ONLINE_WORLD: _status(
         STYLES[PaletteColor.CYAN], "solid", "◐",
         "An on-world online user who has not joined their party yet."),
     PresenceStatus.ONLINE_PARTY: _status(
-        STYLES[PaletteColor.MAGENTA], "double", "●",
+        STYLES[PaletteColor.YELLOW], "double", "●",
         "An online user who has joined their party."),
     PresenceStatus.UNKNOWN: _status(
         STYLES[PaletteColor.GREY], "dash-dot-dot", "?",

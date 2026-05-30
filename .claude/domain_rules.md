@@ -10,12 +10,12 @@ the *same* colour entry:
 
 | Colour | Role      | Status border    |
 |--------|-----------|------------------|
-| RED    | primary   | offline-gone     |
-| YELLOW | secondary | offline-soft     |
-| GREEN  | healer    | offline-hard     |
-| BLUE   | tank      | online-elsewhere |
+| RED    | primary   | offline-soft     |
+| YELLOW | secondary | online-party     |
+| GREEN  | healer    | online-elsewhere |
+| BLUE   | tank      | offline-gone     |
 | CYAN   | fill      | online-world     |
-| MAGENTA| tertiary  | online-party     |
+| MAGENTA| tertiary  | offline-hard     |
 | GREY   | unassigned| unknown          |
 
 Each `STYLES` entry has `color` (default), `light`/`dark` (legible surfaces

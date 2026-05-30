@@ -122,6 +122,38 @@ async def test_wapi_only_online_member_persists_between_fetches(db, monkeypatch)
     assert "uuid-guildie" in state.online_by_uuid
 
 
+async def test_server_field_from_wapi_payload_reaches_online_player(db, monkeypatch):
+    """The WAPI guild payload exposes a per-member ``server`` field; we
+    must surface it onto ``OnlinePlayer.server`` so the presence classifier
+    can reach ``ONLINE_WORLD``/``ONLINE_PARTY``. Regression: prior to the
+    fix this was discarded and the on-world state was unreachable."""
+    payload = {
+        "members": {
+            "captain": {
+                "OnWorldGuildie": {
+                    "uuid": "uuid-onworld",
+                    "online": True,
+                    "server": "WC1",
+                },
+                "OnlineNoServer": {
+                    "uuid": "uuid-noserver",
+                    "online": True,
+                },
+            },
+        },
+    }
+    wapi = _FakeWapi(payload)
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _FakeTempserver())
+
+    state = AppState()
+    await online_merge._tick(state, Settings(wapi_guild_ttl_seconds=120))
+
+    assert state.online_by_uuid["uuid-onworld"].server == "WC1"
+    # Server is optional — missing field stays None, not a crash.
+    assert state.online_by_uuid["uuid-noserver"].server is None
+
+
 async def test_wapi_failure_uses_cached_payload(db, monkeypatch):
     """A WAPI failure on a refetch attempt must not wipe the cache — the
     previous payload keeps serving (last-good resilience)."""

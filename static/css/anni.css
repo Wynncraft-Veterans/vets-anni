@@ -46,12 +46,12 @@
   --role-tank-light:      var(--c-blue-light);
   /* Status → the SAME shared colour as its paired role (spec.md [^6];
      see STATUS_STYLES). */
-  --st-gone:        var(--c-red);
-  --st-offhard:     var(--c-green);
-  --st-offsoft:     var(--c-yellow);
-  --st-elsewhere:   var(--c-blue);
+  --st-gone:        var(--c-blue);
+  --st-offhard:     var(--c-magenta);
+  --st-offsoft:     var(--c-red);
+  --st-elsewhere:   var(--c-green);
   --st-world:       var(--c-cyan);
-  --st-party:       var(--c-magenta);
+  --st-party:       var(--c-yellow);
   --st-unknown:     var(--c-grey);
 }
 

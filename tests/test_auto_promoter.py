@@ -52,10 +52,12 @@ async def _reset_sweep_guard(monkeypatch):
 
 
 async def test_idle_outside_hot_window_no_inserts(seeded, monkeypatch):
-    """T-2h: bail on the hot gate, no placements created, no broadcast."""
+    """T-3h: bail on the hot gate, no placements created, no broadcast.
+    (The hot window opens at T-2h, so the test offset must be strictly
+    further out than that to be 'idle'.)"""
     broadcast = await _patch_broadcast(monkeypatch)
     await _reset_sweep_guard(monkeypatch)
-    await _set_event_stamp(seeded, 2 * 3600)  # T+2h => T-2h before the anni
+    await _set_event_stamp(seeded, 3 * 3600)  # T-3h before the anni
     state = AppState(online_by_uuid={
         "uuid-online": OnlinePlayer(uuid="uuid-online", username="Online")
     })

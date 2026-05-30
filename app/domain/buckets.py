@@ -27,6 +27,7 @@ from app.constants import MAX_PARTY_STAGE, MIN_PARTY_STAGE
 from app.db.models import AnniEvent, AnniPlayer, BoardPlacement, Party
 from app.domain import identity, membership
 from app.domain.identity import MojangResolver, mojang_username_to_uuid
+from app.domain.presence import normalize_world
 from app.services.state import AppState
 from app.settings import get_settings
 
@@ -361,7 +362,7 @@ async def set_party(
             party.host = host
         fields.append("host_id")
     if world is not ...:
-        party.world = (world or "").strip() or None
+        party.world = normalize_world(world)
         fields.append("world")
     if stage is not ...:
         party.stage = max(MIN_PARTY_STAGE, min(MAX_PARTY_STAGE, int(stage)))

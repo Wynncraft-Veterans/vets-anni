@@ -41,6 +41,25 @@ _T20M = 20 * 60
 _T45M = 45 * 60
 
 
+def normalize_world(s: str | None) -> str | None:
+    """Canonical form for comparing a party's announced world to a player's
+    current server. WAPI reports e.g. ``"WC1"``; staff type ``"1"``,
+    ``"wc1"``, ``"01"``, sometimes with stray whitespace. Both sides go
+    through here so a string mismatch can't hide a real world match.
+
+    Returns ``"WC<n>"`` for numeric worlds; non-numeric server names
+    (lobby/hub/etc.) pass through uppercased so they don't silently match
+    a numbered world. ``None``/empty → ``None``.
+    """
+    if not s:
+        return None
+    t = s.strip().upper().removeprefix("WC").strip().lstrip("0")
+    if t.isdigit():
+        return f"WC{t}"
+    canonical = s.strip().upper()
+    return canonical or None
+
+
 @dataclass(frozen=True)
 class PresenceInputs:
     """Everything the machine needs. Defaults model the common Phase-1 case
@@ -74,7 +93,7 @@ def classify(i: PresenceInputs) -> PresenceStatus:
         if i.queued or not i.has_party:
             return PresenceStatus.ONLINE_ELSEWHERE
         if i.party_world and i.current_server:
-            if i.current_server != i.party_world:
+            if normalize_world(i.current_server) != normalize_world(i.party_world):
                 return PresenceStatus.ONLINE_ELSEWHERE
             return (
                 PresenceStatus.ONLINE_PARTY

@@ -177,6 +177,25 @@ def set_dot_click_mode(response: Response, on: bool) -> None:
         response.delete_cookie(_DOT_MODE_COOKIE)   # back to default (hover)
 
 
+# Per-user opt-in: a destination dropdown on each person card as an
+# alternative to drag-drop. Default OFF (cookie absent → no dropdown,
+# drag-drop only) so the board stays uncluttered for staff who don't want it.
+_DROPDOWN_ASSIGN_COOKIE = "cfg_dropdown_assign"
+
+
+def dropdown_assign(request: Request) -> bool:
+    """True when the user opted into the per-card destination dropdown."""
+    return request.cookies.get(_DROPDOWN_ASSIGN_COOKIE) == "1"
+
+
+def set_dropdown_assign(response: Response, on: bool) -> None:
+    if on:
+        response.set_cookie(_DROPDOWN_ASSIGN_COOKIE, "1",
+                            max_age=60 * 60 * 24 * 365, samesite="lax")
+    else:
+        response.delete_cookie(_DROPDOWN_ASSIGN_COOKIE)
+
+
 # Per-user collapsed parties — a CSV of party ids in a cookie (same family as
 # cb/pin). It MUST be server-side: the board re-renders on every WS tick, so
 # a client-only collapse would pop back open; and it's per-user, so it never
@@ -218,6 +237,7 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "label_status": label_visible(request, "status"),
         "pin_legend": pin_legend(request),
         "dot_click_mode": dot_click_mode(request),
+        "dropdown_assign": dropdown_assign(request),
         # Cookie-derived by default; the collapse toggle route passes a fresh
         # set via **context so its own response reflects the new state (the
         # cookie it sets isn't visible until the next request).

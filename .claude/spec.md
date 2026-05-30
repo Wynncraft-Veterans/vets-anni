@@ -109,4 +109,4 @@ Eventually (as soon as practical): a `/anni` command showing key rsvp status, ta
 - Weapons: WAPI items endpoint (`/v3/item/search/{query}`).
 - Anni timestamp: `api.wynnvets.org/v1/outbound/stamp` (plain text; past = next anni not yet announced).
 - Role colours: red (primary), yellow (secondary), green (healer), cyan (fill), blue (tank), magenta (tertiary); grey = unassigned. One shared palette (`constants.STYLES`).
-- Status colours: each status border is the SAME shared colour as its paired role — offline disappearance = red (primary), offline weak rsvp = yellow (secondary), offline strong rsvp = green (healer), online wrong world = blue (tank), online correct world = cyan (fill), online in party = magenta (tertiary); grey = unknown.
+- Status colours: each status border is the SAME shared colour as its paired role — offline disappearance = blue (tank), offline weak rsvp = red (primary), offline strong rsvp = magenta (tertiary), online wrong world = green (healer), online correct world = cyan (fill), online in party = yellow (secondary); grey = unknown.

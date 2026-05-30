@@ -41,12 +41,12 @@ body.cb {
   --role-tank:       var(--c-blue);
   --role-fill:       var(--c-cyan);
   --role-unassigned: var(--c-grey);
-  --st-gone:      var(--c-red);
-  --st-offhard:   var(--c-green);
-  --st-offsoft:   var(--c-yellow);
-  --st-elsewhere: var(--c-blue);
+  --st-gone:      var(--c-blue);
+  --st-offhard:   var(--c-magenta);
+  --st-offsoft:   var(--c-red);
+  --st-elsewhere: var(--c-green);
   --st-world:     var(--c-cyan);
-  --st-party:     var(--c-magenta);
+  --st-party:     var(--c-yellow);
   --st-unknown:   var(--c-grey);
 
   /* Role-chip BODIES adopt CVD-safe hues here too (the user dashboard's only

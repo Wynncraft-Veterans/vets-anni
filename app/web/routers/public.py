@@ -22,11 +22,13 @@ from app.web.deps import (
     clear_session,
     colourblind,
     dot_click_mode,
+    dropdown_assign,
     label_visible,
     pin_legend,
     render,
     set_colourblind,
     set_dot_click_mode,
+    set_dropdown_assign,
     set_label_pref,
     set_pin,
     write_session,
@@ -164,5 +166,7 @@ async def toggle_label(request: Request):
         set_pin(resp, not pin_legend(request))
     elif which == "dotmode":
         set_dot_click_mode(resp, not dot_click_mode(request))
+    elif which == "dropdown_assign":
+        set_dropdown_assign(resp, not dropdown_assign(request))
     # Unknown facet -> a safe bounce, no cookie change, never a crash.
     return resp

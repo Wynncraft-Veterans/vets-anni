@@ -20,9 +20,14 @@
   var FRAGMENT_URL = "/staff/board/fragment";
 
   var ws = null;
-  var backoff = 1000;          // reconnect backoff, capped below
+  /* Initial reconnect backoff. Kept short so a transient blip (or a tab
+     waking from background-throttled WebSocket suspension) reconnects
+     within a single user-visible frame; doubles up to a 15s cap below. */
+  var INITIAL_BACKOFF = 250;
+  var backoff = INITIAL_BACKOFF;
   var refreshTimer = null;
   var pingTimer = null;
+  var safetyTimer = null;
 
   /* One pill — #ws-state — carries both the WS connection state and the
    * auto-promoter monitoring phase. Connection problems always win
@@ -104,7 +109,7 @@
       return;
     }
     ws.onopen = function () {
-      backoff = 1000;
+      backoff = INITIAL_BACKOFF;
       wsOpen = true;
       renderConnectedPill();  // shows monitoring label, or "live" if no snap yet
       send({ v: 1, type: "HELLO" });
@@ -158,6 +163,33 @@
       try { ws.close(); } catch (e) {}
     };
   }
+
+  /* ---- dropdown-move (opt-in alt to drag-drop) -------------------------- */
+  /* Wired from inline onchange on .person-move <select>. Value format:
+     "party:<id>"  or  "bucket:<name>:<is_late01>"  — parse and POST through
+     the same /staff/board/move REST twin the drag-drop fallback uses, so it
+     funnels through board_hub (single-instance UPSERT + WS broadcast). */
+  window.__moveViaSelect = function (sel) {
+    var val = sel.value;
+    if (!val) return;
+    var uuid = sel.getAttribute("data-uuid");
+    if (!uuid) return;
+    var values = { player_uuid: uuid, sort_index: 0 };
+    if (val.indexOf("party:") === 0) {
+      values.party_id = val.slice(6);
+    } else if (val.indexOf("bucket:") === 0) {
+      var parts = val.slice(7).split(":");
+      values.bucket = parts[0];
+      values.is_late = parts[1] === "1" ? "true" : "false";
+    } else {
+      return;
+    }
+    if (window.htmx) {
+      htmx.ajax("POST", "/staff/board/move", {
+        target: "#board", swap: "outerHTML", values: values,
+      });
+    }
+  };
 
   /* ---- drag-drop -> MOVE ------------------------------------------------ */
   function targetOf(zone) {
@@ -223,8 +255,17 @@
              <select>) so a click on a dot is a real click, not a drag-start
              that swallows the event. `preventOnFilter:false` lets the native
              click still fire. */
-          filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role",
+          filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role, .person-move",
           preventOnFilter: false,
+          /* Auto-scroll the document while dragging so a card can be moved
+             from a party at the top to one off the bottom of the viewport.
+             The board is a single tall scroll layout (no internal scroll
+             regions), so bubbleScroll lets sortable walk up to the document
+             scroller. */
+          scroll: true,
+          scrollSensitivity: 80,
+          scrollSpeed: 20,
+          bubbleScroll: true,
           onEnd: onDrop,
         })
       );
@@ -280,8 +321,38 @@
     }
   });
 
+  /* ---- staleness defenses ----------------------------------------------- */
+  /* Two backstops against the well-known background-tab WebSocket failure
+     mode (browsers throttle/suspend hidden tabs after a while, so a
+     mutation broadcast from another staff can be missed entirely):
+       1. visibilitychange: when a tab becomes visible again, force a
+          fresh fragment fetch immediately and — if the socket dropped
+          while we were hidden — reset the backoff and reconnect now.
+       2. safety-net poll: every 30s while the tab is visible, re-fetch
+          the fragment as a backstop. Coalesces with scheduleRefresh's
+          150ms debounce so a live socket pays no extra cost.
+
+     Note: the server-side audit (.claude/ws_protocol.md) confirms every
+     mutation funnels through board_hub.handle (or maybe_broadcast_for),
+     so these are *purely* about closing the visibility/reconnect window
+     — they're not papering over silent server-side writes. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible") return;
+    if (!wsOpen) {
+      backoff = INITIAL_BACKOFF;
+      try { if (ws) ws.close(); } catch (e) {}
+      connect();
+    } else {
+      scheduleRefresh();
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", function () {
     initBoard();
     connect();
+    if (safetyTimer) clearInterval(safetyTimer);
+    safetyTimer = setInterval(function () {
+      if (document.visibilityState === "visible") scheduleRefresh();
+    }, 30000);
   });
 })();

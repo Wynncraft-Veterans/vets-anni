@@ -29,6 +29,42 @@ def test_online_world_vs_party_requires_world_match_and_confirmation():
     assert presence.classify(I(**base)) is S.ONLINE_ELSEWHERE
 
 
+def test_world_comparison_is_format_tolerant():
+    # WAPI returns "WC1"; staff often type "1" or "wc1" or "01". Without
+    # normalisation the comparison falls through to ELSEWHERE and
+    # ONLINE_WORLD is unreachable.
+    base = dict(online=True, has_party=True)
+    assert presence.classify(
+        I(**base, party_world="1", current_server="WC1")
+    ) is S.ONLINE_WORLD
+    assert presence.classify(
+        I(**base, party_world="wc1", current_server="WC1")
+    ) is S.ONLINE_WORLD
+    assert presence.classify(
+        I(**base, party_world="01", current_server="WC1")
+    ) is S.ONLINE_WORLD
+    # Mismatched numeric worlds still mismatch.
+    assert presence.classify(
+        I(**base, party_world="1", current_server="WC2")
+    ) is S.ONLINE_ELSEWHERE
+
+
+def test_normalize_world():
+    nw = presence.normalize_world
+    assert nw("WC1") == "WC1"
+    assert nw("wc1") == "WC1"
+    assert nw("1") == "WC1"
+    assert nw("01") == "WC1"
+    assert nw(" WC 7 ") == "WC7"
+    assert nw(None) is None
+    assert nw("") is None
+    assert nw("   ") is None
+    # Non-numeric server names pass through uppercased (don't silently
+    # match a numbered world).
+    assert nw("lobby") == "LOBBY"
+    assert nw("hub2") == "HUB2"
+
+
 def test_offline_maps_by_rsvp():
     assert presence.classify(I(rsvp_notice=N.RSVP_HARD)) is S.OFFLINE_HARD
     assert presence.classify(I(rsvp_notice=N.RSVP_SOFT)) is S.OFFLINE_SOFT
