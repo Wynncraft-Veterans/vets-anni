@@ -75,7 +75,7 @@ colourblind variant is never colour-only at the DOM level). This is verified
 by DOM inspection in the Phase 1/2 checks.
 
 ### Board label-density toggle
-The organizer board's **Configs** box has a per-user "Role and Status Labels"
+The organizer board's **Configs** box has a per-user "Role/Status info"
 toggle (`lbl_tags` cookie, `GET /toggle-label?which=tags`,
 `deps.labels_visible`; a sibling "Pin to top" config — `cfg_pin`, default on —
 shares the same route/box but is unrelated to CB). It hides the *text tags*

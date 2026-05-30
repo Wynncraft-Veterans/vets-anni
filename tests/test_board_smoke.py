@@ -42,7 +42,7 @@ async def test_label_toggle_default_hidden_off_cb_and_flip(as_staff, seeded):
     r = await as_staff.get("/staff/board")
     assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
     assert "<h3>Configs</h3>" in r.text
-    assert "Role and Status Labels" in r.text
+    assert "Role/Status info" in r.text
     assert "cfg-switch" in r.text                  # the switch control
     assert "Hide the text tags" not in r.text      # subheading removed
 
