@@ -514,7 +514,7 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .status-tag .glyph { font-size:.8rem; }
 .person .pill { font-size:.68rem; }
 .person-actions { flex:none; }
-.person-role {
+.person-role, .person-move {
   width:auto; font-size:.74rem; padding:.2rem .35rem; border-radius:6px;
   background:rgba(255,255,255,.92); color:#111827; border:none;
 }
