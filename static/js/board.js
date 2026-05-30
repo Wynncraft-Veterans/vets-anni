@@ -41,8 +41,9 @@
   function setState(text, cls) {
     var el = document.getElementById("ws-state");
     if (!el) return;
-    el.textContent = text;
-    el.className = "pill " + (cls || "pill-muted");
+    var nextClass = "pill " + (cls || "pill-muted");
+    if (el.textContent !== text) el.textContent = text;
+    if (el.className !== nextClass) el.className = nextClass;
   }
 
   function classForMonitoring(state) {
