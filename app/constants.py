@@ -95,6 +95,13 @@ class AttendanceNotice(StrEnum):
 #: anni counts as "1 hr early"; closer than this is "late".
 EARLY_NOTICE_CUTOFF_SECONDS = 3600
 
+#: How long before the anni new ``/rsvp`` declarations stop being accepted.
+#: Closer than this, ``\rsvp hard`` / ``\rsvp soft`` are refused (including
+#: upgrades/downgrades of an existing RSVP); the user is told to show up an
+#: hour early as a walk-in or take their chances by joining late. Revokes are
+#: never blocked. The staff override ``\rsvp set`` bypasses this gate.
+RSVP_CUTOFF_SECONDS = 90 * 60
+
 
 class PresenceStatus(StrEnum):
     """How we see a user *right now* for the active anni."""

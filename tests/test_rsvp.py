@@ -17,13 +17,14 @@ test surface is wide on purpose:
 
 from __future__ import annotations
 
+import time as _time
 from dataclasses import dataclass, field
 
 import pytest
 
 from app.constants import AttendanceNotice, MembershipTier
 from app.db.lifecycle import get_active_event
-from app.db.models import AnniPlayer, Rsvp
+from app.db.models import AnniPlayer, BoardPlacement, Rsvp
 from app.domain import rsvp as rsvp_domain
 from app.services.dazebot_client import AnniIdentity
 
@@ -277,9 +278,13 @@ async def test_execute_status_with_no_rsvp(seeded, monkeypatch):
 
 
 async def test_execute_creates_new_player_with_tier_from_dazebot(db, monkeypatch):
-    # Make a fresh event so we don't depend on the seed.
+    # Make a fresh event so we don't depend on the seed. Stamp it well past the
+    # T-90 RSVP cutoff so the gate doesn't refuse the call before player
+    # upsert.
     from app.db.models import AnniEvent
-    event = await AnniEvent.create(stamp_epoch=10**9, is_active=True)
+    event = await AnniEvent.create(
+        stamp_epoch=int(_time.time()) + 4 * 3600, is_active=True
+    )
 
     new_uuid = "11111111-2222-3333-4444-555555555555"
     _patch_identity(
@@ -320,6 +325,88 @@ async def test_execute_refreshes_mc_username_on_rename(seeded, monkeypatch):
 
     refreshed = await AnniPlayer.get(mc_uuid=pasta.mc_uuid)
     assert refreshed.mc_username == "NewPastaName"
+
+
+# --------------------------------------------------------------------------- #
+# T-90 RSVP cutoff — user-facing only; staff override and revoke bypass it.   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("level", ["hard", "soft"])
+async def test_execute_refuses_new_rsvp_after_t90_cutoff(seeded, monkeypatch, level):
+    """Inside T-90 a brand-new ``\\rsvp hard``/``soft`` is refused with a
+    redirect to the walk-in / late-arrival paths, and no DB write happens."""
+    baz = seeded["players"]["baz"]  # baz has no seeded RSVP
+    _patch_identity(monkeypatch, _ident(baz, tier="community"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 80 * 60  # T-80 = past the cutoff
+    await event.save(update_fields=["stamp_epoch"])
+    placements_before = await BoardPlacement.filter(event=event, player=baz).count()
+    from app.bot.cogs.rsvp import execute_rsvp
+
+    outcome = await execute_rsvp(123, level)
+
+    assert "close" in outcome.private_message.lower()
+    assert "90 minutes" in outcome.private_message
+    assert outcome.public_message is None
+    # No RSVP row was written and the board wasn't mutated as a side effect.
+    assert await Rsvp.filter(event=event, player=baz).count() == 0
+    assert (
+        await BoardPlacement.filter(event=event, player=baz).count()
+        == placements_before
+    )
+
+
+async def test_execute_refuses_rsvp_swap_after_t90_cutoff(seeded, monkeypatch):
+    """A user with an existing HARD cannot downgrade/upgrade past T-90 — the
+    gate blocks any declaration, not just brand-new ones."""
+    wen = seeded["players"]["Wenweia"]  # seeded with HARD
+    _patch_identity(monkeypatch, _ident(wen, tier="member"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 80 * 60
+    await event.save(update_fields=["stamp_epoch"])
+    from app.bot.cogs.rsvp import execute_rsvp
+
+    outcome = await execute_rsvp(123, "soft")
+
+    assert "close" in outcome.private_message.lower()
+    assert outcome.public_message is None
+    # Existing HARD row is untouched.
+    row = await Rsvp.filter(event=event, player=wen, revoked_at__isnull=True).first()
+    assert row is not None and row.notice is AttendanceNotice.RSVP_HARD
+
+
+async def test_execute_revoke_still_works_after_t90_cutoff(seeded, monkeypatch):
+    """The gate only blocks intent-to-attend declarations — pulling out is
+    always allowed (and the public withdrawal line still fires)."""
+    wen = seeded["players"]["Wenweia"]
+    _patch_identity(monkeypatch, _ident(wen, tier="member"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 80 * 60
+    await event.save(update_fields=["stamp_epoch"])
+    from app.bot.cogs.rsvp import execute_rsvp
+
+    outcome = await execute_rsvp(123, "revoke")
+
+    assert outcome.public_message is not None
+    assert "withdrew" in outcome.public_message.lower()
+    assert await rsvp_domain.get_current(wen, event) is None
+
+
+async def test_execute_status_still_works_after_t90_cutoff(seeded, monkeypatch):
+    """Read-only ``status`` is never blocked — the user can still check what
+    we have on file even after the cutoff."""
+    wen = seeded["players"]["Wenweia"]
+    _patch_identity(monkeypatch, _ident(wen, tier="member"))
+    event = seeded["event"]
+    event.stamp_epoch = int(_time.time()) + 80 * 60
+    await event.save(update_fields=["stamp_epoch"])
+    from app.bot.cogs.rsvp import execute_rsvp
+
+    outcome = await execute_rsvp(123, "status")
+
+    assert "HARD" in outcome.private_message  # seeded
+    assert "close" not in outcome.private_message.lower()
 
 
 # --------------------------------------------------------------------------- #
@@ -886,10 +973,7 @@ async def test_handle_set_no_public_post_on_failure(seeded, monkeypatch):
 # MUST either demote out of Unassigned or leave the placement intact so the  #
 # view-layer "Retracted" pill can surface the state.                         #
 # ---------------------------------------------------------------------------
-import time as _time
-
 from app.constants import BucketKind
-from app.db.models import BoardPlacement
 
 
 async def test_execute_hard_creates_board_placement(seeded, monkeypatch):
@@ -916,16 +1000,25 @@ async def test_execute_hard_creates_board_placement(seeded, monkeypatch):
     assert placed.is_late is False
 
 
-async def test_execute_hard_inside_late_window_uses_late_lane(seeded, monkeypatch):
-    """At T-30min, an RSVP lands in the LATE sub-bucket (``is_late=True``)."""
+async def test_staff_override_inside_late_window_uses_late_lane(seeded, monkeypatch):
+    """At T-30min the user-facing /rsvp gate has long since slammed shut
+    (T-90), but a staff override still lands the player on the board — and
+    the auto-place still routes them into the LATE sub-bucket so the board
+    visibly distinguishes a last-minute add from an early arrival."""
     holidaze = seeded["players"]["Holidaze"]
+    _patch_member(monkeypatch, _FakeMember(id=555, display_name="HolidazeDiscord"))
     _patch_identity(monkeypatch, _ident(holidaze, tier="member"))
     event = seeded["event"]
     event.stamp_epoch = int(_time.time()) + 30 * 60  # T-30 = late lane
     await event.save(update_fields=["stamp_epoch"])
 
-    from app.bot.cogs.rsvp import execute_rsvp
-    await execute_rsvp(123, "hard")
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "@HolidazeDiscord", "hard", AppState()  # type: ignore[arg-type]
+    )
+    assert "Override recorded" in outcome.private_message
 
     placed = await BoardPlacement.get(event=event, player=holidaze)
     assert placed.bucket is BucketKind.UNASSIGNED

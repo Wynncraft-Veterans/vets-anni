@@ -1,7 +1,7 @@
-"""Hot-window predicates — the cadence ramp + LATE-bucket gates.
+"""Hot-window predicates — the cadence ramp + LATE-bucket + RSVP-cutoff gates.
 
 Pure (every input passed in, no DB / FastAPI / discord), mirroring
-``domain.schedule``. Two consumers must agree exactly on the answers:
+``domain.schedule``. Three consumers must agree exactly on the answers:
 
 * the **cadence ramp** in ``online_merge`` / ``presence_poller`` /
   ``auto_promoter``: at ``T-HOT_WINDOW_OPEN`` (default 70 min before the anni)
@@ -9,11 +9,14 @@ Pure (every input passed in, no DB / FastAPI / discord), mirroring
   interval, and stays there through ``stamp + grace``;
 * the **LATE-bucket switch** in ``domain.buckets.ensure_placed`` and the RSVP
   cog: at ``T-EARLY_NOTICE_CUTOFF`` (60 min) new auto-placements flip from
-  the main Unassigned lane to the LATE sub-bucket (``is_late=True``).
+  the main Unassigned lane to the LATE sub-bucket (``is_late=True``);
+* the **RSVP cutoff** in ``execute_rsvp``: at ``T-RSVP_CUTOFF`` (90 min) the
+  user-facing ``\\rsvp hard`` / ``\\rsvp soft`` are refused. Staff override
+  (``\\rsvp set``) and revokes are unaffected.
 
 A non-active event (``None``) is never hot and never late — outside the
 window everything reads as "idle". The user-visible "monitoring" label on
-the board's ``live`` pill is derived from these two predicates; see
+the board's ``live`` pill is derived from the first two predicates; see
 ``app/web/board_view.snapshot``.
 """
 
@@ -22,7 +25,7 @@ from __future__ import annotations
 import time
 from typing import Protocol
 
-from app.constants import EARLY_NOTICE_CUTOFF_SECONDS
+from app.constants import EARLY_NOTICE_CUTOFF_SECONDS, RSVP_CUTOFF_SECONDS
 
 
 class _StampedEvent(Protocol):
@@ -71,6 +74,28 @@ def is_late_bucket(
     current = int(time.time()) if now is None else now
     seconds_to_anni = event.stamp_epoch - current
     return seconds_to_anni < EARLY_NOTICE_CUTOFF_SECONDS
+
+
+def is_rsvp_closed(
+    event: _StampedEvent | None, *, now: int | None = None
+) -> bool:
+    """True iff ``\\rsvp hard`` / ``\\rsvp soft`` should be refused.
+
+    Equivalent to ``seconds_to_anni < RSVP_CUTOFF_SECONDS`` — past the cutoff
+    a fresh declaration of intent is too late to be useful to the organiser,
+    so the user is redirected to the walk-in / late-arrival paths instead.
+    Negative ``seconds_to_anni`` (grace + post-expiry) read as closed too;
+    a missing event reads as open so the no-event branch in the cog handles
+    the friendlier "no anni announced" message itself.
+
+    The user-facing gate; the staff override ``\\rsvp set`` deliberately
+    bypasses it. Revokes are never blocked anywhere.
+    """
+    if event is None:
+        return False
+    current = int(time.time()) if now is None else now
+    seconds_to_anni = event.stamp_epoch - current
+    return seconds_to_anni < RSVP_CUTOFF_SECONDS
 
 
 def monitoring_state(

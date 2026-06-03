@@ -272,6 +272,20 @@ async def execute_rsvp(discord_id: int | str, action: Action) -> RsvpOutcome:
         return await _render_status(player, event)
     if action == "revoke":
         return await _do_revoke(player, event)
+    # T-90 cutoff: stop accepting new declarations of intent (incl. hard<->soft
+    # changes) so the organiser has a stable headcount for the last hour and a
+    # half. Staff override (`\rsvp set`) deliberately bypasses this — staff
+    # know about late-arriving context the bot doesn't.
+    if hot_window.is_rsvp_closed(event):
+        url = _dashboard_url()
+        return RsvpOutcome(
+            private_message=(
+                f"RSVPs close 90 minutes before the anni — yours wasn't "
+                f"recorded. To still attend, either log in at least an hour "
+                f"early so staff can add you as a walk-in, or show up late "
+                f"and hope a slot is free. Dashboard: {url}"
+            )
+        )
     if action == "hard":
         return await _do_set(player, event, AttendanceNotice.RSVP_HARD)
     if action == "soft":

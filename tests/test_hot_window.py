@@ -91,6 +91,31 @@ def test_is_late_bucket_no_event_returns_false():
     assert not hot_window.is_late_bucket(None, now=0)
 
 
+def test_is_rsvp_closed_before_t90_returns_false():
+    e = _Ev(stamp_epoch=10_000)
+    # T-91min (just outside the 90min cutoff — RSVPs still accepted).
+    assert not hot_window.is_rsvp_closed(e, now=10_000 - 91 * 60)
+    # T-3h (well before the cutoff).
+    assert not hot_window.is_rsvp_closed(e, now=10_000 - 3 * 3600)
+
+
+def test_is_rsvp_closed_at_or_after_t90_returns_true():
+    e = _Ev(stamp_epoch=10_000)
+    # T-89min (just inside the cutoff).
+    assert hot_window.is_rsvp_closed(e, now=10_000 - 89 * 60)
+    # T-30min (well inside).
+    assert hot_window.is_rsvp_closed(e, now=10_000 - 30 * 60)
+    # During grace and after expiry: still closed (seconds_to_anni < 0).
+    assert hot_window.is_rsvp_closed(e, now=10_000 + 1800)
+    assert hot_window.is_rsvp_closed(e, now=10_000 + 10 * 3600)
+
+
+def test_is_rsvp_closed_no_event_returns_false():
+    # No event => "open" so the cog's no-event branch produces the friendlier
+    # "no anni announced" message instead of "RSVPs are closed".
+    assert not hot_window.is_rsvp_closed(None, now=0)
+
+
 def test_monitoring_state_idle_outside_window():
     e = _Ev(stamp_epoch=10_000)
     assert hot_window.monitoring_state(
