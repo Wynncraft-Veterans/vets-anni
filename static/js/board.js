@@ -258,6 +258,16 @@
              click still fire. */
           filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role, .person-move",
           preventOnFilter: false,
+          /* Touch-only long-press: on mobile the page is taller than the
+             viewport, and an instant-drag would hijack every scroll attempt
+             that began on a card. 350ms is long enough that a scroll-swipe
+             never trips it, short enough that an intentional drag still
+             feels responsive. touchStartThreshold:5 lets tiny finger jitter
+             during the hold not cancel the long-press. Mouse drag stays
+             instant (delayOnTouchOnly). */
+          delay: 350,
+          delayOnTouchOnly: true,
+          touchStartThreshold: 5,
           /* Auto-scroll the document while dragging so a card can be moved
              from a party at the top to one off the bottom of the viewport.
              The board is a single tall scroll layout (no internal scroll

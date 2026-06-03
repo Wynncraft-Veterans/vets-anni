@@ -28,25 +28,44 @@ You can also follow along with the status of the current anni (if announced).{% 
   <meta name="twitter:card" content="summary">
 </head>
 <body class="{% if cb %}cb{% endif %}{% if not label_tags %} hide-rolelabel hide-statuslabel{% endif %}">
-  <nav class="navbar">
+  {# Alpine x-data drives the mobile hamburger toggle. On desktop the
+     menu is always visible (CSS @media), so `open` is only consulted at
+     narrow widths — the .open class is what reveals the dropdown there. #}
+  {# `@click.outside` lives on the <nav> root (not on .nav-links) because the
+     hamburger button is a SIBLING of .nav-links, not a descendant — so an
+     outside-handler on the panel itself would treat every button tap as
+     "outside" and flip `open` back to false in the same tick. With the
+     handler on <nav>, both the button and the panel are inside it; only true
+     off-nav clicks close the menu. #}
+  <nav class="navbar" x-data="{ open: false }"
+       @keydown.escape.window="open = false"
+       @click.outside="open = false">
     <div class="nav-inner">
       <a class="nav-brand" href="/">WYNNVETS · ANNI</a>
-      <div class="nav-links">
-        {% if user_uuid %}<a href="/overview">Overview</a>{% endif %}
-        {% if user_uuid %}<a href="/me">My Dashboard</a>{% endif %}
+      <button type="button" class="nav-toggle" @click="open = !open"
+              :aria-expanded="open.toString()" aria-controls="primary-nav"
+              aria-label="Toggle navigation menu">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+      <div id="primary-nav" class="nav-links" :class="{ 'open': open }">
+        {% if user_uuid %}<a href="/overview" @click="open = false">Overview</a>{% endif %}
+        {% if user_uuid %}<a href="/me" @click="open = false">My Dashboard</a>{% endif %}
         {% if is_staff %}
-          <a href="/staff">Overview</a>
-          <a href="/staff/board">Board</a>
-          <a href="/staff/roles">Roles</a>
+          <a href="/staff" @click="open = false">Overview</a>
+          <a href="/staff/board" @click="open = false">Board</a>
+          <a href="/staff/roles" @click="open = false">Roles</a>
         {% elif not user_uuid %}
-          <a href="/staff">Staff</a>
+          <a href="/staff" @click="open = false">Staff</a>
         {% endif %}
-        {% if user_uuid %}<a href="/logout">Log out</a>{% endif %}
-        {% if is_staff %}<a href="/staff/logout">Log out</a>{% endif %}
+        {% if user_uuid %}<a href="/logout" @click="open = false">Log out</a>{% endif %}
+        {% if is_staff %}<a href="/staff/logout" @click="open = false">Log out</a>{% endif %}
         {# Colourblind toggle — present on EVERY interface (spec requirement) #}
         <a class="cb-toggle" href="/toggle-cb?next={{ request.url.path | urlencode }}"
            aria-label="Toggle colourblind-friendly colours"
-           title="Toggle colourblind-friendly colours">
+           title="Toggle colourblind-friendly colours"
+           @click="open = false">
           {% if cb %}◑ CB: on{% else %}◐ CB: off{% endif %}
         </a>
       </div>

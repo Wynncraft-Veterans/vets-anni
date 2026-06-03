@@ -142,6 +142,7 @@ button:hover { filter: brightness(1.05); }
 .nav-inner {
   max-width: 1400px; margin: 0 auto; padding: 1rem 1.5rem;
   display: flex; align-items: center; justify-content: space-between;
+  position: relative;  /* anchor the mobile nav-links dropdown below */
 }
 a { color: inherit; text-decoration: none; }
 .nav-brand {
@@ -157,6 +158,49 @@ a { color: inherit; text-decoration: none; }
   opacity:1; background: rgba(191,219,254,.16); transform: translateY(-1px);
 }
 .cb-toggle { border: 1px solid rgba(229,231,235,.5); }
+
+/* Hamburger toggle — hidden on desktop, shown on narrow viewports. Three
+   bars rendered as <span>s so we don't depend on an icon font. */
+.nav-toggle {
+  display: none;
+  width: 2.4rem; height: 2.4rem; padding: 0; margin: 0;
+  background: transparent; border: 1px solid rgba(229,231,235,.5);
+  border-radius: 8px; cursor: pointer;
+  align-items: center; justify-content: center; flex-direction: column;
+  gap: 4px;
+}
+.nav-toggle-bar {
+  display: block; width: 1.2rem; height: 2px; background: #e5e7eb;
+  border-radius: 2px;
+}
+.nav-toggle:hover { background: rgba(191,219,254,.16); }
+.nav-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+@media (max-width: 768px) {
+  .nav-toggle { display: inline-flex; }
+  /* Drop the link row into a panel below the navbar. Negative left/right
+     cancel the .nav-inner horizontal padding so the panel spans the full
+     navbar width; the same gradient + blur as .navbar keeps visual parity. */
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: calc(100% + 1rem);  /* aligns to .navbar bottom edge (1rem pad) */
+    left: -1.5rem; right: -1.5rem;
+    flex-direction: column; align-items: stretch; gap: .25rem;
+    padding: .6rem 1.25rem .8rem;
+    background: linear-gradient(to right, rgba(187,98,47,.92), rgba(39,72,184,.92));
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(148,163,184,.4);
+    box-shadow: 0 10px 24px rgba(15,23,42,.35);
+  }
+  .nav-links.open { display: flex; }
+  .nav-links a {
+    padding: .55rem .8rem; border-radius: 8px;
+    opacity: .95;
+  }
+  .nav-links a:hover { transform: none; }  /* the lift looks odd in a column */
+  .cb-toggle { align-self: flex-start; }
+}
 
 @keyframes fadeInUpSoft {
   from { opacity:0; transform: translateY(12px); filter: blur(4px); }
@@ -632,6 +676,13 @@ body.hide-statuslabel .person .status-tag { display:none; }
    through. Honours prefers-reduced-motion implicitly (no animation). */
 .legend-wrap.pinned {
   position:sticky; top:3.6rem; z-index:15;
+}
+/* On narrow viewports the legend+configs row is ~½ the screen height — pinned,
+   it eats most of the board area as you scroll, which is the opposite of
+   useful. Force-disable pinning regardless of the cookie; the desktop
+   preference is still remembered for when the viewport widens. */
+@media (max-width: 768px) {
+  .legend-wrap.pinned { position: static; top: auto; z-index: auto; }
 }
 
 .board-controls h3 { margin:.1rem 0 .4rem; font-size:.95rem; }
