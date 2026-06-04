@@ -201,24 +201,33 @@ async def populate() -> dict[str, object]:
     p2 = await Party.create(event=event, ordinal=2, host=p["Nazzae"], stage=1)
 
     # --- board placements (single instance per person) -----------------------
-    async def place(name, *, party=None, bucket=None, role=None, late=False, i=0):
+    # The Unassigned bucket has three sub-buckets — main (RSVP'd; the only
+    # lane the /rsvp cog and boot-heal sweep ever write into), walk-in (auto-
+    # promoter for non-RSVP'd online players before T-60), and LATE (anything
+    # placed after T-60). The seed populates all three so the board renders a
+    # realistic spread of every lane at once.
+    async def place(name, *, party=None, bucket=None, role=None,
+                    late=False, walkin=False, i=0):
         await BoardPlacement.create(
             event=event, player=p[name], party=party, bucket=bucket,
-            assigned_role=role, is_late=late, sort_index=i,
+            assigned_role=role, is_late=late, is_walkin=walkin, sort_index=i,
         )
 
     await place("Wenweia", party=p1, role=Role.PRIMARY, i=0)
     await place("Nazzae", party=p1, role=Role.HEALER, i=1)
     await place("_akaPasta", party=p1, role=Role.TANK, i=2)         # rename-desync
     await place("Minethuselah", party=p2, i=0)                       # no role -> gray
-    await place("Faulischlumpf", bucket=BucketKind.UNASSIGNED, i=0)
-    await place("Metrafish", bucket=BucketKind.UNASSIGNED, i=1)      # API-disabled
-    await place("Paradrex", bucket=BucketKind.UNASSIGNED, i=2)
-    await place("Trixomaniac", bucket=BucketKind.UNASSIGNED, i=3)
-    await place("foo", bucket=BucketKind.UNASSIGNED, i=4)
-    await place("baz", bucket=BucketKind.UNASSIGNED, i=5)             # Fill, no caps
-    await place("Salted", bucket=BucketKind.UNASSIGNED, late=True, i=6)   # LATE
-    await place("Jumla", bucket=BucketKind.UNASSIGNED, late=True, i=7)
+    # UNASSIGNED main — every name here has an active RSVP below.
+    await place("Metrafish", bucket=BucketKind.UNASSIGNED, i=0)      # API-disabled
+    await place("Paradrex", bucket=BucketKind.UNASSIGNED, i=1)
+    await place("Trixomaniac", bucket=BucketKind.UNASSIGNED, i=2)
+    await place("foo", bucket=BucketKind.UNASSIGNED, i=3)
+    # UNASSIGNED walk-in — non-RSVP'd auto-detected arrivals (T-70..T-60).
+    await place("Faulischlumpf", bucket=BucketKind.UNASSIGNED, walkin=True, i=0)
+    await place("baz", bucket=BucketKind.UNASSIGNED, walkin=True, i=1)  # Fill, no caps
+    # UNASSIGNED LATE — anything placed after T-60.
+    await place("Salted", bucket=BucketKind.UNASSIGNED, late=True, i=0)
+    await place("Jumla", bucket=BucketKind.UNASSIGNED, late=True, i=1)
     await place("Sevisoup", bucket=BucketKind.VOLUNTEERS, i=0)
     await place("bar", bucket=BucketKind.VOLUNTEERS, i=1)
     await place("ThinKing", bucket=BucketKind.WONTASSIGN, i=0)
@@ -273,7 +282,8 @@ async def main() -> None:
         f"Seeded dev data: 1 active event (anni ~93m, organiser Holidaze), "
         f"{len(PLAYERS)} real-name players (incl. API-disabled Metrafish + "
         f"rename-desync _akaPasta), 2 parties (stages 3 & 1), "
-        f"15 placements, 6 RSVPs. Run the dev server -> http://127.0.0.1:8000/"
+        f"15 placements (4 main / 2 walk-in / 2 LATE in Unassigned), "
+        f"6 RSVPs. Run the dev server -> http://127.0.0.1:8000/"
     )
 
 

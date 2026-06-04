@@ -523,6 +523,7 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   padding:.4rem; border-radius:10px; background:#f1f5f9;
   border:1px dashed #cbd5e1;
 }
+.dropzone.walkin { background:#eff6ff; border-color:#93c5fd; }
 .dropzone.late { background:#fff7ed; border-color:#fdba74; }
 .dz-empty { margin:.35rem .25rem; font-size:.8rem; }
 

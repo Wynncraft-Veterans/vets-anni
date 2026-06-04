@@ -59,10 +59,8 @@ async def test_snapshot_marks_placeholder_player(seeded):
     await buckets.ensure_placed(event, stub, is_late=False)
 
     snap = await board_view.snapshot(event, AppState())
-    unassigned = (
-        snap["buckets"][BucketKind.UNASSIGNED.value]["on_time"]
-        + snap["buckets"][BucketKind.UNASSIGNED.value]["late"]
-    )
+    u = snap["buckets"][BucketKind.UNASSIGNED.value]
+    unassigned = u["on_time"] + u["walkin"] + u["late"]
     me = next(m for m in unassigned if m["uuid"] == "uuid-stub")
     assert me["is_placeholder"] is True
     # Border channel MUST still be wired up (the placeholder card variant
@@ -91,6 +89,30 @@ async def test_snapshot_marks_rsvp_revoked_across_buckets(seeded):
     assert me["rsvp_revoked"] is True
 
 
+async def test_snapshot_splits_unassigned_into_three_lanes(seeded):
+    """The seed populates every Unassigned sub-bucket and the snapshot
+    surfaces them as three disjoint lists keyed ``on_time``/``walkin``/
+    ``late``. Boundaries: every member carries the matching ``is_late``/
+    ``is_walkin`` flags, and no member appears in more than one lane."""
+    event = seeded["event"]
+    snap = await board_view.snapshot(event, AppState())
+    u = snap["buckets"][BucketKind.UNASSIGNED.value]
+    assert len(u["on_time"]) == 4
+    assert len(u["walkin"]) == 2
+    assert len(u["late"]) == 2
+    # Per-card flags are consistent with the lane the snapshot put them in.
+    assert all(not m["is_late"] and not m["is_walkin"] for m in u["on_time"])
+    assert all(not m["is_late"] and m["is_walkin"] for m in u["walkin"])
+    assert all(m["is_late"] for m in u["late"])
+    # Disjoint: a single-instance person can't span two lanes.
+    uuids = (
+        [m["uuid"] for m in u["on_time"]]
+        + [m["uuid"] for m in u["walkin"]]
+        + [m["uuid"] for m in u["late"]]
+    )
+    assert len(uuids) == len(set(uuids))
+
+
 async def test_snapshot_skips_revoked_pill_when_no_rsvp_row(seeded):
     """A user with no Rsvp row at all should not carry rsvp_revoked=True
     (avoid false positives on staff walk-ins / 1hr-early auto-adds)."""
@@ -99,10 +121,8 @@ async def test_snapshot_skips_revoked_pill_when_no_rsvp_row(seeded):
     await buckets.ensure_placed(event, walked, is_late=False)
 
     snap = await board_view.snapshot(event, AppState())
-    unassigned = (
-        snap["buckets"][BucketKind.UNASSIGNED.value]["on_time"]
-        + snap["buckets"][BucketKind.UNASSIGNED.value]["late"]
-    )
+    u = snap["buckets"][BucketKind.UNASSIGNED.value]
+    unassigned = u["on_time"] + u["walkin"] + u["late"]
     me = next(m for m in unassigned if m["uuid"] == "uuid-walk")
     assert me["rsvp_revoked"] is False
     assert me["is_placeholder"] is False

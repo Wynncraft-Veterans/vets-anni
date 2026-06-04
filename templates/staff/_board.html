@@ -203,11 +203,17 @@
         {% set u = snap.buckets.unassigned %}
         <div class="bucket">
           <h3>{{ u.label }}
-            <span class="muted">({{ u.on_time | length + u.late | length }})</span></h3>
+            <span class="muted">({{ u.on_time | length + u.walkin | length + u.late | length }})</span></h3>
           <div class="dropzone" data-bucket="unassigned"
                aria-label="Unassigned (on time)">
             {% for m in u.on_time %}{{ person(m) }}{% endfor %}
             {% if not u.on_time %}<p class="muted dz-empty">No one waiting.</p>{% endif %}
+          </div>
+          <h4 class="late-head">Walk-in sub-bucket</h4>
+          <div class="dropzone walkin" data-bucket="unassigned" data-walkin="1"
+               aria-label="Unassigned (walk-ins, non-RSVP early arrivals)">
+            {% for m in u.walkin %}{{ person(m) }}{% endfor %}
+            {% if not u.walkin %}<p class="muted dz-empty">No walk-ins yet.</p>{% endif %}
           </div>
           <h4 class="late-head">Late sub-bucket</h4>
           <div class="dropzone late" data-bucket="unassigned" data-late="1"

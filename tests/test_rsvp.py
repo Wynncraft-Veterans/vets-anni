@@ -1000,16 +1000,18 @@ async def test_execute_hard_creates_board_placement(seeded, monkeypatch):
     assert placed.is_late is False
 
 
-async def test_staff_override_inside_late_window_uses_late_lane(seeded, monkeypatch):
+async def test_staff_override_inside_late_window_still_uses_main_lane(seeded, monkeypatch):
     """At T-30min the user-facing /rsvp gate has long since slammed shut
-    (T-90), but a staff override still lands the player on the board — and
-    the auto-place still routes them into the LATE sub-bucket so the board
-    visibly distinguishes a last-minute add from an early arrival."""
+    (T-90), but a staff override still lands the player on the board. An
+    RSVP'd user — even from a staff override past T-60 — always lands in
+    the main Unassigned lane: walk-in and LATE are exclusively for
+    non-RSVP'd auto-detected arrivals, so an explicit RSVP (even a late
+    one) is rendered as a normal commit, not a walk-in / late arrival."""
     holidaze = seeded["players"]["Holidaze"]
     _patch_member(monkeypatch, _FakeMember(id=555, display_name="HolidazeDiscord"))
     _patch_identity(monkeypatch, _ident(holidaze, tier="member"))
     event = seeded["event"]
-    event.stamp_epoch = int(_time.time()) + 30 * 60  # T-30 = late lane
+    event.stamp_epoch = int(_time.time()) + 30 * 60  # T-30 — past the LATE switch
     await event.save(update_fields=["stamp_epoch"])
 
     from app.bot.cogs.rsvp import execute_rsvp_set
@@ -1022,7 +1024,8 @@ async def test_staff_override_inside_late_window_uses_late_lane(seeded, monkeypa
 
     placed = await BoardPlacement.get(event=event, player=holidaze)
     assert placed.bucket is BucketKind.UNASSIGNED
-    assert placed.is_late is True
+    assert placed.is_late is False
+    assert placed.is_walkin is False
 
 
 async def test_execute_revoke_demotes_from_unassigned_to_wontassign(seeded, monkeypatch):

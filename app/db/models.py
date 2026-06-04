@@ -193,7 +193,11 @@ class BoardPlacement(Model):
         null=True, on_delete=fields.SET_NULL,
     )
     assigned_role = fields.CharEnumField(Role, max_length=16, null=True)
-    is_late = fields.BooleanField(default=False)  # LATE sub-bucket flag
+    # UNASSIGNED has three lanes: main (RSVP'd), walk-in (auto-detected
+    # non-RSVP before T-60), late (anything placed after T-60). ``is_late``
+    # wins if both are set; outside UNASSIGNED both are ignored.
+    is_late = fields.BooleanField(default=False)
+    is_walkin = fields.BooleanField(default=False)
     sort_index = fields.IntField(default=0)       # ordering within container
 
     updated_at = fields.DatetimeField(auto_now=True)

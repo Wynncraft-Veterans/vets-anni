@@ -175,6 +175,7 @@ class BoardHub:
                 party_id=target.get("party_id"),
                 sort_index=int(target.get("sort_index", 0) or 0),
                 is_late=target.get("is_late"),
+                is_walkin=target.get("is_walkin"),
             )
 
         if intent.type == P.ASSIGN_ROLE:

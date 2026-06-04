@@ -146,16 +146,24 @@ async def _broadcast_board_snapshot(event: AnniEvent) -> None:
 
 
 async def _auto_place_after_rsvp(player: AnniPlayer, event: AnniEvent) -> bool:
-    """Land the player in Unassigned after an RSVP, respecting the T-60
-    LATE-bucket switch and the EXPIRED phase gate. Returns whether a row was
-    inserted. Idempotent for an already-placed player (no-op).
+    """Land the player in Unassigned after an RSVP.
+
+    RSVP'd users **always** land in the main Unassigned lane — never
+    walk-in (that lane is reserved for non-RSVP auto-detected arrivals)
+    and never LATE (even when ``\\rsvp set`` lands after T-60). The
+    EXPIRED phase gate still applies: after grace ends there is no live
+    event to place onto.
+
+    Returns whether a row was inserted. Idempotent for an already-placed
+    player (no-op — staff intent / original lane wins).
     """
     settings = get_settings()
     grace_seconds = max(0, settings.grace_hours) * 3600
     if phase_of(event.stamp_epoch, grace_seconds) is EventPhase.EXPIRED:
         return False
-    is_late = hot_window.is_late_bucket(event)
-    return await buckets_domain.ensure_placed(event, player, is_late=is_late)
+    return await buckets_domain.ensure_placed(
+        event, player, is_late=False, is_walkin=False,
+    )
 
 
 async def _render_status(player: AnniPlayer, event: AnniEvent) -> RsvpOutcome:

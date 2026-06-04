@@ -100,8 +100,15 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     body = r.text
     assert "Organizer Board" in body
     assert "Wenweia" in body and "Party 1" in body
-    # Buckets incl. the LATE sub-bucket (Salted/Jumla are seeded late).
-    assert "Late sub-bucket" in body and "Sitting out" in body
+    # Buckets render all three Unassigned sub-buckets: the seed populates
+    # main (Metrafish & co.), walk-in (Faulischlumpf/baz), and LATE
+    # (Salted/Jumla) so every lane has at least one card on demo boots.
+    assert "Walk-in sub-bucket" in body and "Late sub-bucket" in body
+    assert "Sitting out" in body
+    # The names that drive each sub-bucket also land on the page (so a
+    # missing-row regression in the seed surfaces as a failing assertion,
+    # not a silently empty dropzone).
+    assert "Faulischlumpf" in body and "Salted" in body
     # Colour is NEVER the only signal: glyph + aria-label + status pattern.
     assert "data-pattern=" in body
     assert "aria-label=" in body

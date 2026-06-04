@@ -220,7 +220,7 @@ DEFAULT_STAFF_GUILD_RANKS: tuple[str, ...] = (
 class BucketKind(StrEnum):
     """Non-party containers on the organizer board."""
 
-    UNASSIGNED = "unassigned"   # rsvp'd / 1hr-early, not placed. Sub-bucket for late users.
+    UNASSIGNED = "unassigned"   # not placed. Three sub-buckets: main (RSVP'd), walk-in (auto-detected non-RSVP, T-70..T-60), late (placed after T-60).
     WONTASSIGN = "wontassign"   # here, but confirmed intention to sit this one out.
     VOLUNTEERS = "volunteers"   # here, but confirmed willingness to sit out *if absolutely needed*.
 

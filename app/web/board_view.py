@@ -146,6 +146,7 @@ def _person(
         "status": status.value,
         "status_chip": status_chip(status),
         "is_late": row["is_late"],
+        "is_walkin": row.get("is_walkin", False),
         "is_placeholder": row.get("is_placeholder", False),
         "rsvp_revoked": row["uuid"] in revoked_uuids,
         "sort_index": row["sort_index"],
@@ -238,11 +239,21 @@ async def snapshot(event, state: AppState) -> dict:
             "monitoring_label": hot_window.MONITORING_LABEL[monitoring],
         },
         "parties": parties,
-        # UNASSIGNED carries the LATE sub-bucket; the other two are flat.
+        # UNASSIGNED has three sub-buckets:
+        #   on_time — RSVP'd main lane
+        #   walkin  — auto-detected non-RSVP arrivals, T-70..T-60
+        #   late    — anything placed after T-60 (LATE wins if both flags set)
         "buckets": {
             BucketKind.UNASSIGNED.value: {
                 "label": BUCKET_LABEL[BucketKind.UNASSIGNED],
-                "on_time": [m for m in unassigned if not m["is_late"]],
+                "on_time": [
+                    m for m in unassigned
+                    if not m["is_late"] and not m["is_walkin"]
+                ],
+                "walkin": [
+                    m for m in unassigned
+                    if not m["is_late"] and m["is_walkin"]
+                ],
                 "late": [m for m in unassigned if m["is_late"]],
             },
             BucketKind.VOLUNTEERS.value: {

@@ -167,9 +167,12 @@
 
   /* ---- dropdown-move (opt-in alt to drag-drop) -------------------------- */
   /* Wired from inline onchange on .person-move <select>. Value format:
-     "party:<id>"  or  "bucket:<name>:<is_late01>"  — parse and POST through
-     the same /staff/board/move REST twin the drag-drop fallback uses, so it
-     funnels through board_hub (single-instance UPSERT + WS broadcast). */
+     "party:<id>"  or  "bucket:<name>:<is_late01>:<is_walkin01>" — parse and
+     POST through the same /staff/board/move REST twin the drag-drop fallback
+     uses, so it funnels through board_hub (single-instance UPSERT + WS
+     broadcast). The walkin segment is optional for backward compat: a
+     dropdown that only emits "bucket:<name>:<late01>" still parses (walkin
+     defaults to false). */
   window.__moveViaSelect = function (sel) {
     var val = sel.value;
     if (!val) return;
@@ -182,6 +185,7 @@
       var parts = val.slice(7).split(":");
       values.bucket = parts[0];
       values.is_late = parts[1] === "1" ? "true" : "false";
+      values.is_walkin = parts[2] === "1" ? "true" : "false";
     } else {
       return;
     }
@@ -200,6 +204,7 @@
     return {
       bucket: zone.dataset.bucket,
       is_late: zone.dataset.late === "1",
+      is_walkin: zone.dataset.walkin === "1",
     };
   }
 
@@ -230,6 +235,7 @@
             party_id: target.party_id || "",
             bucket: target.bucket || "",
             is_late: target.is_late ? "true" : "false",
+            is_walkin: target.is_walkin ? "true" : "false",
             sort_index: index,
           },
         });

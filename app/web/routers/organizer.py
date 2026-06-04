@@ -177,8 +177,11 @@ async def rest_move(
     party_id: str = Form(""),
     sort_index: int = Form(0),
     is_late: bool = Form(False),
+    is_walkin: bool = Form(False),
 ):
-    target: dict = {"sort_index": sort_index, "is_late": is_late}
+    target: dict = {
+        "sort_index": sort_index, "is_late": is_late, "is_walkin": is_walkin,
+    }
     if party_id:
         target["party_id"] = party_id
     else:

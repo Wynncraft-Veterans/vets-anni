@@ -28,6 +28,7 @@ from app.db.models import AnniEvent, AnniPlayer, BoardPlacement, Party
 from app.domain import identity, membership
 from app.domain.identity import MojangResolver, mojang_username_to_uuid
 from app.domain.presence import normalize_world
+from app.services import hot_window
 from app.services.state import AppState
 from app.settings import get_settings
 
@@ -60,6 +61,7 @@ async def _upsert(
     party: Party | None,
     sort_index: int,
     is_late: bool | None,
+    is_walkin: bool | None,
 ) -> BoardPlacement:
     """The single-instance UPSERT. One ``(event, player)`` row, always — a
     move is this row changing container, never a new row. Wrapped in a
@@ -76,6 +78,10 @@ async def _upsert(
             placement.is_late = is_late
         elif placement.id is None:
             placement.is_late = False
+        if is_walkin is not None:
+            placement.is_walkin = is_walkin
+        elif placement.id is None:
+            placement.is_walkin = False
         await placement.save()
     return placement
 
@@ -88,6 +94,7 @@ async def move(
     party_id: str | None = None,
     sort_index: int = 0,
     is_late: bool | None = None,
+    is_walkin: bool | None = None,
 ) -> OpResult:
     """Move a *board* player to a bucket or a party slot (UPSERT).
 
@@ -111,7 +118,8 @@ async def move(
                         player_uuid)
 
     await _upsert(event, player, bucket=bucket, party=party,
-                  sort_index=sort_index, is_late=is_late)
+                  sort_index=sort_index, is_late=is_late,
+                  is_walkin=is_walkin)
     logger.debug("move %s -> %s", player.mc_username,
                  f"party {party.ordinal}" if party else bucket)
     return OpResult(True, player_uuid=player_uuid)
@@ -146,18 +154,25 @@ async def ensure_placed(
     player: AnniPlayer,
     *,
     is_late: bool,
+    is_walkin: bool = False,
 ) -> bool:
     """Idempotent auto-place: if ``(event, player)`` has no placement,
     insert one in the UNASSIGNED bucket and return ``True``; otherwise
     leave the existing row alone and return ``False``.
 
     Single-instance invariant: this is the shared "land them on the board"
-    path for both the RSVP cog and the 1hr-early auto-promoter. ``is_late``
-    chooses the lane at *insert time only* — already-placed players are
-    never reshuffled from main → LATE by a subsequent tick; staff intent
-    (or the original auto-place) wins.
+    path for both the RSVP cog and the 1hr-early auto-promoter. The lane
+    flags (``is_late``, ``is_walkin``) choose the sub-bucket at *insert
+    time only* — already-placed players are never reshuffled between lanes
+    by a subsequent tick; staff intent (or the original auto-place) wins.
 
-    ``sort_index`` is the tail count of the matching ``is_late`` lane within
+    Caller contract: ``is_late`` and ``is_walkin`` are mutually exclusive in
+    practice — the auto-promoter routes non-RSVP'd arrivals to walk-in
+    before T-60 and to LATE after T-60, while RSVP'd arrivals always land
+    in the main lane (both False). The view layer treats ``is_late`` as
+    winning if both somehow ended up True.
+
+    ``sort_index`` is the tail count of the matching lane within
     UNASSIGNED so a new card lands at the bottom of its dropzone, mirroring
     :func:`add_walkin`'s ordering.
     """
@@ -165,7 +180,8 @@ async def ensure_placed(
     if existing is not None:
         return False
     tail = await BoardPlacement.filter(
-        event=event, bucket=BucketKind.UNASSIGNED, is_late=is_late
+        event=event, bucket=BucketKind.UNASSIGNED,
+        is_late=is_late, is_walkin=is_walkin,
     ).count()
     await _upsert(
         event,
@@ -174,12 +190,15 @@ async def ensure_placed(
         party=None,
         sort_index=tail,
         is_late=is_late,
+        is_walkin=is_walkin,
     )
-    logger.info(
-        "auto-place: %s -> Unassigned%s",
-        player.mc_username,
-        " (LATE)" if is_late else "",
-    )
+    if is_late:
+        lane = "LATE"
+    elif is_walkin:
+        lane = "walk-in"
+    else:
+        lane = "main"
+    logger.info("auto-place: %s -> Unassigned (%s)", player.mc_username, lane)
     return True
 
 
@@ -204,6 +223,7 @@ async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
         party=None,
         sort_index=tail,
         is_late=False,
+        is_walkin=False,
     )
     logger.info("rsvp revoke demote: %s -> Wont-assign", player.mc_username)
     return True
@@ -281,13 +301,20 @@ async def add_walkin(
         logger.debug("walk-in %s already on board — no-op", player.mc_username)
         return OpResult(True, player_uuid=player.mc_uuid)
 
-    tail = (
-        await BoardPlacement.filter(event=event, bucket=BucketKind.UNASSIGNED)
-        .count()
-    )
+    # A staff "add by IGN" is the manual walk-in path — mirror the auto-
+    # promoter's lane logic: walk-in sub-bucket before T-60, LATE after.
+    late = hot_window.is_late_bucket(event)
+    walkin = not late
+    tail = await BoardPlacement.filter(
+        event=event, bucket=BucketKind.UNASSIGNED,
+        is_late=late, is_walkin=walkin,
+    ).count()
     await _upsert(event, player, bucket=BucketKind.UNASSIGNED, party=None,
-                  sort_index=tail, is_late=False)
-    logger.info("walk-in added: %s -> Unassigned", player.mc_username)
+                  sort_index=tail, is_late=late, is_walkin=walkin)
+    logger.info(
+        "walk-in added: %s -> Unassigned (%s)",
+        player.mc_username, "LATE" if late else "walk-in",
+    )
     return OpResult(True, player_uuid=player.mc_uuid)
 
 
@@ -445,6 +472,7 @@ async def board_rows(event: AnniEvent) -> list[dict]:
                 "party_ordinal": r.party.ordinal if r.party else None,
                 "assigned_role": r.assigned_role,
                 "is_late": r.is_late,
+                "is_walkin": r.is_walkin,
                 "sort_index": r.sort_index,
                 "capabilities": list(r.player.capabilities),
             }
