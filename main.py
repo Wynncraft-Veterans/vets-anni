@@ -45,6 +45,7 @@ from app.services.wapi import get_wapi  # noqa: E402
 from app.settings import get_settings  # noqa: E402
 from app.web.routers import (  # noqa: E402
     capability,
+    internal,
     organizer,
     public,
     roles_dash,
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(organizer.router)
     app.include_router(roles_dash.router)
     app.include_router(staff_capability.router)
+    app.include_router(internal.router)
     return app
 
 
