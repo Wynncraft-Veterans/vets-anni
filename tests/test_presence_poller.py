@@ -54,6 +54,55 @@ async def test_online_merge_drives_world_states(seeded):
     assert got[wen] is S.ONLINE_ELSEWHERE
 
 
+async def test_party_leader_corroboration_flips_to_online_party(seeded):
+    """Phase 2 corroboration: when the resolved leader of the player's
+    Wynncraft party matches their assigned party's host on the board, status
+    upgrades from ONLINE_WORLD to ONLINE_PARTY. Mirrors what the staff sees
+    once vetsmod sends a ``party_status`` frame matching the staff plan."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid       # Party 1 (host: Holidaze, world AS5)
+    holidaze = p["Holidaze"].mc_uuid
+
+    # Same setup as the ONLINE_WORLD case (server matches), plus the leader
+    # corroboration.
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="AS5")},
+        party_leader_by_uuid={wen: holidaze},
+    ))
+    assert got[wen] is S.ONLINE_PARTY
+
+
+async def test_party_leader_mismatch_stays_online_world(seeded):
+    """Defensive: a resolved party whose leader is *not* the assigned host
+    must NOT trip ONLINE_PARTY — they're in some other Wynncraft party that
+    happens to overlap. Cyan, not yellow."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    nazzae = p["Nazzae"].mc_uuid  # different host than Party 1's Holidaze
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="AS5")},
+        party_leader_by_uuid={wen: nazzae},
+    ))
+    assert got[wen] is S.ONLINE_WORLD
+
+
+async def test_party_corroboration_without_world_match_stays_elsewhere(seeded):
+    """A confirmed party leader alone is not enough — they must also be on
+    the assigned world. Off-world + corroborated → still ONLINE_ELSEWHERE
+    (the dashboard's job is to tell the player to come to the right world,
+    not to gloss over them being elsewhere)."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    holidaze = p["Holidaze"].mc_uuid
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="NA1")},  # wrong world
+        party_leader_by_uuid={wen: holidaze},
+    ))
+    assert got[wen] is S.ONLINE_ELSEWHERE
+
+
 async def test_api_disabled_player_confirmed_two_ways(seeded):
     meta = seeded["players"]["Metrafish"].mc_uuid  # api-disabled, Unassigned
 

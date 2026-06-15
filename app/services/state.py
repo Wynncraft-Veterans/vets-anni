@@ -84,6 +84,17 @@ class AppState:
     presence_by_uuid: dict[str, str] = field(default_factory=dict)
     presence_fetched_at: float = 0.0
 
+    # --- party_status_poller (Phase 2 / Phase 4 vetsmod corroboration) ------
+    #: member_mc_uuid -> leader_mc_uuid. Source: temp-server
+    #: ``/v1/outbound/party_status``, name-keyed at the wire then resolved
+    #: against ``roster_by_uuid`` + ``aliases`` here so the presence classifier
+    #: can compare ``leader_uuid == Party.host.mc_uuid`` cheaply. Empty (no
+    #: report yet, all reports stale, or name didn't resolve) is the
+    #: classifier's "no corroboration" signal — falls back to ``ONLINE_WORLD``
+    #: rather than fabricating ``ONLINE_PARTY``.
+    party_leader_by_uuid: dict[str, str] = field(default_factory=dict)
+    party_status_fetched_at: float = 0.0
+
     # --- api_disabled probe (Phase 2) ---------------------------------------
     #: mc_uuids of API-disabled players the slow probe currently *infers* are
     #: active (a between-tick lastSeen/server change — dazebot purgelist

@@ -191,6 +191,8 @@ class Settings(BaseSettings):
     weapons_poll_seconds: int = 3600
     api_disabled_probe_seconds: int = 300
     lifecycle_poll_seconds: int = 30
+    party_status_poll_seconds: int = 15
+    party_status_poll_hot_seconds: int = 4
 
     # --- Hot-window cadence ramp --------------------------------------------
     # From ``T - hot_window_open_seconds`` until ``stamp + grace`` the three

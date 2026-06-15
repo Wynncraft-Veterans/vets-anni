@@ -35,6 +35,7 @@ from app.services import (  # noqa: E402
     lifecycle_task,
     mojang,
     online_merge,
+    party_status_poller,
     presence_poller,
     staff_poller,
     stamp_poller,
@@ -87,6 +88,10 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(presence_poller.run(state, settings), name="presence"),
         asyncio.create_task(api_disabled.run(state, settings), name="apidisabled"),
         asyncio.create_task(lifecycle_task.run(state, settings), name="lifecycle"),
+        # vetsmod party corroboration -> ONLINE_PARTY status.
+        asyncio.create_task(
+            party_status_poller.run(state, settings), name="partystatus",
+        ),
         # Phase 3: spec.md "auto-populated from RSVP or 1hr-early".
         asyncio.create_task(auto_promoter.run(state, settings), name="autopromoter"),
         # Anni role-ping: API-fallback first-notice + T-90 reminder. Bot

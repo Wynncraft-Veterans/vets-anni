@@ -67,6 +67,19 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
             api_disabled and uuid in state.api_active_uuids
         )
         party = p.party
+        # Corroboration: vetsmod-reporting players send their Wynncraft party
+        # roster via the party_status frame; party_status_poller resolves it
+        # to ``state.party_leader_by_uuid`` (member_uuid -> leader_uuid). We
+        # only count as "confirmed in party" when the resolved leader matches
+        # the host the staff board assigned. Anything weaker degrades to
+        # ONLINE_WORLD — we never fabricate a join.
+        # ``Party.host`` is a FK to ``AnniPlayer.mc_uuid`` (the AnniPlayer PK),
+        # so ``host_id`` IS the host's mc_uuid — no extra fetch needed.
+        host_uuid = party.host_id if party else None
+        in_party_confirmed = bool(
+            host_uuid
+            and state.party_leader_by_uuid.get(uuid) == host_uuid
+        )
         out[uuid] = presence.classify(
             presence.PresenceInputs(
                 online=is_online,
@@ -77,7 +90,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
                 party_world=party.world if party else None,
                 party_created=party is not None,
                 current_server=online.server if online else None,
-                in_party_confirmed=False,  # App4 vetsmod corroboration only
+                in_party_confirmed=in_party_confirmed,
                 seconds_to_anni=seconds,
             )
         )

@@ -154,6 +154,126 @@ async def test_server_field_from_wapi_payload_reaches_online_player(db, monkeypa
     assert state.online_by_uuid["uuid-noserver"].server is None
 
 
+async def test_vetsmod_carries_server_through_to_online_player(db, monkeypatch):
+    """temp-server enriches ``/v1/outbound/list`` with the player's world via
+    its tablist join (Phase 1b). When that field comes through, the vetsmod
+    branch must surface it onto ``OnlinePlayer.server`` so the WAPI branch
+    doesn't need to backfill (and importantly, doesn't clobber it)."""
+    class _ServerAwareTemp:
+        async def roster(self) -> dict:
+            return {"uuid-ally": "AllyDude"}
+
+        async def aliases(self) -> dict:
+            return {}
+
+        async def online_list(self) -> list[dict]:
+            return [{
+                "uuid": "uuid-ally",
+                "username": "AllyDude",
+                "tier": "guild",
+                "queued": False,
+                "server": "EU15",
+            }]
+
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _ServerAwareTemp())
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: _FakeWapi({"members": {}}))
+
+    state = AppState()
+    await online_merge._tick(state, Settings(wapi_guild_ttl_seconds=120))
+
+    assert state.online_by_uuid["uuid-ally"].server == "EU15"
+
+
+async def test_vetsmod_server_survives_wapi_branch_when_wapi_also_reports(db, monkeypatch):
+    """When BOTH sources report a server for the same uuid, the vetsmod-fed
+    value must win — its tablist is "closer to truth" (the user's own client
+    snapshot) than the 120s-cached WAPI guild payload."""
+    class _BothReportSrvTemp:
+        async def roster(self) -> dict:
+            return {"uuid-x": "Bothie"}
+
+        async def aliases(self) -> dict:
+            return {}
+
+        async def online_list(self) -> list[dict]:
+            return [{
+                "uuid": "uuid-x",
+                "username": "Bothie",
+                "tier": "guild",
+                "queued": False,
+                "server": "EU15",  # vetsmod path says EU15
+            }]
+
+    wapi = _FakeWapi({
+        "members": {
+            "captain": {
+                "Bothie": {
+                    "uuid": "uuid-x",
+                    "online": True,
+                    "server": "NA1",  # WAPI path (stale cache) says NA1
+                },
+            },
+        },
+    })
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _BothReportSrvTemp())
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+
+    state = AppState()
+    await online_merge._tick(state, Settings(wapi_guild_ttl_seconds=120))
+
+    assert state.online_by_uuid["uuid-x"].server == "EU15", \
+        "vetsmod-reported server (via temp-server tablist join) must not be clobbered by WAPI"
+
+
+async def test_wapi_server_backfills_when_vetsmod_branch_inserted_first(db, monkeypatch):
+    """A guild member who appears in BOTH the vetsmod ``/v1/outbound/list``
+    branch AND the WAPI guild payload must end up with ``server`` populated
+    from WAPI — the vetsmod branch runs first and creates the record with
+    ``server=None``, and historically the WAPI branch skipped the uuid
+    entirely, leaving the presence classifier with no world signal and the
+    player misclassified as ``ONLINE_ELSEWHERE``.
+
+    Also assert that ``queued`` (which only vetsmod reports) survives the
+    backfill — WAPI never sees queue state, so a `replace(..., server=…)` must
+    keep the vetsmod flags intact.
+    """
+    class _BothSourcesTemp:
+        async def roster(self) -> dict:
+            return {"uuid-both": "DualSrc"}
+
+        async def aliases(self) -> dict:
+            return {}
+
+        async def online_list(self) -> list[dict]:
+            return [{
+                "uuid": "uuid-both",
+                "username": "DualSrc",
+                "queued": True,
+            }]
+
+    payload = {
+        "members": {
+            "captain": {
+                "DualSrc": {
+                    "uuid": "uuid-both",
+                    "online": True,
+                    "server": "EU15",
+                },
+            },
+        },
+    }
+    wapi = _FakeWapi(payload)
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _BothSourcesTemp())
+
+    state = AppState()
+    await online_merge._tick(state, Settings(wapi_guild_ttl_seconds=120))
+
+    record = state.online_by_uuid["uuid-both"]
+    assert record.server == "EU15", "WAPI server must backfill onto the vetsmod-inserted record"
+    assert record.queued is True, "queued flag from vetsmod must survive the WAPI backfill"
+
+
 async def test_wapi_failure_uses_cached_payload(db, monkeypatch):
     """A WAPI failure on a refetch attempt must not wipe the cache — the
     previous payload keeps serving (last-good resilience)."""

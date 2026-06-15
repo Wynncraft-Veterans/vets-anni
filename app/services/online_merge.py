@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 
 from app.services import hot_window
 from app.services.loop import poll_forever
@@ -118,6 +119,11 @@ async def _tick(state: AppState, settings: Settings) -> None:
     merged: dict[str, OnlinePlayer] = {}
 
     # (1) vetsmod-connected clients — queued players included on purpose.
+    # ``server`` is best-effort: temp-server enriches /v1/outbound/list with
+    # the player's world by joining its latest tablist snapshot against the
+    # connected_users dict by username. A null/missing/empty value just means
+    # no fresh tablist covers that user — the WAPI branch below backfills it
+    # for guild members.
     for row in await ts.online_list():
         uuid = row.get("uuid")
         if not uuid:
@@ -128,6 +134,7 @@ async def _tick(state: AppState, settings: Settings) -> None:
             username=name,
             tier=row.get("tier", "guild"),
             queued=bool(row.get("queued", False)),
+            server=row.get("server") or None,
         )
 
     # (2) WAPI guild online — but only re-fetch once per ``wapi_guild_ttl_seconds``
@@ -151,13 +158,20 @@ async def _tick(state: AppState, settings: Settings) -> None:
                            exc_info=True)
     if _wapi_guild_cache is not None:
         for uuid, (name, server) in _parse_guild_online(_wapi_guild_cache).items():
-            if uuid not in merged:
+            existing = merged.get(uuid)
+            if existing is None:
                 merged[uuid] = OnlinePlayer(
                     uuid=uuid,
                     username=state.roster_by_uuid.get(uuid) or name,
                     tier="guild",
                     server=server,
                 )
+            elif server and existing.server is None:
+                # vetsmod's /list inserted this uuid first with no server (the
+                # /list payload doesn't carry world); without backfilling, the
+                # presence classifier sees current_server=None and every
+                # vetsmod-connected guild member is misclassified ONLINE_ELSEWHERE.
+                merged[uuid] = replace(existing, server=server)
         # Same payload also yields the FULL staff list (offline included) —
         # the lead-organiser candidates. Refresh each tick from the cached
         # payload (cheap pure parse) so a freshly cached fetch propagates

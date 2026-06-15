@@ -133,22 +133,22 @@ Outputs a `PresenceStatus` + escalating bottom-bar text:
 An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE_HARD` /
 `OFFLINE_SOFT`; once gone, 1hr-early vs late is tracked elsewhere and irrelevant).
 - OFFLINE_GONE (was here <= T-60m, no longer here):
-  - Staff see: RED border outlining user object in staff dashboard.
+  - Staff see: BLUE border outlining user object in staff dashboard.
   - Users see: subtly flashing bar under relevant module in user dashboard.
 - OFFLINE_HARD: (hard rsvp'd, but is not here (yet)):
-  - Staff see: GREEN border outlining user object in staff dashboard.
+  - Staff see: MAGENTA border outlining user object in staff dashboard.
   - Users see: Red bar under relevant module in user dashboard, starts flashing T-20m.
 - OFFLINE_SOFT: (soft rsvp'd, is not here (yet)):
-  - Staff see: YELLOW border outlining user object in staff dashboard.
+  - Staff see: RED border outlining user object in staff dashboard.
   - Users see: Red bar under relevant module in user dashboard, starts flashing T-45m.
 - ONLINE_ELSEWHERE (online, but in a queue or otherwise not on their assigned party's world. Or, they haven't been assigned to a party yet):
-  - Staff see: BLUE border outlining user object in staff dashboard.
+  - Staff see: GREEN border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their world has been announced.
 - ONLINE_WORLD (online, in the correct world, but not in their assigned party)
   - Staff see: CYAN border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their party has been created.
 - ONLINE_PARTY (online, in the correct world, in their assigned party)
-  - Staff see: MAGENTA border outlining user object in staff dashboard.
+  - Staff see: YELLOW border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard.
 - UNKNOWN: (The user has their API disabled and we are not comfortable in our aproximations of if they are online or offline. We have several sources (world shift and vetsmod reporting -- see wv list), but if we are unsure, we can use this list their status as unconfirmable).
   - Staff see: GREY border outlining user object in staff dashboard.
