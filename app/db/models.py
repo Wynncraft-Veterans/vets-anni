@@ -138,9 +138,31 @@ class AnniEvent(Model):
 
     parties: fields.ReverseRelation[Party]
     placements: fields.ReverseRelation[BoardPlacement]
+    pings: fields.ReverseRelation[AnniEventPing]
 
     class Meta:
         table = "anni_event"
+
+
+class AnniEventPing(Model):
+    """Records each role-ping fishbot has sent for an event. The
+    unique_together constraint caps total pings per event at one of
+    each kind (first_notice + t_minus_90 = max 2 pings/occurrence).
+    Insert happens BEFORE the Discord send so a crash between insert
+    and send leaves us with a silent miss — preferable to a duplicate
+    ping, and lets the cog/poller race resolve cleanly via the
+    IntegrityError path."""
+
+    id = fields.UUIDField(primary_key=True)
+    event = fields.ForeignKeyField(
+        "models.AnniEvent", related_name="pings", on_delete=fields.CASCADE,
+    )
+    kind = fields.CharField(max_length=16)  # "first_notice" | "t_minus_90"
+    sent_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "anni_event_ping"
+        unique_together = (("event", "kind"),)
 
 
 class Party(Model):

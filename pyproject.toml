@@ -27,7 +27,7 @@ dependencies = [
     "aerich>=0.7,<1",                 # schema migrations (spec requires this)
     "aiosqlite>=0.20,<1",             # async SQLite driver
     "aiohttp>=3.10,<4",               # outbound clients (WAPI / vets-api / dazebot)
-    "discord.py>=2.5,<3",             # fishbot
+    "discord.py>=2.7.1,<3",           # fishbot (>=2.7.1 required for Components V2 — magbot's anni pings)
     "passlib>=1.7,<2",                # user/staff password hashing (pbkdf2_sha256)
     "pydantic>=2.8,<3",
     "pydantic-settings>=2.4,<3",

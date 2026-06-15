@@ -46,6 +46,42 @@ class Settings(BaseSettings):
         "guild may set other users' RSVPs; everyone else gets a CheckFailure.",
     )
 
+    # --- Anni-ping (was dazebot's cogs/moderation/anni.py; moved here so the
+    # API-fallback feed in temp-server can also trigger pings independent of
+    # magbot's webhook). Defaults are the production IDs.
+    anni_ping_channel_id: int = Field(
+        default=1339393368672702567,
+        description="Channel where the anni role-ping is posted. Also the "
+        "channel fishbot listens on for magbot's webhook (so the cog can do "
+        "the bare-ping path when magbot is alive).",
+    )
+    anni_ping_role_id: int = Field(
+        default=1457366058951249970,
+        description="Role pinged for Prelude to Annihilation announcements.",
+    )
+    anni_magbot_webhook_id: int = Field(
+        default=1396669909077070007,
+        description="Magbot's Discord webhook id. Messages from this webhook "
+        "in `anni_ping_channel_id` whose text contains the trigger phrase "
+        "drive the bare-ping (no embed) path.",
+    )
+    anni_first_notice_grace_seconds: int = Field(
+        default=60,
+        description="Window the poller waits after an active event is created "
+        "before firing the API-fallback first-notice embed. Gives the magbot "
+        "cog time to claim the ping when both signals arrive close together.",
+    )
+    anni_t_minus_90_seconds: int = Field(
+        default=90 * 60,
+        description="How far ahead of stamp_epoch the reminder ping fires.",
+    )
+    anni_ping_poll_seconds: int = Field(
+        default=30,
+        description="Cadence of the anni-ping poller (first-notice fallback + "
+        "T-minus-90 reminder). Matches stamp_poll_seconds; both poll the same "
+        "stamp_epoch.",
+    )
+
     # --- Wynncraft API (OWN token; separate ratelimit bucket) ----------------
     wapi_token: str = Field(default="", description="vets-anni's OWN Wynncraft token.")
     wapi_base: str = Field(default="https://api.wynncraft.com/v3")

@@ -28,6 +28,7 @@ load_dotenv()  # local dev convenience; prod injects real env via the stack .env
 from app.bot.client import start_fishbot, stop_fishbot  # noqa: E402
 from app.db import lifecycle  # noqa: E402
 from app.services import (  # noqa: E402
+    anni_ping_poller,
     api_disabled,
     auto_promoter,
     dazebot_client,
@@ -88,6 +89,12 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(lifecycle_task.run(state, settings), name="lifecycle"),
         # Phase 3: spec.md "auto-populated from RSVP or 1hr-early".
         asyncio.create_task(auto_promoter.run(state, settings), name="autopromoter"),
+        # Anni role-ping: API-fallback first-notice + T-90 reminder. Bot
+        # may be None (no FISHBOT_TOKEN) — poller still runs to keep the
+        # AnniEventPing rows in sync; the Discord send is gated inside.
+        asyncio.create_task(
+            anni_ping_poller.run(state, settings, bot), name="annipings",
+        ),
     ]
     logger.info("vets-anni started (%d pollers)", len(app.state.poller_tasks))
     try:
