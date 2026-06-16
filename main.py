@@ -46,6 +46,7 @@ from app.services.tempserver import get_tempserver  # noqa: E402
 from app.services.wapi import get_wapi  # noqa: E402
 from app.settings import get_settings  # noqa: E402
 from app.web.routers import (  # noqa: E402
+    anni_internal,
     capability,
     internal,
     organizer,
@@ -132,6 +133,7 @@ def create_app() -> FastAPI:
     app.include_router(roles_dash.router)
     app.include_router(staff_capability.router)
     app.include_router(internal.router)
+    app.include_router(anni_internal.router)
     return app
 
 

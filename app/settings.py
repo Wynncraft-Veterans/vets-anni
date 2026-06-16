@@ -174,6 +174,13 @@ class Settings(BaseSettings):
     dazebot_anni_identity_url: str = Field(
         default="http://dazebot:9421/api/internal/anni-identity"
     )
+    #: Shared secret protecting ``app/web/routers/anni_internal.py``. Same
+    #: ``X-Introspect-Secret`` fail-closed pattern as ``dazebot_introspect_secret``,
+    #: but a *separate* rotation knob because the consumer is temporary-server
+    #: (MWE/vetsmod transit) not dazebot — coupling them would force a
+    #: three-service rotation. Must match temp-server's
+    #: ``ANNI_INTROSPECT_SECRET`` env var.
+    anni_introspect_secret: str = Field(default="")
 
     # --- Misc ----------------------------------------------------------------
     public_base_url: str = Field(default="https://anni.wynnvets.org")

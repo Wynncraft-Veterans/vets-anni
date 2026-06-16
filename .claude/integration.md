@@ -58,12 +58,37 @@ mc_username, tier, blocked, reason}`. Implemented by reusing
 `lib/staff/verify_keys.py` `_find_member` + `resolve_tier`. fishbot calls it
 via `services/dazebot_client.py`; dazebot down ⇒ `/rsvp` degrades gracefully.
 
-## vetsmod (App4, deferred)
-New `AnniFetcher` + richer `/wv anni` reading vets-anni `GET /v1/anni/me`;
-party-detection chat hook → `POST /v1/anni/party-report` (best-effort
-corroboration, never authoritative); optional role glow via
-`NametagAnimator`/`NametagMixin` reading `GET /v1/anni/roster-colours`, gated
-by a VetsConfig toggle + CB palette.
+## vetsmod (App4 — MWE/anni surface)
+
+**vetsmod never speaks to vets-anni directly.** All vetsmod ↔ vets-anni
+traffic transits temporary-server (`api.wynnvets.org`) — there is no
+`GET /v1/anni/*` on vets-anni and there never will be. The wire is one
+canonical snapshot shape (`app/domain/snapshot.py`, `schema_version` int),
+exposed only on the verify-network internal endpoints in
+`app/web/routers/anni_internal.py`:
+
+- `GET  /api/internal/anni-eligibility` → `{uuids: [...]}`
+- `GET  /api/internal/anni-player/{uuid}` → one snapshot dict
+- `POST /api/internal/anni-snapshot-batch` `{uuids:[...]}` → `{snapshots:[...]}`
+
+temp-server's `app/services/anni_snapshot_poller.py` polls these on an
+adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),
+diffs per UUID, and pushes per-uuid `anni_state` WS frames to the
+matching vetsmod client. vetsmod also issues `anni_query` over WS for the
+on-demand pull (e.g. an `other`-tier user invoking `/wv anni`).
+
+Subsequent stages (S2–S7) add:
+- richer `/wv anni` + anni-motd render
+- passive/aggressive mode (boss bar, outlines, waypoints, chat alerts)
+- in-game `/wv anni rsvp` writing back via
+  `POST /api/internal/anni-rsvp-by-uuid`
+- party back-report via `POST /api/internal/anni-party-observation`
+  (S7 replaces the legacy vetsmod-tier gate with an organiser-presence
+  gate)
+
+See `.claude/snapshot_integration.md` for the full snapshot schema and the
+upgrade-coordination story; the spec is in the vetsmod-fishbot integration
+plan under `.claude/ephemeral/`.
 
 ## Auth model — intentionally LOW-TRUST (not a security boundary)
 Web login is IGN + *optional* password (first set sticks; staff-resettable; no
