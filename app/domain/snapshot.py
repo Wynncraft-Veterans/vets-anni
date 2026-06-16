@@ -76,28 +76,33 @@ def _to_epoch(dt: Any) -> int | None:
 
 
 async def _build_event_block(event: AnniEvent | None) -> dict | None:
-    """``event`` sub-object. ``None`` iff no AnniEvent has ever been created.
+    """``event`` sub-object. ``None`` iff the DB has *zero* AnniEvent rows
+    of any kind — in which case there's no anchor for a prediction either.
 
-    Adds ``prediction`` whenever the stamp is past/unknown so external users
-    invoking ``/wv anni`` see the ``\\guess``-style window instead of bare
-    "not announced" text (per S2).
+    Whenever any past event exists (even when ``get_active_event()`` returns
+    ``None``), the block is non-null with a populated ``prediction``: the
+    ``\\guess``-style window anchored on the most recent past stamp. This
+    is what the spec promises (``event: null iff no AnniEvent has ever
+    been recorded``) and what the doc text in ``snapshot_integration.md``
+    pins down.
     """
-    if event is None:
-        return None
-    stamp_epoch = int(event.stamp_epoch) if event.stamp_epoch else None
     import time as _time
 
     now = int(_time.time())
-    needs_prediction = stamp_epoch is None or stamp_epoch <= now
+    stamp_epoch = (
+        int(event.stamp_epoch) if (event is not None and event.stamp_epoch) else None
+    )
+    announced = stamp_epoch is not None and stamp_epoch > now
+    needs_prediction = not announced  # i.e. past or unknown
 
     prediction: dict | None = None
     if needs_prediction:
-        anchor = stamp_epoch
+        # ``anchor`` is the stamp the prediction window builds on. Start
+        # with the active event's own stamp; fall back to the most recent
+        # past anni in the DB when the active row has no stamp or there
+        # is no active row at all.
+        anchor: int | None = stamp_epoch
         if anchor is None:
-            # Fallback: use the most recent past anni stamp in the DB. Returns
-            # None when the DB has never seen one (cold start). Snapshot
-            # consumers tolerate ``prediction: null`` and fall back to the
-            # legacy "not announced" string.
             past = (
                 await AnniEvent.filter(stamp_epoch__lte=now)
                 .order_by("-stamp_epoch")
@@ -108,9 +113,15 @@ async def _build_event_block(event: AnniEvent | None) -> dict | None:
         if anchor is not None:
             prediction = predict_next(anchor)
 
+    # Truly empty DB: no active event AND no past anchor — only then do
+    # we surface ``event: null`` so vetsmod falls all the way back to the
+    # legacy stamp text.
+    if event is None and prediction is None:
+        return None
+
     return {
-        "stamp_epoch": stamp_epoch if stamp_epoch and stamp_epoch > now else None,
-        "announced": stamp_epoch is not None and stamp_epoch > now,
+        "stamp_epoch": stamp_epoch if announced else None,
+        "announced": announced,
         "prediction": prediction,
     }
 

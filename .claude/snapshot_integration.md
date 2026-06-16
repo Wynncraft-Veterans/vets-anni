@@ -105,8 +105,13 @@ partial batch than a failed tick).
   the anni-motd renderer reads `event.announced && event.stamp_epoch`;
   the manual `/wv anni` reads `event.prediction` when stamp is null.
 - `event.prediction` is computed against the *most recent past* anni
-  stamp in the DB, not a hardcoded anchor. On a totally empty DB it's
-  `null` (legacy "not announced" string applies).
+  stamp in the DB, not a hardcoded anchor. Whenever any past `AnniEvent`
+  exists the prediction is populated — even when
+  `get_active_event()` returns `None` and so there's no "active" event
+  row to anchor on, the assembler still synthesises an `event` block
+  with the prediction. Only when the DB has *zero* `AnniEvent` rows of
+  any kind does the whole `event` field collapse to `null` (legacy
+  "not announced" string applies).
 - `registration.core` mirrors `registration.registered` today — a single
   bool would do, but the spec calls for the split so the snapshot keeps
   both fields for forward-compat.
