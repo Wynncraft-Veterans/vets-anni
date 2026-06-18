@@ -16,6 +16,14 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+#: Maximum age (seconds) of a ``party_leader_by_uuid`` entry before
+#: ``presence_poller`` treats it as stale and falls back to ``ONLINE_WORLD``.
+#: vetsmod pushes ``anni_party_observation`` on every party event during the
+#: anni window (snapshot updates also fire it), so a 60s window safely covers
+#: the typical between-event idle without stranding stale corroboration when a
+#: vetsmod client disconnects mid-window.
+_PARTY_LEADER_TTL_SECONDS = 60
+
 
 @dataclass(frozen=True)
 class OnlinePlayer:
@@ -84,14 +92,17 @@ class AppState:
     presence_by_uuid: dict[str, str] = field(default_factory=dict)
     presence_fetched_at: float = 0.0
 
-    # --- party_status_poller (Phase 2 / Phase 4 vetsmod corroboration) ------
-    #: member_mc_uuid -> leader_mc_uuid. Source: temp-server
-    #: ``/v1/outbound/party_status``, name-keyed at the wire then resolved
-    #: against ``roster_by_uuid`` + ``aliases`` here so the presence classifier
-    #: can compare ``leader_uuid == Party.host.mc_uuid`` cheaply. Empty (no
-    #: report yet, all reports stale, or name didn't resolve) is the
-    #: classifier's "no corroboration" signal — falls back to ``ONLINE_WORLD``
-    #: rather than fabricating ``ONLINE_PARTY``.
+    # --- anni_party_observation (S7 vetsmod back-report) -------------------
+    #: member_mc_uuid -> leader_mc_uuid. Source: S7 ``anni_party_observation``
+    #: endpoint — vetsmod reports its local Wynncraft party roster when an
+    #: organiser username appears in the party (the only signal that matters
+    #: for the ``ONLINE_PARTY`` board upgrade). Names arrive over the wire and
+    #: are resolved here against ``roster_by_uuid`` + ``aliases``. Entries
+    #: older than :data:`_PARTY_LEADER_TTL_SECONDS` are treated as stale by
+    #: ``presence_poller`` (a vetsmod disconnect mid-window must not pin the
+    #: user to ``ONLINE_PARTY`` forever). Empty / stale / unresolved name =>
+    #: classifier falls back to ``ONLINE_WORLD`` rather than fabricating
+    #: ``ONLINE_PARTY``.
     party_leader_by_uuid: dict[str, str] = field(default_factory=dict)
     party_status_fetched_at: float = 0.0
 

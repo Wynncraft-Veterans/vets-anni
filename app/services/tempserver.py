@@ -10,7 +10,6 @@ Contract (see ``.claude/integration.md`` + temporary-server
 * ``GET /v1/outbound/stamp``   -> plain text unix epoch ("" when none).
 * ``GET /v1/outbound/staff``   -> ``[{uuid,username,rank,online,server}]``.
 * ``GET /v1/outbound/list``    -> ``{"connected":[{uuid,username,tier,queued,server}]}``.
-* ``GET /v1/outbound/party_status`` -> ``{"members":{<name_lower>: <leader_name_lower>}, "updated_at": <epoch|null>}``.
 * ``GET /v1/outbound/roster``  -> ``{uuid: username}``.
 * ``GET /v1/outbound/aliases`` -> ``{legacyname_lower: uuid}``.
 
@@ -112,24 +111,6 @@ class TempServerClient:
         roster = data if isinstance(data, dict) else {}
         logger.debug("tempserver roster: %d members", len(roster))
         return roster
-
-    async def party_status(self) -> dict[str, Any]:
-        """Aggregated party roster from vetsmod ``party_status`` reports.
-
-        Returns ``{"members": {lower_name: lower_leader_name}, "updated_at":
-        epoch|None}``. ``members`` is empty when no reporter is connected or
-        every report has aged past ``PARTY_STATUS_STALE_SECONDS`` server-side.
-        The caller resolves names → uuids via the roster / aliases caches.
-        """
-        async with await self._get("party_status") as res:
-            res.raise_for_status()
-            data = await res.json()
-        if not isinstance(data, dict):
-            return {"members": {}, "updated_at": None}
-        members = data.get("members") if isinstance(data.get("members"), dict) else {}
-        updated = data.get("updated_at")
-        logger.debug("tempserver party_status: %d mapped members", len(members))
-        return {"members": members, "updated_at": updated}
 
     async def aliases(self) -> dict[str, str]:
         """``{legacyname_lower: uuid}`` for rename-desync resolution."""

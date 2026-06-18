@@ -21,7 +21,7 @@ three repos.
   `\guess`-style window (Uniform 71.4 h..82.0 h on the most recent
   confirmed stamp).
 
-## Endpoints (S1 + S5 + S6)
+## Endpoints (S1 + S5 + S6 + S7)
 
 All live under `/api/internal/` and require `X-Introspect-Secret`
 matching `settings.anni_introspect_secret`. Fail-closed when the setting is
@@ -34,6 +34,7 @@ unset (503).
 | POST | `/anni-snapshot-batch` | `{uuids: [...]}` | `{snapshots: [...]}` | S1 |
 | POST | `/anni-party-scrollspot` | `{actor_mc_uuid, scroll_spot: {x,y,z}\|null}` | `{status: "ok"}` | S5 |
 | POST | `/anni-rsvp-by-uuid` | `{actor_mc_uuid, notice: "hard"\|"soft"\|"revoke"}` | `{status: "ok"}` | S6 |
+| POST | `/anni-party-observation` | `{observer_mc_uuid, party_member_usernames, leader_username, world}` | `{status: "ok", resolved, dropped}` | S7 |
 
 `/anni-party-scrollspot` is the per-party host's write path for the in-game
 scroll-spot coordinate. Temporary-server's `anni_scrollspot_set` inbound
@@ -41,6 +42,23 @@ handler forwards the authenticated session's MC UUID as `actor_mc_uuid` —
 no impersonation possible. vets-anni then looks up the actor's currently
 assigned party in the active event and accepts the write iff the actor is
 that party's `host`. 403 otherwise. Cleared automatically at grace-wipe.
+
+`/anni-party-observation` is the S7 vetsmod back-report path. When a
+connected vetsmod client sees an organiser username in its local Wynncraft
+party, it forwards `{party_member_usernames, leader_username, world}` via
+temp-server's `anni_party_observation` inbound handler — which stamps the
+authenticated session's MC UUID as `observer_mc_uuid` and forwards here.
+The endpoint resolves the names via [`AppState.resolve_uuid`](../app/services/state.py)
+(cached roster → legacy-name alias fallback), drops unresolvable names,
+and writes `{member_uuid: leader_uuid}` pairs into
+`state.party_leader_by_uuid`. The observer's session UUID is always written
+even if their username didn't resolve (a brand-new member whose roster row
+hasn't ingested yet). An unresolvable leader short-circuits the whole
+observation (no anchor for the `ONLINE_PARTY` upgrade — the dict isn't
+mutated). `state.party_status_fetched_at` is touched on every successful
+write; entries older than `_PARTY_LEADER_TTL_SECONDS` (60 s) are treated as
+stale by [`presence_poller`](../app/services/presence_poller.py) so a
+vetsmod disconnect mid-window doesn't pin a user to yellow forever.
 
 `/anni-rsvp-by-uuid` is the in-game `/wv anni rsvp <hard|soft|revoke>`
 write path. Temp-server's `anni_rsvp` inbound handler forwards the
@@ -139,8 +157,8 @@ partial batch than a failed tick).
     "label":            "Most Likely",
     "notice_effective": "attend_early|rsvp_hard|rsvp_soft|attend_late|null"
   },
-  "organisers": ["uuid1", "uuid2"]   // lead + every party host;
-                                     // S7 gates the party back-report on this
+  "organisers": ["uuid1", "uuid2"],          // lead + every party host
+  "organiser_usernames": ["name1", "name2"]  // parallel order; S7 gate
 }
 ```
 
@@ -170,8 +188,12 @@ partial batch than a failed tick).
   table; everything else is Fill. The raw percentage is **never** in the
   snapshot — only the band index + label (spec rule: exact probabilities
   invite rules-lawyering).
-- `organisers` is `[lead, host_party1, host_party2, ...]`, de-duplicated,
-  stable order. Used by S7 to gate vetsmod's party-back-report frame.
+- `organisers` is `[lead, host_party1, host_party2, ...]`, de-duplicated by
+  UUID, stable order. `organiser_usernames` is the parallel projection (same
+  length, same order). S7's vetsmod-side gate runs on the usernames — Wynncraft
+  exposes party members by username only, so name-based matching is the only
+  reliable path. Both lists are computed from one query pair so concurrent
+  host reassignments cannot desync UUID order from username order.
 - `event.all_parties` (schema v2) is the lightweight per-party member listing
   vetsmod's S4 outline registry tiers against. Each member entry is
   `{uuid, username, role}` so vetsmod (which keys by username — see

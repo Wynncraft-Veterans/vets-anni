@@ -369,12 +369,16 @@ def _build_attendance_block(
     }
 
 
-async def _organiser_uuids(event: AnniEvent) -> list[str]:
-    """UUIDs of every organising role for this event: the lead organiser
-    plus every Party host. De-duplicated; stable order (lead first, then
-    party hosts in ordinal order). S7 gates the party-back-report pipeline
-    on this list."""
-    out: list[str] = []
+async def _organisers(event: AnniEvent) -> tuple[list[str], list[str]]:
+    """UUIDs and usernames of every organising role for this event: the lead
+    organiser plus every Party host. De-duplicated by UUID; stable parallel
+    order (lead first, then party hosts in ordinal order). Both lists are
+    computed from a single query pair so concurrent host reassignments
+    cannot desync UUID order from username order. S7 gates the
+    party-back-report pipeline on the username list (vetsmod has no
+    reliable name-to-UUID resolution path)."""
+    uuids: list[str] = []
+    usernames: list[str] = []
     seen: set[str] = set()
     if event.organizer_id:
         # ``organizer`` was eager-loaded by ``get_active_event``; mc_uuid IS
@@ -385,7 +389,12 @@ async def _organiser_uuids(event: AnniEvent) -> list[str]:
             else str(event.organizer_id)
         )
         if uuid and uuid not in seen:
-            out.append(uuid)
+            uuids.append(uuid)
+            usernames.append(
+                event.organizer.mc_username
+                if event.organizer is not None
+                else ""
+            )
             seen.add(uuid)
     parties = (
         await Party.filter(event=event)
@@ -397,9 +406,10 @@ async def _organiser_uuids(event: AnniEvent) -> list[str]:
             continue
         uuid = p.host.mc_uuid if p.host is not None else str(p.host_id)
         if uuid and uuid not in seen:
-            out.append(uuid)
+            uuids.append(uuid)
+            usernames.append(p.host.mc_username if p.host is not None else "")
             seen.add(uuid)
-    return out
+    return uuids, usernames
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +438,7 @@ async def assemble_snapshot(
         }
         rsvp_row = None
         organisers: list[str] = []
+        organiser_usernames: list[str] = []
     else:
         rsvp_row = await rsvp_domain.get_current(player, event)
         rsvp_block = (
@@ -442,7 +453,7 @@ async def assemble_snapshot(
             else None
         )
         board_block = await _build_board_block(player, event)
-        organisers = await _organiser_uuids(event)
+        organisers, organiser_usernames = await _organisers(event)
 
     attendance = _build_attendance_block(
         player,
@@ -461,6 +472,7 @@ async def assemble_snapshot(
         "board": board_block,
         "attendance": attendance,
         "organisers": organisers,
+        "organiser_usernames": organiser_usernames,
     }
 
 

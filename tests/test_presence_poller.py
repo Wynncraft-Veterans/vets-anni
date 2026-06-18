@@ -9,9 +9,11 @@ probe's inferred-active set) → ONLINE_ELSEWHERE, never a faked world.
 
 from __future__ import annotations
 
+import time
+
 from app.constants import PresenceStatus as S
 from app.services import presence_poller
-from app.services.state import AppState, OnlinePlayer
+from app.services.state import AppState, OnlinePlayer, _PARTY_LEADER_TTL_SECONDS
 
 
 def _online(uuid: str, **kw) -> OnlinePlayer:
@@ -55,21 +57,39 @@ async def test_online_merge_drives_world_states(seeded):
 
 
 async def test_party_leader_corroboration_flips_to_online_party(seeded):
-    """Phase 2 corroboration: when the resolved leader of the player's
-    Wynncraft party matches their assigned party's host on the board, status
-    upgrades from ONLINE_WORLD to ONLINE_PARTY. Mirrors what the staff sees
-    once vetsmod sends a ``party_status`` frame matching the staff plan."""
+    """S7 corroboration: when the resolved leader of the player's Wynncraft
+    party matches their assigned party's host on the board AND the
+    observation is fresh, status upgrades from ONLINE_WORLD to ONLINE_PARTY.
+    Mirrors what staff sees once a vetsmod client sends a fresh
+    ``anni_party_observation`` frame anchored on an organiser."""
     p = seeded["players"]
     wen = p["Wenweia"].mc_uuid       # Party 1 (host: Holidaze, world AS5)
     holidaze = p["Holidaze"].mc_uuid
 
-    # Same setup as the ONLINE_WORLD case (server matches), plus the leader
-    # corroboration.
+    # Same setup as the ONLINE_WORLD case (server matches), plus a *fresh*
+    # leader corroboration.
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: holidaze},
+        party_status_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_PARTY
+
+
+async def test_party_leader_corroboration_stale_falls_back(seeded):
+    """If the last observation is older than the TTL we treat the dict as
+    stale and degrade to ONLINE_WORLD — a vetsmod disconnect mid-window
+    must not pin a user to yellow forever."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    holidaze = p["Holidaze"].mc_uuid
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="AS5")},
+        party_leader_by_uuid={wen: holidaze},
+        party_status_fetched_at=time.time() - _PARTY_LEADER_TTL_SECONDS - 1,
+    ))
+    assert got[wen] is S.ONLINE_WORLD
 
 
 async def test_party_leader_mismatch_stays_online_world(seeded):
@@ -83,6 +103,7 @@ async def test_party_leader_mismatch_stays_online_world(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: nazzae},
+        party_status_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_WORLD
 
@@ -99,6 +120,7 @@ async def test_party_corroboration_without_world_match_stays_elsewhere(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="NA1")},  # wrong world
         party_leader_by_uuid={wen: holidaze},
+        party_status_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_ELSEWHERE
 

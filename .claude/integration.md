@@ -103,6 +103,20 @@ exposed only on the verify-network internal endpoints in
   render is `wont_reason`-driven so the new string flows through
   without client changes.
 
+- `POST /api/internal/anni-party-observation` (S7) — vetsmod back-report
+  for `ONLINE_PARTY` corroboration. Body
+  `{observer_mc_uuid, party_member_usernames, leader_username, world}`.
+  `observer_mc_uuid` is stamped by temp-server from the authenticated
+  session (never trusted from the frame body). Names are resolved here
+  via [`AppState.resolve_uuid`](../app/services/state.py) (roster cache
+  → legacy alias fallback) and written into
+  `state.party_leader_by_uuid` for the presence classifier's
+  `ONLINE_PARTY` upgrade. Unresolvable leader = no-op (`{resolved: 0}`);
+  unresolvable members are dropped individually; the observer's session
+  UUID always lands in the dict (authoritative fallback for brand-new
+  members). Entries are TTL-gated (60 s) by `presence_poller` so a
+  vetsmod disconnect mid-window doesn't pin the user to yellow forever.
+
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),
 diffs per UUID, and pushes per-uuid `anni_state` WS frames to the

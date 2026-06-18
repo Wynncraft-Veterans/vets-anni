@@ -30,7 +30,7 @@ from app.domain import identity, presence
 from app.domain.colourblind import status_chip
 from app.services import hot_window
 from app.services.loop import poll_forever
-from app.services.state import AppState
+from app.services.state import AppState, _PARTY_LEADER_TTL_SECONDS
 from app.settings import Settings
 
 logger = logging.getLogger("anni.presence")
@@ -68,16 +68,24 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         )
         party = p.party
         # Corroboration: vetsmod-reporting players send their Wynncraft party
-        # roster via the party_status frame; party_status_poller resolves it
-        # to ``state.party_leader_by_uuid`` (member_uuid -> leader_uuid). We
-        # only count as "confirmed in party" when the resolved leader matches
-        # the host the staff board assigned. Anything weaker degrades to
-        # ONLINE_WORLD — we never fabricate a join.
+        # roster via the S7 ``anni_party_observation`` frame when an organiser
+        # is in their party; the endpoint resolves names → uuids and writes
+        # ``state.party_leader_by_uuid`` (member_uuid -> leader_uuid). We only
+        # count as "confirmed in party" when (a) the dict is fresh (a vetsmod
+        # disconnect mid-window must not pin a user to ONLINE_PARTY forever)
+        # and (b) the resolved leader matches the host the staff board
+        # assigned. Anything weaker degrades to ONLINE_WORLD — we never
+        # fabricate a join.
         # ``Party.host`` is a FK to ``AnniPlayer.mc_uuid`` (the AnniPlayer PK),
         # so ``host_id`` IS the host's mc_uuid — no extra fetch needed.
         host_uuid = party.host_id if party else None
+        party_fresh = (
+            time.time() - state.party_status_fetched_at
+            < _PARTY_LEADER_TTL_SECONDS
+        )
         in_party_confirmed = bool(
             host_uuid
+            and party_fresh
             and state.party_leader_by_uuid.get(uuid) == host_uuid
         )
         out[uuid] = presence.classify(

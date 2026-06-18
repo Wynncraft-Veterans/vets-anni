@@ -33,6 +33,18 @@ S6:
   public-post chain, so a ``/wv anni rsvp hard`` is byte-equivalent to a
   Discord ``\\rsvp hard``.
 
+S7:
+
+* ``POST /api/internal/anni-party-observation`` — authenticated vetsmod
+  client reports its local Wynncraft party roster when an organiser
+  username appears in the party. Body:
+  ``{"observer_mc_uuid","party_member_usernames":[...],"leader_username","world"}``.
+  ``observer_mc_uuid`` is stamped by temporary-server from the
+  authenticated session (never trusted from the frame body). Names are
+  resolved here via :meth:`AppState.resolve_uuid` (roster scan → legacy
+  alias fallback) and written into ``state.party_leader_by_uuid`` for the
+  presence classifier's ``ONLINE_PARTY`` upgrade.
+
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
 variants — the vetsmod side treats this as opaque transit.
@@ -41,6 +53,7 @@ variants — the vetsmod side treats this as opaque transit.
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
@@ -274,3 +287,107 @@ async def anni_rsvp_by_uuid(
     except UuidRsvpError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return {"status": "ok"}
+
+
+@router.post("/anni-party-observation")
+async def anni_party_observation(
+    request: Request,
+    payload: dict,
+    x_introspect_secret: str | None = Header(default=None),
+) -> dict:
+    """S7 vetsmod back-report — record a Wynncraft party roster observation.
+
+    Body shape::
+
+        {
+          "observer_mc_uuid": "<uuid>",
+          "party_member_usernames": ["foo", "bar"],
+          "leader_username": "foo",
+          "world": "WC1"
+        }
+
+    ``observer_mc_uuid`` is injected by temporary-server from the
+    authenticated session; the frame body's value is the same (passed
+    through) but the *trust* root is the session.
+
+    Resolution: ``leader_username`` and each member name go through
+    :meth:`AppState.resolve_uuid` (cached roster, then legacy-name
+    aliases). Unresolvable names are dropped; an unresolvable leader
+    short-circuits the whole observation (no anchor for the
+    ``ONLINE_PARTY`` upgrade). The observer's session UUID is the
+    authoritative fallback for the observer's own entry — even if their
+    username didn't resolve through the cache, we still record them.
+
+    Returns ``{"status": "ok", "resolved": <int>, "dropped": <int>}`` for
+    observability. The poller doesn't act on the counts; they exist for
+    debug-surface inspection.
+    """
+    _check_secret(x_introspect_secret)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+
+    observer_mc_uuid = payload.get("observer_mc_uuid")
+    if not isinstance(observer_mc_uuid, str) or not observer_mc_uuid:
+        raise HTTPException(status_code=400, detail="observer_mc_uuid required")
+
+    raw_members = payload.get("party_member_usernames")
+    if not isinstance(raw_members, list) or not all(
+        isinstance(m, str) for m in raw_members
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="party_member_usernames must be a list of strings",
+        )
+
+    leader_username = payload.get("leader_username")
+    if not isinstance(leader_username, str):
+        raise HTTPException(
+            status_code=400, detail="leader_username must be a string"
+        )
+
+    world = payload.get("world")
+    if not isinstance(world, str):
+        raise HTTPException(status_code=400, detail="world must be a string")
+
+    # Dedupe member names case-insensitively, strip blanks. Order doesn't
+    # matter — the dict mutation is set-like on UUID.
+    seen_lower: set[str] = set()
+    deduped: list[str] = []
+    for raw in raw_members:
+        norm = raw.strip()
+        if not norm:
+            continue
+        key = norm.lower()
+        if key in seen_lower:
+            continue
+        seen_lower.add(key)
+        deduped.append(norm)
+
+    state = _state(request)
+
+    leader_uuid: str | None = (
+        state.resolve_uuid(leader_username) if leader_username else None
+    )
+    if not leader_uuid:
+        # No anchor → corroboration can't fire; treat as a clean no-op so
+        # the caller still sees an OK ack.
+        return {"status": "ok", "resolved": 0, "dropped": len(deduped)}
+
+    resolved: dict[str, str] = {}
+    dropped = 0
+    for name in deduped:
+        uuid = state.resolve_uuid(name)
+        if uuid:
+            resolved[uuid] = leader_uuid
+        else:
+            dropped += 1
+
+    # Authoritative fallback: the observer's session UUID always maps to
+    # the leader, even if their username didn't resolve through the cache
+    # (e.g. a brand-new member whose username row hasn't ingested yet).
+    resolved.setdefault(observer_mc_uuid, leader_uuid)
+
+    state.party_leader_by_uuid.update(resolved)
+    state.party_status_fetched_at = time.time()
+
+    return {"status": "ok", "resolved": len(resolved), "dropped": dropped}
