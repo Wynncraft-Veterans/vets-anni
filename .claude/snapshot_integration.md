@@ -21,7 +21,7 @@ three repos.
   `\guess`-style window (Uniform 71.4 h..82.0 h on the most recent
   confirmed stamp).
 
-## Endpoints (S1 + S5)
+## Endpoints (S1 + S5 + S6)
 
 All live under `/api/internal/` and require `X-Introspect-Secret`
 matching `settings.anni_introspect_secret`. Fail-closed when the setting is
@@ -33,6 +33,7 @@ unset (503).
 | GET | `/anni-player/{uuid}` | — | one snapshot, or 404 | S1 |
 | POST | `/anni-snapshot-batch` | `{uuids: [...]}` | `{snapshots: [...]}` | S1 |
 | POST | `/anni-party-scrollspot` | `{actor_mc_uuid, scroll_spot: {x,y,z}\|null}` | `{status: "ok"}` | S5 |
+| POST | `/anni-rsvp-by-uuid` | `{actor_mc_uuid, notice: "hard"\|"soft"\|"revoke"}` | `{status: "ok"}` | S6 |
 
 `/anni-party-scrollspot` is the per-party host's write path for the in-game
 scroll-spot coordinate. Temporary-server's `anni_scrollspot_set` inbound
@@ -40,6 +41,19 @@ handler forwards the authenticated session's MC UUID as `actor_mc_uuid` —
 no impersonation possible. vets-anni then looks up the actor's currently
 assigned party in the active event and accepts the write iff the actor is
 that party's `host`. 403 otherwise. Cleared automatically at grace-wipe.
+
+`/anni-rsvp-by-uuid` is the in-game `/wv anni rsvp <hard|soft|revoke>`
+write path. Temp-server's `anni_rsvp` inbound handler forwards the
+authenticated session's MC UUID as `actor_mc_uuid`. vets-anni delegates
+to [`app/domain/rsvp_by_uuid.execute_uuid_rsvp`](../app/domain/rsvp_by_uuid.py),
+which reuses the cog's `set_rsvp` / `revoke` / `_auto_place_after_rsvp`
+/ `_broadcast_board_snapshot` / `_post_public` chain — same Rsvp row,
+same RSVP_CHANNEL_ID confirmation post as a Discord `\rsvp`. Brand-new
+UUIDs get a placeholder `AnniPlayer` row (`mc_username = uuid[:8]`,
+`is_placeholder=True`) which the next auto-promoter / presence cycle
+hydrates. 404 on no active event, 409 on T-90 cutoff (revokes pass through
+the cutoff). No schema-version bump — `board.rsvp.notice` is already on
+the snapshot at v2/v3.
 
 The eligibility list is "every `AnniPlayer` row" per Hard Rule #3 — once
 vets-anni knows a player at all, they're plausible. Tier-specific filtering

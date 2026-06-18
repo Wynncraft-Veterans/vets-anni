@@ -24,6 +24,15 @@ S5:
   session; this endpoint then verifies the actor is the host of their
   currently-assigned party in the active event.
 
+S6:
+
+* ``POST /api/internal/anni-rsvp-by-uuid`` — authenticated vetsmod users
+  RSVP from in-game. Body: ``{"actor_mc_uuid":"...","notice":"hard"|"soft"|"revoke"}``.
+  Forwards to :func:`app.domain.rsvp_by_uuid.execute_uuid_rsvp` which
+  reuses the cog's ``set_rsvp`` / ``revoke`` / auto-place / broadcast /
+  public-post chain, so a ``/wv anni rsvp hard`` is byte-equivalent to a
+  Discord ``\\rsvp hard``.
+
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
 variants — the vetsmod side treats this as opaque transit.
@@ -37,6 +46,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.db.lifecycle import get_active_event
 from app.db.models import AnniPlayer, BoardPlacement
+from app.domain.rsvp_by_uuid import UuidRsvpError, execute_uuid_rsvp
 from app.domain.snapshot import (
     assemble_snapshot,
     assemble_snapshot_for_uuid,
@@ -219,4 +229,48 @@ async def anni_party_scrollspot(
     await party.save(
         update_fields=["scroll_spot_x", "scroll_spot_y", "scroll_spot_z"]
     )
+    return {"status": "ok"}
+
+
+@router.post("/anni-rsvp-by-uuid")
+async def anni_rsvp_by_uuid(
+    request: Request,
+    payload: dict,
+    x_introspect_secret: str | None = Header(default=None),
+) -> dict:
+    """In-game RSVP entrypoint — temp-server forwards from authenticated WS.
+
+    Trust chain: vetsmod -> temp-server (authenticated session stamps
+    ``actor_mc_uuid``) -> here. The same downstream as the Discord cog so
+    the Rsvp row, auto-placement, board-snapshot broadcast, and public
+    confirmation post are byte-identical between the two surfaces.
+
+    Body shape::
+
+        {"actor_mc_uuid": "...", "notice": "hard" | "soft" | "revoke"}
+
+    Returns ``{"status": "ok"}`` on success. The four refusable cases
+    (no active event, invalid notice, missing UUID, T-90 cutoff) map to
+    4xx with ``{"status":"error","detail":"..."}``.
+    """
+    _check_secret(x_introspect_secret)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+
+    actor_mc_uuid = payload.get("actor_mc_uuid")
+    if not isinstance(actor_mc_uuid, str) or not actor_mc_uuid:
+        raise HTTPException(status_code=400, detail="actor_mc_uuid required")
+
+    notice = payload.get("notice")
+    if notice not in ("hard", "soft", "revoke"):
+        raise HTTPException(
+            status_code=400,
+            detail='notice must be "hard", "soft", or "revoke"',
+        )
+
+    bot = getattr(request.app.state, "fishbot", None)
+    try:
+        await execute_uuid_rsvp(bot, actor_mc_uuid, notice)
+    except UuidRsvpError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return {"status": "ok"}

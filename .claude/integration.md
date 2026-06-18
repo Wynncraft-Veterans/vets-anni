@@ -73,6 +73,15 @@ exposed only on the verify-network internal endpoints in
 - `POST /api/internal/anni-party-scrollspot` (S5) — host of a party writes
   the in-game scroll spot; body `{actor_mc_uuid, scroll_spot: {x,y,z}|null}`.
   Host authorisation is verified server-side against `Party.host`.
+- `POST /api/internal/anni-rsvp-by-uuid` (S6) — in-game
+  `/wv anni rsvp <hard|soft|revoke>` write path. Body
+  `{actor_mc_uuid, notice}`. Delegates to
+  [`app/domain/rsvp_by_uuid.execute_uuid_rsvp`](../app/domain/rsvp_by_uuid.py)
+  which reuses the cog's `set_rsvp` / `revoke` / `_auto_place_after_rsvp` /
+  `_broadcast_board_snapshot` / `_post_public` chain, so an in-game RSVP
+  is byte-equivalent to a Discord-issued one (same Rsvp row, same
+  `RSVP_CHANNEL_ID` post). T-90 cutoff enforced (409); revokes are
+  unaffected and pass through.
 
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),
@@ -80,14 +89,11 @@ diffs per UUID, and pushes per-uuid `anni_state` WS frames to the
 matching vetsmod client. vetsmod also issues `anni_query` over WS for the
 on-demand pull (e.g. an `other`-tier user invoking `/wv anni`).
 
-Subsequent stages (S2–S7) add:
-- richer `/wv anni` + anni-motd render
-- passive/aggressive mode (boss bar, outlines, waypoints, chat alerts)
-- in-game `/wv anni rsvp` writing back via
-  `POST /api/internal/anni-rsvp-by-uuid`
-- party back-report via `POST /api/internal/anni-party-observation`
-  (S7 replaces the legacy vetsmod-tier gate with an organiser-presence
-  gate)
+Subsequent stages (S2–S6) added richer `/wv anni` + anni-motd render,
+passive/aggressive mode (boss bar, outlines, waypoints, chat alerts), and
+in-game `/wv anni rsvp`. S7 adds party back-report via
+`POST /api/internal/anni-party-observation` (replaces the legacy
+vetsmod-tier gate with an organiser-presence gate).
 
 See `.claude/snapshot_integration.md` for the full snapshot schema and the
 upgrade-coordination story; the spec is in the vetsmod-fishbot integration
