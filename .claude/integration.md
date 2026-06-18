@@ -70,6 +70,9 @@ exposed only on the verify-network internal endpoints in
 - `GET  /api/internal/anni-eligibility` → `{uuids: [...]}`
 - `GET  /api/internal/anni-player/{uuid}` → one snapshot dict
 - `POST /api/internal/anni-snapshot-batch` `{uuids:[...]}` → `{snapshots:[...]}`
+- `POST /api/internal/anni-party-scrollspot` (S5) — host of a party writes
+  the in-game scroll spot; body `{actor_mc_uuid, scroll_spot: {x,y,z}|null}`.
+  Host authorisation is verified server-side against `Party.host`.
 
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),

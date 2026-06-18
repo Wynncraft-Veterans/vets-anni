@@ -21,17 +21,25 @@ three repos.
   `\guess`-style window (Uniform 71.4 h..82.0 h on the most recent
   confirmed stamp).
 
-## Endpoints (S1)
+## Endpoints (S1 + S5)
 
-All three live under `/api/internal/` and require `X-Introspect-Secret`
+All live under `/api/internal/` and require `X-Introspect-Secret`
 matching `settings.anni_introspect_secret`. Fail-closed when the setting is
 unset (503).
 
-| Method | Path | Body | Returns |
-|---|---|---|---|
-| GET | `/anni-eligibility` | — | `{uuids: ["...", ...]}` |
-| GET | `/anni-player/{uuid}` | — | one snapshot, or 404 |
-| POST | `/anni-snapshot-batch` | `{uuids: [...]}` | `{snapshots: [...]}` |
+| Method | Path | Body | Returns | Added |
+|---|---|---|---|---|
+| GET | `/anni-eligibility` | — | `{uuids: ["...", ...]}` | S1 |
+| GET | `/anni-player/{uuid}` | — | one snapshot, or 404 | S1 |
+| POST | `/anni-snapshot-batch` | `{uuids: [...]}` | `{snapshots: [...]}` | S1 |
+| POST | `/anni-party-scrollspot` | `{actor_mc_uuid, scroll_spot: {x,y,z}\|null}` | `{status: "ok"}` | S5 |
+
+`/anni-party-scrollspot` is the per-party host's write path for the in-game
+scroll-spot coordinate. Temporary-server's `anni_scrollspot_set` inbound
+handler forwards the authenticated session's MC UUID as `actor_mc_uuid` —
+no impersonation possible. vets-anni then looks up the actor's currently
+assigned party in the active event and accepts the write iff the actor is
+that party's `host`. 403 otherwise. Cleared automatically at grace-wipe.
 
 The eligibility list is "every `AnniPlayer` row" per Hard Rule #3 — once
 vets-anni knows a player at all, they're plausible. Tier-specific filtering
@@ -44,11 +52,11 @@ in the batch — so an N-uuid tick costs 1 event read + N player reads, not
 2N. Missing/erroring UUIDs are silently absent from the response (better
 partial batch than a failed tick).
 
-## Schema (`schema_version: 1`)
+## Schema (`schema_version: 3`)
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "mc_uuid": "...",          // primary key — matches AnniPlayer.mc_uuid
   "mc_username": "...",
   "event": {
@@ -59,7 +67,15 @@ partial batch than a failed tick).
       "median_epoch":   1234567890,
       "latest_epoch":   1234567890,
       "window_hours":   10.6
-    } | null
+    } | null,
+    "all_parties": [             // schema v2; empty list when no parties yet
+      {
+        "ordinal": 1,
+        "members": [
+          {"uuid": "...", "username": "...", "role": "TANK"}
+        ]
+      }
+    ]
   } | null,                  // null iff no AnniEvent has ever been recorded
   "registration": {
     "registered": true,         // has at least one RoleCapability row
@@ -81,7 +97,8 @@ partial batch than a failed tick).
       "world":   "EU5" | null,
       "result":  null | "win" | "loss" | "lag",
       "host":    {"uuid": "...", "username": "..."} | null,
-      "members": [{"uuid": "...", "username": "...", "role": "FILL"}]
+      "members": [{"uuid": "...", "username": "...", "role": "FILL"}],
+      "scroll_spot": {"x": 345, "y": 45, "z": -1315} | null   // S5
     } | null,
     "role":       "TANK" | null,    // == party.members[i].role for `i==self`
                                     // when state==party; null otherwise
@@ -125,6 +142,22 @@ partial batch than a failed tick).
   invite rules-lawyering).
 - `organisers` is `[lead, host_party1, host_party2, ...]`, de-duplicated,
   stable order. Used by S7 to gate vetsmod's party-back-report frame.
+- `event.all_parties` (schema v2) is the lightweight per-party member listing
+  vetsmod's S4 outline registry tiers against. Each member entry is
+  `{uuid, username, role}` so vetsmod (which keys by username — see
+  `outlines.md` §2.4) can match `level.players()` names without a UUID
+  round-trip. `all_parties` is always present on a non-null `event` block —
+  empty list when no parties exist yet (early board-assembly, prediction-only
+  fallback). Members come from the same `_party_member_refs` projection as
+  `board.party.members`, so the two views stay drift-free. `board.party` for
+  the local player is a richer per-row block (world, host, etc.);
+  `all_parties` is a flat enumeration without those extras.
+- `board.party.scroll_spot` (schema v3) is **only on the local player's own
+  party**, not in `all_parties`. Cross-party scroll-spot visibility is out
+  of scope. `null` until the party host writes one via vetsmod's
+  `/wv anni scrollspot {set|here|clear}`; cleared automatically at
+  grace-wipe. The three columns (`scroll_spot_x|y|z`) are nullable together;
+  the snapshot collapses them to `null` if any one is unset.
 
 ## Eligibility vocabulary
 

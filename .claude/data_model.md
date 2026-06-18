@@ -8,7 +8,7 @@ Tortoise-ORM models in `app/db/models.py`. Identity anchor = `AnniPlayer.mc_uuid
 | `RoleCapability` | One per (player, role); `confidence`, `build_quality`, `success_count`. `unique_together(player, role)`. |
 | `RoleCapabilityWeapon` | Weapons for a capability — **1–3, API-validated** (`MAX_WEAPONS_PER_CAPABILITY`); e.g. primary on Labyrinth + Revolution. |
 | `AnniEvent` | One announced anni. Exactly one `is_active` (enforced in `lifecycle.py`). `stamp_epoch` drives the 2 h grace + wipe. `organizer` FK. |
-| `Party` | 10-slot party; `ordinal`, `host`, `world`, `stage` 1–5, `result`. `unique_together(event, ordinal)`. |
+| `Party` | 10-slot party; `ordinal`, `host`, `world`, `stage` 1–5, `result`. Optional `scroll_spot_{x,y,z}` (S5; host-set via vetsmod, cleared at grace-wipe). `unique_together(event, ordinal)`. |
 | `BoardPlacement` | **Single-instance-per-person.** `unique_together(event, player)`; exactly one of (`bucket`, `party`) non-null; `assigned_role` null = gray. Every move = UPSERT in a transaction. |
 | `Rsvp` | Per (event, player); `notice` ∈ `RSVP_HARD`/`RSVP_SOFT` (only stored notices); revoke = soft (`revoked_at`). `unique_together(event, player)`. |
 | `AppConfig` | key/value runtime config + admin-rotatable staff password hash, timing overrides. **No colourblind key** — CB is a per-user cookie only (no global/event/admin default; world default is always full colour). |

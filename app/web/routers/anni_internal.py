@@ -15,6 +15,15 @@ Endpoints (S1):
 * ``POST /api/internal/anni-snapshot-batch`` — batched snapshots for the
   poller's regular tick. Body: ``{"uuids":[...]}``.
 
+S5:
+
+* ``POST /api/internal/anni-party-scrollspot`` — host of a party writes
+  (or clears) the in-game "scroll spot" coordinate. Body:
+  ``{"actor_mc_uuid":"...","scroll_spot":{"x","y","z"}|null}``. The
+  ``actor_mc_uuid`` is forwarded by temporary-server from the authenticated
+  session; this endpoint then verifies the actor is the host of their
+  currently-assigned party in the active event.
+
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
 variants — the vetsmod side treats this as opaque transit.
@@ -27,7 +36,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.db.lifecycle import get_active_event
-from app.db.models import AnniPlayer
+from app.db.models import AnniPlayer, BoardPlacement
 from app.domain.snapshot import (
     assemble_snapshot,
     assemble_snapshot_for_uuid,
@@ -133,3 +142,81 @@ async def anni_snapshot_batch(
             # Skip — partial batch is better than a 500 for the whole tick.
             continue
     return {"snapshots": snapshots}
+
+
+@router.post("/anni-party-scrollspot")
+async def anni_party_scrollspot(
+    payload: dict,
+    x_introspect_secret: str | None = Header(default=None),
+) -> dict:
+    """Host of a party writes (or clears) the party's scroll-spot coord.
+
+    The trust chain: vetsmod → temporary-server (authenticated WS session) →
+    here. temporary-server forwards the session's MC UUID as ``actor_mc_uuid``;
+    we look up that UUID's party in the active event and accept the write
+    iff the actor IS that party's :attr:`Party.host`. No impersonation
+    possible — the client cannot supply an arbitrary UUID; temp-server
+    sets it from the auth session.
+
+    Body shape::
+
+        {
+          "actor_mc_uuid": "deadbeef-...",
+          "scroll_spot": {"x": 345, "y": 45, "z": -1315}    // or null to clear
+        }
+
+    Cleared automatically at grace-wipe (see ``lifecycle_task._wipe``).
+    """
+    _check_secret(x_introspect_secret)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+
+    actor_mc_uuid = payload.get("actor_mc_uuid")
+    if not isinstance(actor_mc_uuid, str) or not actor_mc_uuid:
+        raise HTTPException(
+            status_code=400, detail="actor_mc_uuid required"
+        )
+
+    spot = payload.get("scroll_spot")
+    if spot is not None:
+        if (
+            not isinstance(spot, dict)
+            or not all(isinstance(spot.get(k), int) for k in ("x", "y", "z"))
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="scroll_spot must be null or {x:int, y:int, z:int}",
+            )
+
+    placement = (
+        await BoardPlacement.filter(
+            event__is_active=True,
+            player__mc_uuid=actor_mc_uuid,
+            party__isnull=False,
+        )
+        .select_related("party__host")
+        .first()
+    )
+    if placement is None or placement.party is None:
+        raise HTTPException(
+            status_code=403,
+            detail="actor is not in a party for the active event",
+        )
+    party = placement.party
+    if party.host is None or party.host.mc_uuid != actor_mc_uuid:
+        raise HTTPException(
+            status_code=403, detail="only the party host can set scroll_spot"
+        )
+
+    if spot is None:
+        party.scroll_spot_x = None
+        party.scroll_spot_y = None
+        party.scroll_spot_z = None
+    else:
+        party.scroll_spot_x = spot["x"]
+        party.scroll_spot_y = spot["y"]
+        party.scroll_spot_z = spot["z"]
+    await party.save(
+        update_fields=["scroll_spot_x", "scroll_spot_y", "scroll_spot_z"]
+    )
+    return {"status": "ok"}

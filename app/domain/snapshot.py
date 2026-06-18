@@ -46,7 +46,7 @@ from app.services.state import AppState
 
 logger = logging.getLogger("anni.domain.snapshot")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 #: Tiers the snapshot push stream considers "plausible vets-anni users". Any
 #: player with a tier in this set OR with an existing :class:`AnniPlayer` row
@@ -85,6 +85,12 @@ async def _build_event_block(event: AnniEvent | None) -> dict | None:
     is what the spec promises (``event: null iff no AnniEvent has ever
     been recorded``) and what the doc text in ``snapshot_integration.md``
     pins down.
+
+    Schema v2 adds ``all_parties``: a lightweight per-party member listing
+    so vetsmod can distinguish "in another vets-anni party" from "non-vets"
+    without per-uuid follow-up queries. Empty list when no parties exist
+    for the active event (still-being-assembled board, prediction-only
+    fallback). Always present on a non-null block.
     """
     import time as _time
 
@@ -119,10 +125,13 @@ async def _build_event_block(event: AnniEvent | None) -> dict | None:
     if event is None and prediction is None:
         return None
 
+    all_parties = await _build_all_parties_block(event) if event is not None else []
+
     return {
         "stamp_epoch": stamp_epoch if announced else None,
         "announced": announced,
         "prediction": prediction,
+        "all_parties": all_parties,
     }
 
 
@@ -184,23 +193,45 @@ def _player_brief(player: AnniPlayer | None) -> dict | None:
     return {"uuid": player.mc_uuid, "username": player.mc_username}
 
 
-async def _build_party_block(party: Party, event: AnniEvent) -> dict:
-    """Render a :class:`Party` plus its membership for the snapshot. Includes
-    the in-party ``role`` per member (used by S4 outlines: distinguishing
-    same-party teammates from other-vets-party players)."""
-    members_raw = (
+async def _party_member_refs(party: Party, event: AnniEvent) -> list[dict]:
+    """``{uuid, username, role}`` per :class:`BoardPlacement` in a party.
+
+    Shared by :func:`_build_party_block` (the local player's own party block,
+    nested under ``board.party``) and :func:`_build_all_parties_block` (the
+    schema v2 ``event.all_parties`` listing for S4 outline tiering). Keeping
+    the join + projection in one place avoids drift between the two views
+    of the same data.
+    """
+    rows = (
         await BoardPlacement.filter(party=party, event=event)
         .select_related("player")
         .all()
     )
-    members = [
+    return [
         {
             "uuid": p.player.mc_uuid,
             "username": p.player.mc_username,
             "role": (p.assigned_role.name if p.assigned_role else Role.FILL.name),
         }
-        for p in members_raw
+        for p in rows
     ]
+
+
+def _scroll_spot_dict(party: Party) -> dict | None:
+    """Pack ``party.scroll_spot_{x,y,z}`` into ``{x, y, z}`` or ``None`` when
+    unset. All three columns are nullable together — written/cleared atomically
+    by the scrollspot endpoint and the grace-wipe."""
+    x, y, z = party.scroll_spot_x, party.scroll_spot_y, party.scroll_spot_z
+    if x is None or y is None or z is None:
+        return None
+    return {"x": x, "y": y, "z": z}
+
+
+async def _build_party_block(party: Party, event: AnniEvent) -> dict:
+    """Render a :class:`Party` plus its membership for the snapshot. Includes
+    the in-party ``role`` per member (used by S4 outlines: distinguishing
+    same-party teammates from other-vets-party players)."""
+    members = await _party_member_refs(party, event)
     return {
         "ordinal": party.ordinal,
         "world": party.world,
@@ -209,7 +240,33 @@ async def _build_party_block(party: Party, event: AnniEvent) -> dict:
         ),
         "host": _player_brief(party.host) if party.host_id else None,
         "members": members,
+        "scroll_spot": _scroll_spot_dict(party),
     }
+
+
+async def _build_all_parties_block(event: AnniEvent) -> list[dict]:
+    """``event.all_parties`` (schema v2): every party for the active event,
+    with ``{uuid, username, role}`` for each member.
+
+    Used by vetsmod's S4 outline registry to tier nearby players:
+    own-party members get role-coloured outlines, other-vets-party members
+    get a light-grey outline, everyone else (not in this list) gets the
+    "outsider" treatment (no outline, dark-grey nametag) while the highlight
+    gate is active.
+
+    Sorted by ``ordinal`` so the consumer can rely on stable iteration order
+    without re-sorting.
+    """
+    parties = await Party.filter(event=event).order_by("ordinal").all()
+    out: list[dict] = []
+    for party in parties:
+        out.append(
+            {
+                "ordinal": party.ordinal,
+                "members": await _party_member_refs(party, event),
+            }
+        )
+    return out
 
 
 async def _build_board_block(player: AnniPlayer, event: AnniEvent) -> dict:

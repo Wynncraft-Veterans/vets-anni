@@ -182,6 +182,13 @@ class Party(Model):
     stage = fields.IntField(default=1)
     result = fields.CharEnumField(PartyResult, max_length=8, default=PartyResult.TBD)
 
+    # Per-party scroll spot, set by the party host via vetsmod
+    # `/wv anni scrollspot {set|here|clear}`. All three nullable together;
+    # cleared at grace-wipe.
+    scroll_spot_x = fields.IntField(null=True)
+    scroll_spot_y = fields.IntField(null=True)
+    scroll_spot_z = fields.IntField(null=True)
+
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 

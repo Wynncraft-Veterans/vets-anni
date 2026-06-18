@@ -27,7 +27,7 @@ from tortoise.transactions import in_transaction
 
 from app.constants import CAPABILITY_ROLES, PartyResult
 from app.db.lifecycle import get_active_event
-from app.db.models import BoardPlacement, RoleCapability, Rsvp
+from app.db.models import BoardPlacement, Party, RoleCapability, Rsvp
 from app.domain.schedule import EventPhase, phase_of
 from app.services.loop import poll_forever
 from app.services.state import AppState
@@ -66,6 +66,9 @@ async def _wipe(event, state: AppState) -> None:
         credited = await _credit_wins(event)
         placements = await BoardPlacement.filter(event=event).count()
         await BoardPlacement.filter(event=event).delete()
+        await Party.filter(event=event).update(
+            scroll_spot_x=None, scroll_spot_y=None, scroll_spot_z=None,
+        )
         await Rsvp.filter(event=event).delete()
         event.wiped_at = now
         event.is_active = False
