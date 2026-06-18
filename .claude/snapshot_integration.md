@@ -55,6 +55,22 @@ hydrates. 404 on no active event, 409 on T-90 cutoff (revokes pass through
 the cutoff). No schema-version bump — `board.rsvp.notice` is already on
 the snapshot at v2/v3.
 
+`board.wont_reason` (S6 refinement) — when `state == "wont_assign"`,
+this field distinguishes the two paths that land a player there:
+- `"RSVP retracted"` — the player has a revoked `Rsvp` row for the
+  active event (`Rsvp.revoked_at IS NOT NULL`). Demote was almost
+  certainly the auto-revoke path
+  ([`buckets.demote_on_revoke`](../app/domain/buckets.py)).
+- `"Sitting out"` (`BUCKET_LABEL[WONTASSIGN]`) — no revoked Rsvp;
+  staff manually moved the player to WONTASSIGN.
+
+Re-RSVP after revoke calls
+[`buckets.promote_from_wontassign`](../app/domain/buckets.py) FIRST,
+so a hard/soft RSVP from any WONTASSIGN state moves the player back to
+main UNASSIGNED (and `wont_reason` is no longer surfaced because the
+state flips to `unassigned`). The cog's "RSVP'd users always go to main
+lane, never LATE" rule still applies.
+
 The eligibility list is "every `AnniPlayer` row" per Hard Rule #3 — once
 vets-anni knows a player at all, they're plausible. Tier-specific filtering
 (e.g. excluding OTHER even when registered) is intentionally not implemented;

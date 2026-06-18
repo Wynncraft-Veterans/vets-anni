@@ -83,6 +83,26 @@ exposed only on the verify-network internal endpoints in
   `RSVP_CHANNEL_ID` post). T-90 cutoff enforced (409); revokes are
   unaffected and pass through.
 
+  **S6 bucket invariant — revoke + re-RSVP promotes back.** A revoke
+  demotes UNASSIGNED → WONTASSIGN via
+  [`buckets.demote_on_revoke`](../app/domain/buckets.py); a subsequent
+  hard/soft RSVP now calls
+  [`buckets.promote_from_wontassign`](../app/domain/buckets.py) FIRST,
+  then falls back to `ensure_placed`. Net: the user lands back in main
+  UNASSIGNED instead of stranded with a fresh RSVP in WONTASSIGN.
+  Party / walk-in / volunteers placements are untouched (staff intent
+  wins everywhere except WONTASSIGN, where the user's explicit re-RSVP
+  is treated as the stronger signal).
+
+  **S6 `wont_reason` distinguishes revoke from staff sit-out.** When a
+  player is in WONTASSIGN AND a `Rsvp.revoked_at`-set row exists for
+  the active event,
+  [`snapshot._build_board_block`](../app/domain/snapshot.py) emits
+  `wont_reason: "RSVP retracted"` instead of the generic
+  `BUCKET_LABEL[WONTASSIGN]` ("Sitting out"). Vetsmod's `/wv anni`
+  render is `wont_reason`-driven so the new string flows through
+  without client changes.
+
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),
 diffs per UUID, and pushes per-uuid `anni_state` WS frames to the
