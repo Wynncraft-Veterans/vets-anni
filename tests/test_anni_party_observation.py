@@ -58,7 +58,7 @@ async def test_resolves_member_names_via_roster(client, seeded):
     assert body["dropped"] == 0
     assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
     assert state.party_leader_by_uuid[holidaze.mc_uuid] == holidaze.mc_uuid
-    assert state.party_status_fetched_at > 0
+    assert state.party_observation_fetched_at > 0
 
 
 async def test_resolves_via_alias_fallback(client, seeded):

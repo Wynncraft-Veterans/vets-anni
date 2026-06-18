@@ -55,7 +55,7 @@ and writes `{member_uuid: leader_uuid}` pairs into
 even if their username didn't resolve (a brand-new member whose roster row
 hasn't ingested yet). An unresolvable leader short-circuits the whole
 observation (no anchor for the `ONLINE_PARTY` upgrade — the dict isn't
-mutated). `state.party_status_fetched_at` is touched on every successful
+mutated). `state.party_observation_fetched_at` is touched on every successful
 write; entries older than `_PARTY_LEADER_TTL_SECONDS` (60 s) are treated as
 stale by [`presence_poller`](../app/services/presence_poller.py) so a
 vetsmod disconnect mid-window doesn't pin a user to yellow forever.

@@ -71,7 +71,7 @@ async def test_party_leader_corroboration_flips_to_online_party(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: holidaze},
-        party_status_fetched_at=time.time(),
+        party_observation_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_PARTY
 
@@ -87,7 +87,7 @@ async def test_party_leader_corroboration_stale_falls_back(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: holidaze},
-        party_status_fetched_at=time.time() - _PARTY_LEADER_TTL_SECONDS - 1,
+        party_observation_fetched_at=time.time() - _PARTY_LEADER_TTL_SECONDS - 1,
     ))
     assert got[wen] is S.ONLINE_WORLD
 
@@ -103,7 +103,7 @@ async def test_party_leader_mismatch_stays_online_world(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: nazzae},
-        party_status_fetched_at=time.time(),
+        party_observation_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_WORLD
 
@@ -120,7 +120,7 @@ async def test_party_corroboration_without_world_match_stays_elsewhere(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="NA1")},  # wrong world
         party_leader_by_uuid={wen: holidaze},
-        party_status_fetched_at=time.time(),
+        party_observation_fetched_at=time.time(),
     ))
     assert got[wen] is S.ONLINE_ELSEWHERE
 

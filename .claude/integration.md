@@ -130,8 +130,9 @@ in-game `/wv anni rsvp`. S7 adds party back-report via
 vetsmod-tier gate with an organiser-presence gate).
 
 See `.claude/snapshot_integration.md` for the full snapshot schema and the
-upgrade-coordination story; the spec is in the vetsmod-fishbot integration
-plan under `.claude/ephemeral/`.
+upgrade-coordination story. The end-to-end design is implemented as described
+elsewhere in this doc and in `snapshot_integration.md`; the original cross-repo
+design spec is no longer in-tree.
 
 ## Auth model — intentionally LOW-TRUST (not a security boundary)
 Web login is IGN + *optional* password (first set sticks; staff-resettable; no

@@ -80,7 +80,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         # so ``host_id`` IS the host's mc_uuid — no extra fetch needed.
         host_uuid = party.host_id if party else None
         party_fresh = (
-            time.time() - state.party_status_fetched_at
+            time.time() - state.party_observation_fetched_at
             < _PARTY_LEADER_TTL_SECONDS
         )
         in_party_confirmed = bool(

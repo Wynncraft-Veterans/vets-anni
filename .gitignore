@@ -420,7 +420,9 @@ venv/
 
 # User-created session artefacts: at-risk, gitignored per the spec.
 # Anything worth keeping is promoted to .claude/*.md and linked in CLAUDE.md.
-.claude/ephemeral/
+# The README inside ephemeral/ is committed so the convention is discoverable.
+.claude/ephemeral/*
+!.claude/ephemeral/README.md
 
 # deployment.md documents the closed/personal vets-deploy stack only — kept
 # local on purpose, not part of this repo's public surface.

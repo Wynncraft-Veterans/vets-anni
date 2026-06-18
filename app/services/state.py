@@ -104,7 +104,7 @@ class AppState:
     #: classifier falls back to ``ONLINE_WORLD`` rather than fabricating
     #: ``ONLINE_PARTY``.
     party_leader_by_uuid: dict[str, str] = field(default_factory=dict)
-    party_status_fetched_at: float = 0.0
+    party_observation_fetched_at: float = 0.0
 
     # --- api_disabled probe (Phase 2) ---------------------------------------
     #: mc_uuids of API-disabled players the slow probe currently *infers* are

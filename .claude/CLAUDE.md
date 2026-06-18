@@ -76,7 +76,8 @@ Slash commands (e.g. `/rsvp`) are unprefixed. The prefix only applies to text/me
 Build in progress, phased: **0** ✅ skeleton+deploy → **1** ✅ App1 (user
 web) → **2** ✅ App3 (staff/board) → **3** App2 (fishbot) → **4** App4
 (vetsmod, deferred & coordinated). See the plan file for per-phase scope +
-verification.
+verification. App4 vetsmod surface shipped 2026-06-18 (S7 completion of the
+multi-stage cross-repo plan).
 
 **Phase 2 done (2026-05-18):** the staff/organizer board.
 `domain/schedule.py` (pure event-phase: PENDING/GRACE/EXPIRED) +

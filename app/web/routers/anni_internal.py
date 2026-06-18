@@ -388,6 +388,6 @@ async def anni_party_observation(
     resolved.setdefault(observer_mc_uuid, leader_uuid)
 
     state.party_leader_by_uuid.update(resolved)
-    state.party_status_fetched_at = time.time()
+    state.party_observation_fetched_at = time.time()
 
     return {"status": "ok", "resolved": len(resolved), "dropped": dropped}
