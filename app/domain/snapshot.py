@@ -305,11 +305,22 @@ async def _build_board_block(player: AnniPlayer, event: AnniEvent) -> dict:
 
     bucket = placement.bucket
     if bucket == BucketKind.WONTASSIGN:
+        # If the player has a revoked Rsvp for this event AND is sitting in
+        # WONTASSIGN, the demote was almost certainly the auto-revoke
+        # path (demote_on_revoke). Surface "RSVP retracted" so the in-game
+        # render can distinguish "I revoked" from "staff sat me out".
+        revoked = await Rsvp.filter(
+            event=event, player=player, revoked_at__isnull=False
+        ).exists()
+        wont_reason = (
+            "RSVP retracted" if revoked
+            else BUCKET_LABEL.get(BucketKind.WONTASSIGN)
+        )
         return {
             "state": "wont_assign",
             "party": None,
             "role": None,
-            "wont_reason": BUCKET_LABEL.get(BucketKind.WONTASSIGN),
+            "wont_reason": wont_reason,
         }
     # UNASSIGNED + VOLUNTEERS both surface as "unassigned" to vetsmod —
     # vetsmod doesn't differentiate (the differentiation matters for the

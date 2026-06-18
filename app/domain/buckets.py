@@ -202,6 +202,47 @@ async def ensure_placed(
     return True
 
 
+async def promote_from_wontassign(
+    event: AnniEvent, player: AnniPlayer
+) -> bool:
+    """If the player's placement is in WONTASSIGN, move it back to the main
+    UNASSIGNED lane and return ``True``; any other placement (party,
+    UNASSIGNED, VOLUNTEERS) or no placement at all is a no-op (False).
+
+    Called from :func:`_auto_place_after_rsvp` so a re-RSVP after a
+    previous revoke promotes the player back into the placement queue
+    instead of leaving them stranded in WONTASSIGN. The cog's
+    "RSVP'd users always land in the main Unassigned lane" rule
+    applies — even within the T-60 to T-90 window the lane is still
+    main (``is_late=False``, ``is_walkin=False``).
+
+    Yes, this overrides a staff-set WONTASSIGN if the staff move happens
+    to predate the re-RSVP. That's acceptable: an explicit
+    ``/wv anni rsvp`` is a strong user signal of intent. Staff can
+    re-demote via the board if needed.
+    """
+    placement = await BoardPlacement.filter(event=event, player=player).first()
+    if placement is None or placement.bucket is not BucketKind.WONTASSIGN:
+        return False
+    tail = await BoardPlacement.filter(
+        event=event, bucket=BucketKind.UNASSIGNED,
+        is_late=False, is_walkin=False,
+    ).count()
+    await _upsert(
+        event,
+        player,
+        bucket=BucketKind.UNASSIGNED,
+        party=None,
+        sort_index=tail,
+        is_late=False,
+        is_walkin=False,
+    )
+    logger.info(
+        "rsvp re-promote: %s -> Unassigned (main lane)", player.mc_username
+    )
+    return True
+
+
 async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
     """If the player's placement is in the UNASSIGNED bucket (either lane),
     move it to WONTASSIGN and return ``True``. Any other placement (party,

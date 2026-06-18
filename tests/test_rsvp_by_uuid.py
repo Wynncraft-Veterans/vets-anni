@@ -103,6 +103,94 @@ async def test_no_active_event_raises_404(db, monkeypatch):
     assert exc.value.status_code == 404
 
 
+async def test_revoke_then_re_rsvp_promotes_back_to_unassigned(seeded):
+    """After revoke + re-RSVP, the user lands back in main UNASSIGNED.
+
+    The revoke demotes UNASSIGNED → WONTASSIGN; the re-RSVP must reverse
+    that, otherwise the user sits in "won't assign" with a fresh HARD
+    RSVP — surprising state.
+    """
+    from app.constants import BucketKind
+
+    p = seeded["players"]["baz"]  # no seeded placement
+
+    # SOFT → main UNASSIGNED via the auto-place
+    await execute_uuid_rsvp(None, p.mc_uuid, "soft")
+    placement = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    assert placement is not None
+    assert placement.bucket is BucketKind.UNASSIGNED
+
+    # revoke → demoted to WONTASSIGN (baseline of the bug scenario)
+    await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    placement = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    assert placement.bucket is BucketKind.WONTASSIGN
+
+    # re-RSVP → must promote back to UNASSIGNED main lane
+    await execute_uuid_rsvp(None, p.mc_uuid, "hard")
+    placement = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    assert placement.bucket is BucketKind.UNASSIGNED
+    assert placement.is_late is False
+    assert placement.is_walkin is False
+
+
+async def test_revoke_then_re_rsvp_does_not_promote_party_placement(seeded):
+    """Re-RSVP after revoke must NOT yank a party-placed player out of
+    their party. The promote-from-wontassign path only fires for
+    WONTASSIGN — staff intent (party placement) wins everywhere else.
+    """
+    p = seeded["players"]["Wenweia"]  # seeded with a party placement
+
+    # Capture baseline party assignment
+    baseline = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    assert baseline is not None
+    assert baseline.party_id is not None
+    party_id_baseline = baseline.party_id
+
+    await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    after_revoke = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    # revoke is a no-op on a party-placed player (staff intent wins).
+    assert after_revoke.party_id == party_id_baseline
+
+    await execute_uuid_rsvp(None, p.mc_uuid, "hard")
+    after_re_rsvp = await BoardPlacement.filter(
+        event=seeded["event"], player=p
+    ).first()
+    # Re-RSVP must NOT pull them out of their party.
+    assert after_re_rsvp.party_id == party_id_baseline
+
+
+async def test_wont_reason_is_retracted_when_player_revoked(seeded):
+    """``wont_reason`` should distinguish revoke-demoted from staff sit-out.
+
+    A player with a revoked Rsvp sitting in WONTASSIGN reads as "RSVP
+    retracted" instead of the default "Sitting out" — the in-game
+    `/wv anni` rendered "Sitting out" without context, which was
+    confusing for users who had just revoked.
+    """
+    from app.domain.snapshot import _build_board_block
+
+    p = seeded["players"]["baz"]
+
+    # Drive the player into the revoked-WONTASSIGN state.
+    await execute_uuid_rsvp(None, p.mc_uuid, "soft")
+    await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+
+    block = await _build_board_block(p, seeded["event"])
+
+    assert block["state"] == "wont_assign"
+    assert block["wont_reason"] == "RSVP retracted"
+
+
 async def test_creates_placeholder_for_unknown_uuid(seeded):
     new_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     assert await AnniPlayer.filter(mc_uuid=new_uuid).first() is None

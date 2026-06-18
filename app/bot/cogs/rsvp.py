@@ -154,13 +154,25 @@ async def _auto_place_after_rsvp(player: AnniPlayer, event: AnniEvent) -> bool:
     EXPIRED phase gate still applies: after grace ends there is no live
     event to place onto.
 
-    Returns whether a row was inserted. Idempotent for an already-placed
-    player (no-op — staff intent / original lane wins).
+    Three-case dispatch:
+
+    * **No placement** → :func:`buckets_domain.ensure_placed` inserts
+      into main UNASSIGNED.
+    * **Currently in WONTASSIGN** (most often: a prior revoke) →
+      :func:`buckets_domain.promote_from_wontassign` moves them back
+      to main UNASSIGNED. The fresh RSVP is a strong user signal that
+      overrides the prior demote.
+    * **Any other placement** → no-op (idempotent; staff intent /
+      original lane wins).
+
+    Returns whether a row was inserted *or* promoted (caller broadcasts).
     """
     settings = get_settings()
     grace_seconds = max(0, settings.grace_hours) * 3600
     if phase_of(event.stamp_epoch, grace_seconds) is EventPhase.EXPIRED:
         return False
+    if await buckets_domain.promote_from_wontassign(event, player):
+        return True
     return await buckets_domain.ensure_placed(
         event, player, is_late=False, is_walkin=False,
     )
