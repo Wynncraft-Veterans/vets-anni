@@ -32,6 +32,7 @@ from app.services import (  # noqa: E402
     api_disabled,
     auto_promoter,
     dazebot_client,
+    guild_refresh_poller,
     lifecycle_task,
     mojang,
     online_merge,
@@ -95,6 +96,13 @@ async def lifespan(app: FastAPI):
         ),
         # Phase 3: spec.md "auto-populated from RSVP or 1hr-early".
         asyncio.create_task(auto_promoter.run(state, settings), name="autopromoter"),
+        # Keep anni_player.guild / membership_tier from drifting between
+        # logins — Track A (free) reconciles the cached Returners roster
+        # every tick; Track B (capped) reclassifies drift + floor-stale
+        # rows via dazebot's check-snapshot.
+        asyncio.create_task(
+            guild_refresh_poller.run(state, settings), name="guildrefresh",
+        ),
         # Anni role-ping: API-fallback first-notice + T-90 reminder. Bot
         # may be None (no FISHBOT_TOKEN) — poller still runs to keep the
         # AnniEventPing rows in sync; the Discord send is gated inside.

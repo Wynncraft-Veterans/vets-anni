@@ -174,6 +174,13 @@ class Settings(BaseSettings):
     dazebot_anni_identity_url: str = Field(
         default="http://dazebot:9421/api/internal/anni-identity"
     )
+    #: Base of dazebot's per-target snapshot endpoint. The poller appends a
+    #: ``/{uuid}`` to fetch ``{discord.tier, in_returners_guild, blocklisted,
+    #: ...}`` per row. Same ``X-Introspect-Secret`` as the anni-identity URL
+    #: above — the two endpoints share the dazebot secret.
+    dazebot_check_snapshot_base: str = Field(
+        default="http://dazebot:9421/api/internal/check-snapshot"
+    )
     #: Shared secret protecting ``app/web/routers/anni_internal.py``. Same
     #: ``X-Introspect-Secret`` fail-closed pattern as ``dazebot_introspect_secret``,
     #: but a *separate* rotation knob because the consumer is temporary-server
@@ -221,6 +228,25 @@ class Settings(BaseSettings):
     presence_poll_hot_seconds: int = 2
     auto_promoter_seconds: int = 60          # idle cadence outside hot window
     auto_promoter_hot_seconds: int = 3       # ticks inside the hot window
+
+    # guild_refresh poller — keeps anni_player.guild / membership_tier from
+    # drifting indefinitely between dashboard logins. The cheap reconciliation
+    # (intersect state.roster_by_uuid with anni_player rows + overlay vetsmod
+    # tier from state.online_by_uuid) runs every tick for free; the costlier
+    # dazebot check-snapshot + WAPI player lookup paths are capped per tick
+    # so the WAPI budget can't be burst. Half-of-upstream-TTL hot cadence
+    # (the WAPI guild endpoint caches 120s upstream — see wapi.py).
+    guild_refresh_seconds: int = 1800
+    guild_refresh_hot_seconds: int = 60
+    # Hard ceiling: even with no Track-A drift signal, rows whose
+    # ``updated_at`` is older than this fall into Track B regardless of
+    # window state. Catches "long-absent then logged in" rejoiners that
+    # neither the cached Returners roster nor the online list can see.
+    guild_refresh_floor_seconds: int = 4 * 60 * 60
+    # Cap on Track-B per-row calls (dazebot check-snapshot + at most one
+    # WAPI player lookup each) per tick. 10 ≈ ~10 req/min sustained in the
+    # hot window, well inside fishbot's own WAPI bucket.
+    guild_refresh_call_cap_per_tick: int = 10
 
     # Minimum interval between WAPI ``/v3/guild/<name>`` re-fetches inside
     # ``online_merge``. Matches the endpoint's ``Cache-Control: max-age=120``

@@ -46,6 +46,32 @@ class AnniIdentity:
     reason: str | None
 
 
+@dataclass(frozen=True)
+class CheckSnapshot:
+    """Parsed response from ``GET /api/internal/check-snapshot/{uuid}``.
+
+    Used by the guild-refresh poller to authoritatively classify HONOURARY /
+    WAITLIST / blocklisted (Discord-driven signals invisible to WAPI). The
+    dazebot endpoint *also* calls ``refresh_mc_guild`` server-side, so its
+    ``in_returners_guild`` reflects a freshly re-fetched MC guild — meaning
+    even an API-disabled player whose anni_player row went stale can be
+    correctly reclassified MEMBER if dazebot still has them linked.
+
+    Fields preserved as ``None`` when the player has no Discord link (the
+    endpoint returns a ``linked=False`` discord block; we keep the
+    in_returners_guild / blocked / waitlist_count signals which are
+    Discord-independent).
+    """
+
+    target_uuid: str
+    target_username: str
+    in_returners_guild: bool
+    blocklisted: bool
+    discord_linked: bool
+    discord_tier: str | None  # "member" | "waitlist" | "honourary" | "other" | None
+    discord_hiatus: bool
+
+
 class DazebotClient:
     """Thin async wrapper. One shared session; construct via
     :func:`get_dazebot_client`."""
@@ -53,6 +79,7 @@ class DazebotClient:
     def __init__(self) -> None:
         settings = get_settings()
         self._url = settings.dazebot_anni_identity_url
+        self._check_snapshot_base = settings.dazebot_check_snapshot_base.rstrip("/")
         self._secret = settings.dazebot_introspect_secret
         self._session: aiohttp.ClientSession | None = None
 
@@ -113,6 +140,52 @@ class DazebotClient:
             tier=data.get("tier"),
             blocked=bool(data.get("blocked")),
             reason=data.get("reason"),
+        )
+
+    async def check_snapshot(self, mc_uuid: str) -> CheckSnapshot | None:
+        """GET the per-target snapshot for a Minecraft UUID; ``None`` on failure.
+
+        Used by guild_refresh_poller to reclassify rows authoritatively. Same
+        fail-closed contract as :meth:`resolve_anni_identity` — secret unset,
+        transport error, or non-200 all degrade to ``None`` so the poller
+        keeps last-good `anni_player` rows served. The endpoint itself
+        triggers a live WAPI guild refresh on dazebot's side, so this also
+        nudges dazebot's MC cache forward as a side effect (intentional).
+        """
+        if not self._secret:
+            logger.debug(
+                "dazebot_client: DAZEBOT_INTROSPECT_SECRET unset; "
+                "check_snapshot returns None"
+            )
+            return None
+        url = f"{self._check_snapshot_base}/{mc_uuid}"
+        try:
+            session = await self._get_session()
+            async with session.get(
+                url,
+                headers={"X-Introspect-Secret": self._secret},
+            ) as res:
+                if res.status != 200:
+                    logger.warning(
+                        "dazebot_client: %s -> HTTP %d", url, res.status,
+                    )
+                    return None
+                data = await res.json()
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            logger.warning("dazebot_client: %s unreachable: %s", url, exc)
+            return None
+        if not isinstance(data, dict):
+            logger.warning("dazebot_client: non-object body %r", type(data))
+            return None
+        discord = data.get("discord") if isinstance(data.get("discord"), dict) else {}
+        return CheckSnapshot(
+            target_uuid=str(data.get("target_uuid") or mc_uuid),
+            target_username=str(data.get("target_username") or ""),
+            in_returners_guild=bool(data.get("in_returners_guild")),
+            blocklisted=bool(data.get("blocklisted")),
+            discord_linked=bool(discord.get("linked")),
+            discord_tier=discord.get("tier"),
+            discord_hiatus=bool(discord.get("hiatus")),
         )
 
 
