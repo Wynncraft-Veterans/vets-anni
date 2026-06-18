@@ -48,15 +48,20 @@ logger = logging.getLogger("anni.domain.snapshot")
 
 SCHEMA_VERSION = 3
 
-#: Tiers the snapshot push stream considers "plausible vets-anni users". Any
-#: player with a tier in this set OR with an existing :class:`AnniPlayer` row
-#: (regardless of tier) is eligible. The set is exported so the eligibility
-#: endpoint can use the same vocabulary.
+#: Tiers the snapshot push stream considers "plausible vets-anni users".
+#: The four trusted tiers — the vetsmod-side auto-enable set the user named
+#: in the eligibility design discussion. Anyone outside this set with an
+#: :class:`AnniPlayer` row gets the pipeline only via the on-demand
+#: existence check temp-server runs at WS-auth time (see
+#: ``GET /api/internal/anni-exists/{uuid}``), so they don't enter the
+#: polling/push universe by default. The set is exported so the eligibility
+#: endpoint AND the signal-driven notifier both gate on the same vocabulary.
 PUSH_ELIGIBLE_TIERS: frozenset[MembershipTier] = frozenset(
     {
         MembershipTier.MEMBER,
         MembershipTier.WAITLIST,
         MembershipTier.HONOURARY,
+        MembershipTier.ALLY,
     }
 )
 
@@ -510,9 +515,16 @@ async def is_push_eligible(player: AnniPlayer) -> bool:
 async def push_eligible_uuids() -> list[str]:
     """Every UUID the snapshot poller should fetch on each tick.
 
-    All :class:`AnniPlayer` UUIDs (per Hard Rule #3: "if vets-anni knows about
-    the player at all, they're a plausible vets-anni user"). Sorted for stable
-    diffing on the temp-server side.
+    Filtered by :data:`PUSH_ELIGIBLE_TIERS` (the trusted set:
+    MEMBER/WAITLIST/HONOURARY/ALLY). Users outside that set still get the
+    pipeline if their vetsmod session subscribes via the on-demand
+    existence check, but they don't enter the central polling list — the
+    eligible set must not grow with the much larger external-user
+    population that's expected to accumulate :class:`AnniPlayer` rows
+    via web logins and online-merge.
     """
-    uuids = await AnniPlayer.all().values_list("mc_uuid", flat=True)
+    uuids = await (
+        AnniPlayer.filter(membership_tier__in=PUSH_ELIGIBLE_TIERS)
+        .values_list("mc_uuid", flat=True)
+    )
     return sorted({str(u) for u in uuids})

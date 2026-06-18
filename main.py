@@ -117,6 +117,8 @@ async def lifespan(app: FastAPI):
         await get_tempserver().close()
         await dazebot_client.close()
         await mojang.close()
+        from app.services import snapshot_notifier
+        await snapshot_notifier.get().close()
         await lifecycle.close()
         logger.info("vets-anni stopped")
 

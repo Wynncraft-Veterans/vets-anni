@@ -87,6 +87,15 @@ async def _wipe(event, state: AppState) -> None:
 
     await get_board_hub().broadcast_wipe(None)
 
+    # Mass-fanout snapshot delta. The wipe touches hundreds of rows via three
+    # bulk ops (delete BoardPlacement, update Party.scroll_spot, delete Rsvp)
+    # plus the per-row credit_wins ``.update()``; none of those fire Tortoise
+    # ``post_save``. One ``notify_all`` covers the lot — temp-server refreshes
+    # every subscribed UUID via its existing batch fetch path. Fire-and-forget;
+    # no await on HTTP so the tick stays bounded.
+    from app.services import snapshot_notifier
+    snapshot_notifier.get().notify_all()
+
 
 async def _tick(state: AppState, settings: Settings) -> None:
     event = await get_active_event()

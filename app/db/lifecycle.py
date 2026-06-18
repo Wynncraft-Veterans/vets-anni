@@ -33,6 +33,10 @@ async def init() -> None:
     if parent:
         os.makedirs(parent, exist_ok=True)
     await Tortoise.init(config=TORTOISE_ORM)
+    # Wire the snapshot delta-push signal handlers AFTER Tortoise is up so
+    # decorator registration happens against a live model registry. The
+    # import itself is the side effect (each handler uses ``@post_save``).
+    import app.services.snapshot_signal_handlers  # noqa: F401
     logger.info("Database connected (%s)", settings.db_url)
 
 

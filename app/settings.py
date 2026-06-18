@@ -189,6 +189,22 @@ class Settings(BaseSettings):
     #: ``ANNI_INTROSPECT_SECRET`` env var.
     anni_introspect_secret: str = Field(default="")
 
+    #: Temp-server endpoint that receives our delta-push notifications.
+    #: vets-anni POSTs ``{"uuids": [...]}`` or ``{"all": true}`` here whenever
+    #: a snapshot-relevant Tortoise save fires. Empty/unreachable is safe —
+    #: the notifier log-and-drops and the 10 s poll-driven safety net on
+    #: temp-server continues to deliver eventual consistency. Internal
+    #: traffic on the verify docker network; HTTPS not required.
+    temp_server_delta_url: str = Field(
+        default="http://temporary-server:8000/api/internal/anni-snapshot-delta"
+    )
+    #: Shared secret authenticating the delta POSTs above. Re-uses temp-server's
+    #: existing ``ANNI_INTROSPECT_SECRET`` rotation knob (set both .env vars to
+    #: the same value) so the same rotation that covers the polling endpoints
+    #: also covers the delta channel. Empty => notifier becomes a no-op and
+    #: logs a startup warning.
+    temp_server_delta_secret: str = Field(default="")
+
     # --- Misc ----------------------------------------------------------------
     public_base_url: str = Field(default="https://anni.wynnvets.org")
     anni_db_path: str = Field(

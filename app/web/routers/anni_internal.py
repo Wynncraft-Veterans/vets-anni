@@ -124,6 +124,32 @@ async def anni_player(
     return snapshot
 
 
+@router.get("/anni-exists/{uuid}")
+async def anni_exists(
+    uuid: str,
+    x_introspect_secret: str | None = Header(default=None),
+) -> dict[str, bool]:
+    """Cheap "does this UUID have an AnniPlayer row?" check.
+
+    Used by temp-server at WS-auth time when the client's tier is NOT in
+    :data:`app.domain.snapshot.PUSH_ELIGIBLE_TIERS` — temp-server only
+    subscribes the session into the snapshot push pipeline if either the
+    tier is trusted (no call here) or this endpoint returns ``true`` (the
+    user has interacted with vets-anni before via fishbot, web login, or
+    online-merge ingestion). Without this gate the push universe would
+    grow with the entire external player population that accumulates
+    rows over time — see ``PUSH_ELIGIBLE_TIERS`` for the trusted set.
+
+    Tier is *not* checked here — only existence. A community-tier or
+    other-tier player with a row still gets subscribed because their
+    presence in the DB is itself the signal that we have anything to
+    push for them.
+    """
+    _check_secret(x_introspect_secret)
+    exists = await AnniPlayer.exists(mc_uuid=uuid)
+    return {"exists": bool(exists)}
+
+
 @router.post("/anni-snapshot-batch")
 async def anni_snapshot_batch(
     request: Request,
