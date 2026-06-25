@@ -16,7 +16,7 @@ import logging
 import re
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 
 from app.constants import MAX_WEAPONS_PER_CAPABILITY, ConfidenceLevel
 from app.db.models import RoleCapability, RoleCapabilityWeapon
@@ -80,7 +80,7 @@ async def new_modal(request: Request, role: str = ""):
     """The add-capability modal: role picker + guidance + links."""
     player = await _require_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     rows = await _capability_rows(player)
     taken = {r["role"] for r in rows}
     chosen = parse_role(role)
@@ -103,7 +103,7 @@ async def new_modal(request: Request, role: str = ""):
 async def edit_modal(request: Request, cap_id: str):
     player = await _require_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     cap = (
         await RoleCapability.filter(id=cap_id, player=player)
         .prefetch_related("weapons")
@@ -175,7 +175,7 @@ async def create_capability(
 ):
     player = await _require_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     parsed = parse_role(role)
     if parsed is None or parsed not in capability_roles():
         return await _capacity_fragment(request, player, error="Pick a core role.")
@@ -210,7 +210,7 @@ async def update_capability(
 ):
     player = await _require_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     cap = await RoleCapability.filter(id=cap_id, player=player).first()
     if cap is None:
         return await _capacity_fragment(request, player, error="Capability not found.")
@@ -229,7 +229,7 @@ async def update_capability(
 async def delete_capability(request: Request, cap_id: str):
     player = await _require_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     deleted = await RoleCapability.filter(id=cap_id, player=player).delete()
     logger.info("capability deleted: %s (%s rows)", player.mc_username, deleted)
     if deleted:
@@ -241,7 +241,7 @@ async def delete_capability(request: Request, cap_id: str):
 async def weapons_autocomplete(request: Request, q: str = ""):
     """Prefix match against the validated catalog (datalist options)."""
     if await _require_user(request) is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     needle = q.strip().lower()
     catalog = _state(request).weapons_by_name
     matches: list[dict] = []

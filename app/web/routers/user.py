@@ -304,7 +304,7 @@ async def specific_fragment(request: Request):
     """HTMX poll target — just the Specific module (countdown/RSVP/presence)."""
     player = await auth.current_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     ctx = await build_dashboard(request, player)
     return render(request, "user/_specific.html", **ctx)
 
@@ -316,7 +316,7 @@ async def regions_read(request: Request):
     a save; also a safe direct-hit target."""
     player = await auth.current_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     return render(request, "user/_regions.html", **_regions_ctx(player))
 
 
@@ -327,7 +327,7 @@ async def regions_edit(request: Request):
     warps the layout."""
     player = await auth.current_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     return render(request, "user/_regions_modal.html", **_regions_ctx(player))
 
 
@@ -338,7 +338,7 @@ async def regions_save(request: Request, regions: list[str] = Form(default=[])):
     the enabled set, so a crafted POST can't store a region Wynn can't host."""
     player = await auth.current_user(request)
     if player is None:
-        return RedirectResponse("/", status_code=303)
+        return auth.auth_redirect(request)
     codes = regions_domain.restrict(
         regions_domain.parse(",".join(regions)), _enabled_regions()
     )

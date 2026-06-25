@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass
 
 from fastapi import Request
+from fastapi.responses import RedirectResponse, Response
 from passlib.context import CryptContext
 
 from app.db.models import AnniPlayer, AppConfig
@@ -208,3 +209,18 @@ async def current_user(request: Request) -> AnniPlayer | None:
 
 def is_staff(request: Request) -> bool:
     return _session(request).get("kind") == "staff"
+
+
+def auth_redirect(request: Request, target: str = "/") -> Response:
+    """Redirect for "no session, bounce away" — htmx-aware.
+
+    A plain ``RedirectResponse`` is fine for full-page navigations, but the
+    dashboard's 15 s ``hx-get="/me/specific"`` poll (and the other ``/me/*``
+    fragments) follow the 303 transparently and swap the resulting login
+    page's *innerHTML* into the polling div — producing a dashboard nested
+    inside itself. Emit ``HX-Redirect`` for htmx callers so the browser does
+    a real top-level navigation (which also kills the poll).
+    """
+    if request.headers.get("HX-Request") == "true":
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)

@@ -69,6 +69,22 @@ async def test_me_redirects_anonymous_to_login(client):
     assert r.headers["location"] == "/"
 
 
+async def test_specific_fragment_hx_redirects_on_expired_session(client):
+    """Polling-fragment session expiry must NOT swap a full login page into
+    #participation. The dashboard's 15 s hx-get follows redirects transparently,
+    so a plain 303 would inject login.html (nav + sign-in form) into the
+    Participation Status card — producing a dashboard-inside-itself. Emit
+    HX-Redirect so htmx does a top-level navigation (which kills the poll)."""
+    r = await client.get(
+        "/me/specific",
+        headers={"HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+    assert r.headers.get("HX-Redirect") == "/"
+    assert r.text == ""
+
+
 async def test_staff_page_shows_login_when_signed_out(client):
     r = await client.get("/staff")
     assert r.status_code == 200
