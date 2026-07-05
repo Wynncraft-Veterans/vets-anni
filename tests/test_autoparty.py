@@ -370,6 +370,44 @@ async def test_seed_experience_is_spread(db):
     assert max(per_party_exp) - min(per_party_exp) <= 24
 
 
+async def test_seed_retries_with_smaller_K_when_pass1_exhausts(db):
+    """K derivation counts each multi-role candidate toward every role they
+    play, so it can over-promise: a pair of multi-role candidates might cover
+    TANK *or* HEALER but not both, yet K=2 looks feasible on paper. The
+    seeder must retry with K-1 rather than reject, per rule 6's "leaving
+    folks unassigned is permissible" clarification."""
+    event = await _make_event()
+    # 2 candidates who can play tank AND healer (nothing else), no other
+    # tanks or healers in the pool. K_coverage says min(2, 2, ...) = 2, but
+    # Pass 1 for K=2 assigns both to tank → nobody left for healer. Retry
+    # at K=1 places one as tank + one as healer.
+    for i in range(2):
+        await _add_player(
+            event, f"Dual{i}",
+            caps=[(Role.TANK, ConfidenceLevel.HIGH, 0),
+                  (Role.HEALER, ConfidenceLevel.HIGH, 0)],
+            rsvp=AttendanceNotice.RSVP_HARD,
+        )
+    # 2 candidates for every other core role so K_coverage isn't limited by
+    # PRIMARY/SECONDARY/TERTIARY.
+    for role in [Role.PRIMARY, Role.SECONDARY, Role.TERTIARY]:
+        for i in range(2):
+            await _add_player(
+                event, f"{role.value}{i}",
+                caps=[(role, ConfidenceLevel.HIGH, 0)],
+                rsvp=AttendanceNotice.RSVP_HARD,
+            )
+    r = await autoparty.seed_initial(event, AppState())
+    assert r.ok, r.reason
+    # K was reduced to 1 because Pass 1 exhausted at K=2.
+    assert await Party.filter(event=event).count() == 1
+    party = await Party.filter(event=event).first()
+    assigned = await BoardPlacement.filter(event=event, party=party)
+    roles_covered = {p.assigned_role for p in assigned}
+    # Rule 6 still holds for the (reduced) party.
+    assert set(CORE) <= roles_covered
+
+
 async def test_seed_pulls_from_volunteers_bucket(db):
     """A candidate in VOLUNTEERS is eligible + drawn if needed for coverage."""
     event = await _make_event()

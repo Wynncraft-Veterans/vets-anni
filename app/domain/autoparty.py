@@ -132,24 +132,32 @@ async def seed_initial(event: AnniEvent, state: AppState) -> OpResult:
             False, "No candidates to seed parties from — add players first."
         )
 
-    K = _derive_K(cands)
-    if K < 1:
+    K_max = _derive_K(cands)
+    if K_max < 1:
         return OpResult(
             False,
             "Not enough role coverage: even one party can't be staffed "
             "with at least one member per core role.",
         )
 
-    plan = _assign(cands, K)
+    # K derivation is optimistic — a multi-role candidate is counted toward
+    # every role they can play, but only actually fills one slot. If Pass 1
+    # exhausts for the ambitious K, retry with K-1, K-2, …, down to 1. Rule 6
+    # says "never a party without ≥1 per core role"; the user's clarification
+    # was "if we can't staff K parties, staffing fewer is preferable to
+    # rejecting outright — leaving folks unassigned is permissible".
+    plan: _Plan | None = None
+    K = K_max
+    while K >= 1:
+        plan = _assign(cands, K)
+        if plan is not None:
+            break
+        K -= 1
     if plan is None:
-        # Pass-1 exhaustion — the K math was optimistic (a multi-role
-        # candidate got claimed by one role and starved another). Cleanest
-        # response is a reject; the organiser can Add Party by hand.
         return OpResult(
             False,
-            "Ran out of role coverage while seeding — "
-            "some candidates cover multiple roles and the math couldn't "
-            "satisfy every party. Try adding players or seed by hand.",
+            "Ran out of role coverage while seeding, even at K=1. "
+            "Try adding players or seed by hand.",
         )
 
     async with in_transaction():
