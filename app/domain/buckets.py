@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from tortoise.transactions import in_transaction
 
 from app.constants import ASSIGNABLE_ROLES, BucketKind, PartyResult, Role
-from app.constants import MAX_PARTY_STAGE, MIN_PARTY_STAGE
+from app.constants import MAX_PARTY_STAGE, MIN_PARTY_STAGE, ROLE_SORT_PRIORITY
 from app.db.models import AnniEvent, AnniPlayer, BoardPlacement, Party
 from app.domain import identity, membership
 from app.domain.identity import MojangResolver, mojang_username_to_uuid
@@ -53,6 +53,67 @@ def _one_container(bucket: BucketKind | None, party: Party | None) -> bool:
     return (bucket is None) != (party is None)
 
 
+def _role_priority(role: Role | None) -> int:
+    """Numeric priority for role-based default sort. Lower sorts earlier;
+    unknown / off-table values fall to the tail (mirrors ``None``)."""
+    return ROLE_SORT_PRIORITY.get(role, ROLE_SORT_PRIORITY[None])
+
+
+async def _container_siblings(
+    event: AnniEvent,
+    *,
+    bucket: BucketKind | None,
+    party: Party | None,
+    is_late: bool,
+    is_walkin: bool,
+    exclude_player: AnniPlayer | None = None,
+) -> list[BoardPlacement]:
+    """All placements in the destination container, ordered by current
+    ``sort_index``. UNASSIGNED has three lanes (main / walkin / late) that
+    render as distinct dropzones, so the filter narrows to the specific
+    lane; VOLUNTEERS/WONTASSIGN/party targets ignore the lane flags."""
+    query = BoardPlacement.filter(event=event)
+    if party is not None:
+        query = query.filter(party=party)
+    else:
+        query = query.filter(bucket=bucket, party=None)
+        if bucket == BucketKind.UNASSIGNED:
+            query = query.filter(is_late=is_late, is_walkin=is_walkin)
+    if exclude_player is not None:
+        query = query.exclude(player=exclude_player)
+    return await query.order_by("sort_index")
+
+
+async def _role_priority_slot(
+    event: AnniEvent,
+    *,
+    bucket: BucketKind | None,
+    party: Party | None,
+    is_late: bool,
+    is_walkin: bool,
+    incoming_role: Role | None,
+) -> int:
+    """The position at which a card with ``incoming_role`` should slot into
+    the container so the container stays sorted by role priority. Walks
+    existing placements in current sort_index order and returns the index
+    of the first one whose role priority is strictly greater than the
+    incoming's; falls through to the tail if every existing card outranks
+    the newcomer.
+
+    Auto-place paths (RSVP promoter, walk-in add, revoke demote) call this
+    with ``incoming_role=None``; drag-triggered ``move()`` passes an
+    explicit position from the client instead."""
+    existing = await _container_siblings(
+        event, bucket=bucket, party=party,
+        is_late=is_late, is_walkin=is_walkin,
+    )
+    incoming = _role_priority(incoming_role)
+    for i, p in enumerate(existing):
+        if _role_priority(p.assigned_role) > incoming:
+            return i
+    return len(existing)
+
+
 async def _upsert(
     event: AnniEvent,
     player: AnniPlayer,
@@ -63,17 +124,32 @@ async def _upsert(
     is_late: bool | None,
     is_walkin: bool | None,
 ) -> BoardPlacement:
-    """The single-instance UPSERT. One ``(event, player)`` row, always — a
-    move is this row changing container, never a new row. Wrapped in a
-    transaction so the unique constraint + the SQLite single writer make a
-    duplicate impossible even under concurrent intents."""
+    """The single-instance UPSERT + destination-container renumber.
+
+    One ``(event, player)`` row, always — a move is this row changing
+    container, never a new row. Additionally: every other placement in the
+    destination container is renumbered so ``sort_index`` values are
+    contiguous ``0..N-1`` in the resulting order, with the moving row
+    landing at position ``sort_index`` (clamped to ``0..N``).
+
+    Without this renumber, dropping a card between two siblings collides
+    with an existing ``sort_index`` and the render (which orders by
+    ``sort_index`` with no stable tiebreaker) picks arbitrarily. The
+    renumber is what makes drag-reorder within a bucket actually stick.
+
+    Source-container gaps (from cross-container moves) are left alone —
+    they're display-invisible (``.order_by("sort_index")`` handles gaps
+    fine) and heal on the next insert into that container.
+
+    Wrapped in a transaction so a mid-splice crash can't leave duplicated
+    or gapped sort_indexes on the destination side.
+    """
     async with in_transaction():
         placement = await BoardPlacement.filter(event=event, player=player).first()
         if placement is None:
             placement = BoardPlacement(event=event, player=player)
         placement.bucket = bucket
         placement.party = party
-        placement.sort_index = sort_index
         if is_late is not None:
             placement.is_late = is_late
         elif placement.id is None:
@@ -82,7 +158,24 @@ async def _upsert(
             placement.is_walkin = is_walkin
         elif placement.id is None:
             placement.is_walkin = False
-        await placement.save()
+
+        siblings = await _container_siblings(
+            event, bucket=bucket, party=party,
+            is_late=placement.is_late, is_walkin=placement.is_walkin,
+            exclude_player=player,
+        )
+        pos = max(0, min(sort_index, len(siblings)))
+        ordered = siblings[:pos] + [placement] + siblings[pos:]
+        for i, p in enumerate(ordered):
+            # Always save the moving row (it may be brand-new, or its
+            # bucket/party/lane changed even if the index is unchanged);
+            # save siblings only when their sort_index actually shifts.
+            if p is placement:
+                p.sort_index = i
+                await p.save()
+            elif p.sort_index != i:
+                p.sort_index = i
+                await p.save(update_fields=["sort_index", "updated_at"])
     return placement
 
 
@@ -172,23 +265,24 @@ async def ensure_placed(
     in the main lane (both False). The view layer treats ``is_late`` as
     winning if both somehow ended up True.
 
-    ``sort_index`` is the tail count of the matching lane within
-    UNASSIGNED so a new card lands at the bottom of its dropzone, mirroring
-    :func:`add_walkin`'s ordering.
+    ``sort_index`` is derived from role-priority: an auto-placed card has
+    no assigned role yet (``None`` → tail of the role-sorted lane), so it
+    lands at the bottom of its dropzone. :func:`_upsert` also renumbers
+    the lane so sort_indexes stay contiguous.
     """
     existing = await BoardPlacement.filter(event=event, player=player).first()
     if existing is not None:
         return False
-    tail = await BoardPlacement.filter(
-        event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=is_late, is_walkin=is_walkin,
-    ).count()
+    slot = await _role_priority_slot(
+        event, bucket=BucketKind.UNASSIGNED, party=None,
+        is_late=is_late, is_walkin=is_walkin, incoming_role=None,
+    )
     await _upsert(
         event,
         player,
         bucket=BucketKind.UNASSIGNED,
         party=None,
-        sort_index=tail,
+        sort_index=slot,
         is_late=is_late,
         is_walkin=is_walkin,
     )
@@ -224,16 +318,17 @@ async def promote_from_wontassign(
     placement = await BoardPlacement.filter(event=event, player=player).first()
     if placement is None or placement.bucket is not BucketKind.WONTASSIGN:
         return False
-    tail = await BoardPlacement.filter(
-        event=event, bucket=BucketKind.UNASSIGNED,
+    slot = await _role_priority_slot(
+        event, bucket=BucketKind.UNASSIGNED, party=None,
         is_late=False, is_walkin=False,
-    ).count()
+        incoming_role=placement.assigned_role,
+    )
     await _upsert(
         event,
         player,
         bucket=BucketKind.UNASSIGNED,
         party=None,
-        sort_index=tail,
+        sort_index=slot,
         is_late=False,
         is_walkin=False,
     )
@@ -254,15 +349,17 @@ async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
     placement = await BoardPlacement.filter(event=event, player=player).first()
     if placement is None or placement.bucket is not BucketKind.UNASSIGNED:
         return False
-    tail = await BoardPlacement.filter(
-        event=event, bucket=BucketKind.WONTASSIGN
-    ).count()
+    slot = await _role_priority_slot(
+        event, bucket=BucketKind.WONTASSIGN, party=None,
+        is_late=False, is_walkin=False,
+        incoming_role=placement.assigned_role,
+    )
     await _upsert(
         event,
         player,
         bucket=BucketKind.WONTASSIGN,
         party=None,
-        sort_index=tail,
+        sort_index=slot,
         is_late=False,
         is_walkin=False,
     )
@@ -346,12 +443,12 @@ async def add_walkin(
     # promoter's lane logic: walk-in sub-bucket before T-60, LATE after.
     late = hot_window.is_late_bucket(event)
     walkin = not late
-    tail = await BoardPlacement.filter(
-        event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=late, is_walkin=walkin,
-    ).count()
+    slot = await _role_priority_slot(
+        event, bucket=BucketKind.UNASSIGNED, party=None,
+        is_late=late, is_walkin=walkin, incoming_role=None,
+    )
     await _upsert(event, player, bucket=BucketKind.UNASSIGNED, party=None,
-                  sort_index=tail, is_late=late, is_walkin=walkin)
+                  sort_index=slot, is_late=late, is_walkin=walkin)
     logger.info(
         "walk-in added: %s -> Unassigned (%s)",
         player.mc_username, "LATE" if late else "walk-in",

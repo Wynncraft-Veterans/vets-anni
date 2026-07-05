@@ -363,6 +363,22 @@ ROLE_STYLES: dict[Role, RoleStyle] = {
 UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "Unassigned")
 
 
+#: Default intra-container ordering by assigned role. Lower = sorts earlier.
+#: ``None`` covers the "no assigned role yet" grey card and sorts last. Used
+#: by ``domain/buckets`` to seed ``sort_index`` on auto-place and by the
+#: normalise-sort_index migration; drag intents can still override the
+#: resulting order because ``sort_index`` is the persisted key.
+ROLE_SORT_PRIORITY: dict[Role | None, int] = {
+    Role.PRIMARY: 0,
+    Role.SECONDARY: 1,
+    Role.TERTIARY: 2,
+    Role.HEALER: 3,
+    Role.TANK: 4,
+    Role.FILL: 5,
+    None: 6,
+}
+
+
 # Status border → the SAME shared colour as its paired role (spec.md [^6]):
 # GONE↔TANK(blue), SOFT↔PRIMARY(red), HARD↔TERTIARY(magenta),
 # ELSEWHERE↔HEALER(green), WORLD↔FILL(cyan), PARTY↔SECONDARY(yellow).
