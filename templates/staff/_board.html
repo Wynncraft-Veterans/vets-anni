@@ -98,24 +98,28 @@
       <section class="board-parties">
         <div class="board-col-head">
           <h2>Parties</h2>
-          {# Only offered on an empty board — this is a "seed" operation, not
-             a "merge into existing parties". #}
-          {% if not snap.parties %}
-          <form hx-post="/staff/board/autoparties" hx-target="#board"
-                hx-swap="outerHTML"
-                hx-confirm="Auto-seed parties from Unassigned + Volunteers using RSVPs, presence, and role capabilities?">
-            <button class="btn-sm btn-experimental" type="submit"
-                    {{ 'disabled' if snap.event.frozen }}
-                    title="Experimental: seeds parties + role assignments from the current pool. You can drag/reshuffle afterward.">
-              Create Initial Autoparties (experimental)
-            </button>
-          </form>
-          {% endif %}
-          <form hx-post="/staff/board/party/create" hx-target="#board"
-                hx-swap="outerHTML">
-            <button class="btn-sm btn-add" type="submit"
-                    {{ 'disabled' if snap.event.frozen }}>Add Party</button>
-          </form>
+          {# Actions grouped so `.board-col-head`'s space-between sees them as
+             one right-side unit — otherwise the middle form floats between. #}
+          <div class="col-head-actions">
+            {# Only offered on an empty board — this is a "seed" operation,
+               not a "merge into existing parties". #}
+            {% if not snap.parties %}
+            <form hx-post="/staff/board/autoparties" hx-target="#board"
+                  hx-swap="outerHTML"
+                  hx-confirm="Auto-seed parties from Unassigned + Volunteers using RSVPs, presence, and role capabilities?">
+              <button class="btn-sm btn-experimental" type="submit"
+                      {{ 'disabled' if snap.event.frozen }}
+                      title="Experimental: seeds parties + role assignments from the current pool. You can drag/reshuffle afterward.">
+                Create Initial Autoparties (experimental)
+              </button>
+            </form>
+            {% endif %}
+            <form hx-post="/staff/board/party/create" hx-target="#board"
+                  hx-swap="outerHTML">
+              <button class="btn-sm btn-add" type="submit"
+                      {{ 'disabled' if snap.event.frozen }}>Add Party</button>
+            </form>
+          </div>
         </div>
 
         {% for party in snap.parties %}

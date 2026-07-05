@@ -466,6 +466,7 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   display:flex; align-items:center; justify-content:space-between; gap:1rem;
 }
 .board-col-head form { margin:0; }
+.col-head-actions { display:flex; align-items:center; gap:.4rem; }
 .board-parties, .board-buckets { display:flex; flex-direction:column; gap:.8rem; }
 
 .party-card, .bucket {
