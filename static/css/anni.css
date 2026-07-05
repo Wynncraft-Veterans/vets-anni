@@ -232,6 +232,11 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .btn-sm.btn-add { background:#2563eb; color:#fff; }
 .btn-sm.btn-add:hover { filter:brightness(1.06); }
 .btn-sm.btn-add:disabled { background:#9db8ef; cursor:not-allowed; }
+/* Experimental / one-off actions — purple accent so they read as "special"
+   and distinct from the primary blue Add-* buttons. Same shape as btn-add. */
+.btn-sm.btn-experimental { background:#7c3aed; color:#fff; }
+.btn-sm.btn-experimental:hover { filter:brightness(1.06); }
+.btn-sm.btn-experimental:disabled { background:#c4b5fd; cursor:not-allowed; }
 /* Secondary action — same base `button` box as the primary (identical
    height/shape), just a neutral palette. */
 .btn-secondary { background:#e5e7eb; color:#111827; }
