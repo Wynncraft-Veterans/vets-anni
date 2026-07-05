@@ -103,6 +103,19 @@
             <button class="btn-sm btn-add" type="submit"
                     {{ 'disabled' if snap.event.frozen }}>Add Party</button>
           </form>
+          {# Only offered on an empty board — this is a "seed" operation, not
+             a "merge into existing parties". #}
+          {% if not snap.parties %}
+          <form hx-post="/staff/board/autoparties" hx-target="#board"
+                hx-swap="outerHTML"
+                hx-confirm="Auto-seed parties from Unassigned + Volunteers using RSVPs, presence, and role capabilities?">
+            <button class="btn-sm" type="submit"
+                    {{ 'disabled' if snap.event.frozen }}
+                    title="Experimental: seeds parties + role assignments from the current pool. You can drag/reshuffle afterward.">
+              Create Initial Autoparties (experimental)
+            </button>
+          </form>
+          {% endif %}
         </div>
 
         {% for party in snap.parties %}

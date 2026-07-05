@@ -205,6 +205,15 @@ async def rest_party_create(request: Request):
     return await _apply_rest(request, P.Intent(P.PARTY_CREATE))
 
 
+@router.post("/staff/board/autoparties", include_in_schema=False)
+async def rest_autoparties(request: Request):
+    """Experimental: seed initial parties + role assignments from the current
+    Unassigned + Volunteers pool. Same ``board_hub`` path as the WS
+    ``AUTOPARTIES_SEED`` intent, so live tabs stay in sync via the snapshot
+    broadcast."""
+    return await _apply_rest(request, P.Intent(P.AUTOPARTIES_SEED))
+
+
 @router.post("/staff/board/party/{party_id}/set", include_in_schema=False)
 async def rest_party_set(
     request: Request,

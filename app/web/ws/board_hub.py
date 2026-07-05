@@ -188,6 +188,10 @@ class BoardHub:
             await buckets.create_party(event)
             return buckets.OpResult(True)
 
+        if intent.type == P.AUTOPARTIES_SEED:
+            from app.domain import autoparty
+            return await autoparty.seed_initial(event, state)
+
         if intent.type == P.PARTY_RENAME:
             return await buckets.rename_party(
                 event, str(d.get("party_id", "")),
