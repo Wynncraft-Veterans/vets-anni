@@ -68,12 +68,14 @@ async def _add_player(
     bucket: BucketKind = BucketKind.UNASSIGNED,
     caps: list[tuple[Role, ConfidenceLevel, int]] | None = None,
     rsvp: AttendanceNotice | None = None,
+    regions: str = "",
 ) -> AnniPlayer:
     """Create a player + capabilities + optional RSVP + a placement in
     ``bucket``. UUID is derived from name so it's stable."""
     uuid = f"uuid-{name.lower()}"
     p = await AnniPlayer.create(
-        mc_uuid=uuid, mc_username=name, wynn_username=name
+        mc_uuid=uuid, mc_username=name, wynn_username=name,
+        preferred_regions=regions,
     )
     for role, conf, wins in caps or []:
         await RoleCapability.create(
@@ -492,6 +494,126 @@ async def test_seed_capability_less_candidates_can_serve_as_fill(db):
     # 5 core seats + up to 5 fill = full party at PARTY_CAPACITY.
     assert len(party_rows) == PARTY_CAPACITY
     assert len(fill_placements) == 5
+
+
+async def test_seed_clusters_by_region_as_secondary_consideration(db):
+    """Region affinity is a secondary tiebreak: with equal role/comfort,
+    prefer candidates whose regions match the destination party's existing
+    members. Result: a K=2 seed with 5 EU + 5 NA candidates (all HARD, all
+    identical role coverage) should cluster the EU set into one party and
+    the NA set into the other."""
+    event = await _make_event()
+    # 5 roles × 2 (one EU, one NA) = 10 candidates. Each role has 1 strong
+    # per party for K=2. Region is the only signal that isn't tied.
+    for role in CORE:
+        await _add_player(
+            event, f"EU-{role.value}",
+            caps=[(role, ConfidenceLevel.HIGH, 0)],
+            rsvp=AttendanceNotice.RSVP_HARD,
+            regions="EU",
+        )
+        await _add_player(
+            event, f"NA-{role.value}",
+            caps=[(role, ConfidenceLevel.HIGH, 0)],
+            rsvp=AttendanceNotice.RSVP_HARD,
+            regions="NA",
+        )
+
+    r = await autoparty.seed_initial(event, AppState())
+    assert r.ok, r.reason
+    parties = await Party.filter(event=event).order_by("ordinal")
+    assert len(parties) == 2
+
+    per_party_regions = []
+    for p in parties:
+        rows = await (
+            BoardPlacement.filter(event=event, party=p)
+            .prefetch_related("player")
+        )
+        regions_seen = {row.player.preferred_regions for row in rows}
+        per_party_regions.append(regions_seen)
+    # Each party's members share one region (either all EU or all NA).
+    for regions_seen in per_party_regions:
+        assert regions_seen in ({"EU"}, {"NA"}), (
+            f"party mixed regions: {regions_seen}"
+        )
+    # The two parties cover different regions between them.
+    assert per_party_regions[0] != per_party_regions[1]
+
+
+async def test_seed_fills_ignore_region_affinity(db):
+    """FILL padding is neutral warm-body distribution — a no-caps EU-region
+    candidate is NOT preferred by an EU-heavy party over a no-preference
+    filler. The round-robin spread and rule-5 exp tiebreak win instead."""
+    event = await _make_event()
+    # K=2 clean coverage, each party naturally clusters as EU.
+    for role in CORE:
+        for i in range(2):
+            await _add_player(
+                event, f"EU-{role.value}{i}",
+                caps=[(role, ConfidenceLevel.HIGH, 0)],
+                rsvp=AttendanceNotice.RSVP_HARD,
+                regions="EU",
+            )
+    # 4 no-caps fillers: 2 EU, 2 no-preference. Round-robin puts 2 per party
+    # regardless of region — that's the point of "fills ignore region".
+    await _add_player(event, "FillEU0", rsvp=AttendanceNotice.RSVP_HARD,
+                     regions="EU")
+    await _add_player(event, "FillEU1", rsvp=AttendanceNotice.RSVP_HARD,
+                     regions="EU")
+    await _add_player(event, "FillAny0", rsvp=AttendanceNotice.RSVP_HARD)
+    await _add_player(event, "FillAny1", rsvp=AttendanceNotice.RSVP_HARD)
+
+    r = await autoparty.seed_initial(event, AppState())
+    assert r.ok, r.reason
+    parties = await Party.filter(event=event).order_by("ordinal")
+    fill_counts = []
+    for p in parties:
+        rows = await BoardPlacement.filter(event=event, party=p)
+        fill_counts.append(
+            sum(1 for r in rows if r.assigned_role == Role.FILL)
+        )
+    # 4 fills across 2 parties → 2 apiece (round-robin), not 4-0 (which is
+    # what would happen if region-matched EU fills were all steered to the
+    # EU party first).
+    assert fill_counts == [2, 2]
+
+
+async def test_seed_fills_spread_round_robin_across_parties(db):
+    """FILLs are a strain on the party (warm body, no declared role) — the
+    seeder distributes them round-robin so no single party carries them all
+    (fewest-fills-first pick each iteration)."""
+    event = await _make_event()
+    # K=3 requires 3 strong candidates per role. Give exactly 3 of each so
+    # Pass 1 uses all core caps and Pass 2 doubling has no takers, leaving
+    # only the FILL padding loop to run.
+    for role in CORE:
+        for i in range(3):
+            await _add_player(
+                event, f"{role.value}{i}",
+                caps=[(role, ConfidenceLevel.HIGH, 0)],
+                rsvp=AttendanceNotice.RSVP_HARD,
+            )
+    # 6 no-caps fillers → 2 per party under round-robin distribution.
+    for i in range(6):
+        await _add_player(
+            event, f"Fill{i}", rsvp=AttendanceNotice.RSVP_HARD,
+        )
+
+    r = await autoparty.seed_initial(event, AppState())
+    assert r.ok, r.reason
+    parties = await Party.filter(event=event).order_by("ordinal")
+    assert len(parties) == 3
+
+    fill_counts_per_party = []
+    for party in parties:
+        rows = await BoardPlacement.filter(event=event, party=party)
+        fill_counts_per_party.append(
+            sum(1 for r in rows if r.assigned_role == Role.FILL)
+        )
+    # Perfect round-robin with 6 fills / 3 parties → 2 each. Rule: no party
+    # bears more than a fair share of the strain.
+    assert fill_counts_per_party == [2, 2, 2]
 
 
 # --- WS + REST integration -------------------------------------------------

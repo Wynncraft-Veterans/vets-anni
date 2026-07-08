@@ -41,11 +41,12 @@ from app.constants import (
     AttendanceNotice,
     BucketKind,
     ConfidenceLevel,
+    ContinentCode,
     PresenceStatus,
     Role,
 )
 from app.db.models import AnniEvent, Party, Rsvp
-from app.domain import buckets
+from app.domain import buckets, regions as regions_domain
 from app.domain.buckets import OpResult
 from app.services.state import AppState
 
@@ -90,6 +91,7 @@ class _Candidate:
     strong_roles: frozenset[Role]        # roles for which this candidate is HARD-or-online
     soft_roles: frozenset[Role]          # roles for which this candidate is SOFT-only
     exp_score: int                       # sum of success_count across capabilities
+    regions: frozenset[ContinentCode]    # preferred play regions (may be empty = no preference)
 
 
 @dataclass
@@ -237,6 +239,9 @@ async def _collect_candidates(
         soft_roles = capable if is_soft else frozenset()
 
         exp_score = sum(c.success_count for c in caps.values())
+        preferred = frozenset(
+            regions_domain.parse(row.get("preferred_regions") or "")
+        )
 
         cands.append(_Candidate(
             uuid=uuid,
@@ -244,6 +249,7 @@ async def _collect_candidates(
             strong_roles=strong_roles,
             soft_roles=soft_roles,
             exp_score=exp_score,
+            regions=preferred,
         ))
     return cands
 
@@ -269,14 +275,40 @@ def _derive_K(cands: list[_Candidate]) -> int:
 
 
 # --- Assignment (Passes 1 + 2) ---------------------------------------------
+def _region_affinity(
+    c_regions: frozenset[ContinentCode],
+    party_regions: frozenset[ContinentCode],
+) -> int:
+    """Secondary tiebreak: prefer candidates whose preferred regions overlap
+    with the destination party's current members' regions, so an EU-heavy
+    party keeps drawing EU players (and the organiser can point that party at
+    an EU world afterward).
+
+    Higher = better fit. An empty ``party_regions`` (party has no regional
+    flavour yet) returns 0 for everyone — the tiebreak is inert on the first
+    pick. An empty ``c_regions`` (no preference) returns 0 — neutral fit;
+    they slot into any party without harming its cohesion.
+
+    Encoding: ``overlap - min(1, mismatch)``. A candidate with EU preference
+    joining an EU party scores +1; a NA candidate joining an EU party scores
+    −1; a no-preference candidate scores 0."""
+    if not party_regions or not c_regions:
+        return 0
+    overlap = len(c_regions & party_regions)
+    mismatch = 1 if (c_regions - party_regions) else 0
+    return overlap - mismatch
+
+
 def _selection_key(
-    c: _Candidate, role: Role, party_exp_sum: int
+    c: _Candidate, role: Role, party_exp_sum: int,
+    party_regions: frozenset[ContinentCode],
 ) -> tuple:
     """Sort key for picking the best candidate for (role, party).
 
     All keys negated so ascending sort picks the best. Rule ordering:
     - confidence for this role (rule 4)
     - success_count in this role (rule 4 tiebreak)
+    - regional affinity with the destination party (secondary consideration)
     - low exp_score first (rule 5: hold the highest-exp for later parties)
     - low party_exp_sum first (rule 5: prefer party currently lightest)"""
     cap = c.caps.get(role)
@@ -284,10 +316,11 @@ def _selection_key(
         # Should not happen — callers filter to capable candidates. Fall
         # through with a maximally bad key so an accidentally-slipped-in
         # candidate sorts last.
-        return (0, 0, 0, 0)
+        return (0, 0, 0, 0, 0)
     return (
         -_CONFIDENCE_RANK.get(cap.confidence, 0),
         -cap.success_count,
+        -_region_affinity(c.regions, party_regions),
         c.exp_score,
         party_exp_sum,
     )
@@ -297,6 +330,7 @@ def _pick_best(
     pool: list[_Candidate],
     role: Role,
     party_exp_sum: int,
+    party_regions: frozenset[ContinentCode],
     *,
     filter_pred,
 ) -> _Candidate | None:
@@ -304,7 +338,9 @@ def _pick_best(
     eligible = [c for c in pool if filter_pred(c)]
     if not eligible:
         return None
-    eligible.sort(key=lambda c: _selection_key(c, role, party_exp_sum))
+    eligible.sort(key=lambda c: _selection_key(
+        c, role, party_exp_sum, party_regions,
+    ))
     return eligible[0]
 
 
@@ -313,6 +349,11 @@ def _assign(cands: list[_Candidate], K: int) -> _Plan | None:
     remaining: list[_Candidate] = list(cands)
     party_members: list[list[_Assignment]] = [[] for _ in range(K)]
     party_exp: list[int] = [0] * K
+    # Union of member preferred_regions per party — feeds the regional
+    # affinity tiebreak so parties drift toward a single-region composition
+    # (an EU-heavy party keeps drawing EU candidates, so it can later be
+    # assigned an EU world).
+    party_regions: list[frozenset[ContinentCode]] = [frozenset()] * K
 
     # Scarcity-first role order for Pass 1 — rarest strong first (typically
     # TANK) so we don't burn a multi-role strong candidate on an easy role
@@ -324,6 +365,15 @@ def _assign(cands: list[_Candidate], K: int) -> _Plan | None:
         CAPABILITY_ROLES, key=lambda r: strong_count[r]
     )
 
+    def _do_place(c: _Candidate, p: int, role: Role | None) -> None:
+        _place(c, p, role, party_members, party_exp, remaining)
+        # Union the placed candidate's regions into the party (used by the
+        # next selection's affinity tiebreak). Idempotent for repeated regions.
+        # FILL candidates are intentionally excluded — they're neutral warm-body
+        # padding, not part of the party's regional flavour.
+        if role != Role.FILL:
+            party_regions[p] = party_regions[p] | c.regions
+
     # --- Pass 1: core coverage --------------------------------------------
     # Rule 5 (experience spread): for each role, process parties in ascending
     # ``party_exp`` order — the lowest-exp party picks first, so the
@@ -333,32 +383,30 @@ def _assign(cands: list[_Candidate], K: int) -> _Plan | None:
         for p in sorted(range(K), key=lambda i: party_exp[i]):
             # Prefer a strong candidate first (rule 1).
             picked_strong = _pick_best(
-                remaining, role, party_exp[p],
+                remaining, role, party_exp[p], party_regions[p],
                 filter_pred=lambda c, r=role: r in c.strong_roles,
             )
             if picked_strong is not None:
-                _place(picked_strong, p, role, party_members, party_exp,
-                       remaining)
+                _do_place(picked_strong, p, role)
                 continue
             # Rule 2 fallback: two softs (both assigned the role — honest
             # about the algorithm's decision). If only one soft is left, take
             # it (rule 6 floor).
             first_soft = _pick_best(
-                remaining, role, party_exp[p],
+                remaining, role, party_exp[p], party_regions[p],
                 filter_pred=lambda c, r=role: r in c.soft_roles,
             )
             if first_soft is None:
                 # K derivation over-promised — a multi-role candidate got
                 # claimed by another role. Signal the abort.
                 return None
-            _place(first_soft, p, role, party_members, party_exp, remaining)
+            _do_place(first_soft, p, role)
             second_soft = _pick_best(
-                remaining, role, party_exp[p],
+                remaining, role, party_exp[p], party_regions[p],
                 filter_pred=lambda c, r=role: r in c.soft_roles,
             )
             if second_soft is not None:
-                _place(second_soft, p, role, party_members, party_exp,
-                       remaining)
+                _do_place(second_soft, p, role)
 
     # --- Pass 2: doubling by priority --------------------------------------
     # Loop until no round makes progress (or every party is at capacity /
@@ -371,26 +419,45 @@ def _assign(cands: list[_Candidate], K: int) -> _Plan | None:
                 if len(party_members[p]) >= PARTY_CAPACITY:
                     continue
                 picked = _pick_best(
-                    remaining, role, party_exp[p],
+                    remaining, role, party_exp[p], party_regions[p],
                     filter_pred=lambda c, r=role: (
                         r in c.strong_roles or r in c.soft_roles
                     ),
                 )
                 if picked is None:
                     continue
-                _place(picked, p, role, party_members, party_exp, remaining)
+                _do_place(picked, p, role)
                 placed_this_round = True
         # After the priority-list pass, top-off any parties that still have
         # room using capability-less candidates as FILL padding (rule 7:
-        # avoid unassigned).
-        for p in range(K):
-            while len(party_members[p]) < PARTY_CAPACITY and remaining:
-                picked = _pick_fill(remaining, party_exp[p])
-                if picked is None:
-                    break
-                _place(picked, p, Role.FILL, party_members, party_exp,
-                       remaining)
-                placed_this_round = True
+        # avoid unassigned). Fills are a *strain* on a party — everyone else
+        # has a declared role, the FILL slot is a warm body — so we spread
+        # them across parties round-robin (fewest fills first, tiebreak
+        # fewest total members) rather than stacking them all in party 0.
+        while remaining:
+            open_parties = [
+                p for p in range(K)
+                if len(party_members[p]) < PARTY_CAPACITY
+            ]
+            if not open_parties:
+                break
+            fill_counts = [
+                sum(1 for a in party_members[p] if a.role == Role.FILL)
+                for p in range(K)
+            ]
+            p = min(
+                open_parties,
+                key=lambda i: (
+                    fill_counts[i],           # fewest fills first
+                    len(party_members[i]),    # tiebreak: smaller party first
+                    party_exp[i],             # tiebreak: less exp first
+                ),
+            )
+            picked = _pick_fill(remaining, party_exp[p])
+            if picked is None:
+                break
+            _do_place(picked, p, Role.FILL)
+            placed_this_round = True
         if not placed_this_round:
             break
 
@@ -425,12 +492,14 @@ def _place(
 
 
 def _pick_fill(
-    pool: list[_Candidate], party_exp_sum: int
+    pool: list[_Candidate], party_exp_sum: int,
 ) -> _Candidate | None:
     """Best FILL-slot candidate: someone with no core capabilities (their
     caps are already exhausted for the roles they can play, or they have
-    none at all). Sort by low exp_score first (rule 5 spread) then by low
-    party_exp_sum first (implicit in the caller's per-party loop)."""
+    none at all). FILLs deliberately do NOT participate in region affinity —
+    they're neutral padding, spread round-robin so no single party carries
+    the strain (see the caller's fewest-fills-first pick). Sort by low
+    exp_score first (rule 5 spread) then low party_exp_sum."""
     fill_eligible = [c for c in pool if not c.strong_roles and not c.soft_roles]
     if not fill_eligible:
         return None
