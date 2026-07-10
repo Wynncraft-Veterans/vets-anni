@@ -58,7 +58,8 @@ async def test_expired_event_wipes_credits_wins_and_clears(seeded):
     grace = settings.grace_hours * 3600
 
     # Party 1 (Wenweia=PRIMARY, Nazzae=HEALER, _akaPasta=TANK) WON; party 2
-    # has no result -> no credit.
+    # has one member (Minethuselah) with no assigned role, so its result
+    # doesn't matter for the credit assertions below.
     party1 = await Party.get(event=event, ordinal=1)
     party1.result = PartyResult.WIN
     await party1.save(update_fields=["result"])
@@ -93,3 +94,48 @@ async def test_expired_event_wipes_credits_wins_and_clears(seeded):
     # Players + capabilities persist across a wipe (only the event is cleared).
     assert await AnniPlayer.all().count() == players_before
     assert await RoleCapability.all().count() == caps_before
+
+
+async def test_expired_event_credits_tbd_parties_as_wins(seeded):
+    """Staff forgot to record a result before the grace-wipe fired: the
+    default-to-WIN rule (see ``_credit_wins``) credits members anyway. Only
+    an explicit ``LOSS``/``LAG`` denies credit."""
+    event = seeded["event"]
+    settings = get_settings()
+    grace = settings.grace_hours * 3600
+
+    # Party 1 is left at TBD (staff never set it); party 2 is explicitly LOSS
+    # so its members must NOT be credited even under the default-to-WIN rule.
+    party1 = await Party.get(event=event, ordinal=1)
+    assert party1.result is PartyResult.TBD  # invariant the test rests on
+    party2 = await Party.get(event=event, ordinal=2)
+    party2.result = PartyResult.LOSS
+    await party2.save(update_fields=["result"])
+
+    # Give Minethuselah (party 2's only member) a HEALER role + capability so
+    # the LOSS-denies-credit check has something concrete to assert.
+    mine_place = await BoardPlacement.get(
+        event=event, player=seeded["players"]["Minethuselah"],
+    )
+    mine_place.assigned_role = "healer"
+    await mine_place.save(update_fields=["assigned_role"])
+    mine_cap = await RoleCapability.create(
+        player=seeded["players"]["Minethuselah"], role="healer",
+        confidence="moderate", build_quality="moderate", success_count=0,
+    )
+
+    event.stamp_epoch = int(time.time()) - grace - 10  # EXPIRED
+    await event.save(update_fields=["stamp_epoch"])
+
+    wen_before = (await RoleCapability.get(
+        player=seeded["players"]["Wenweia"], role="primary")).success_count
+
+    await lifecycle_task._tick(AppState(), settings)
+
+    # Party 1's TBD counted as a WIN — Wen's PRIMARY still got +1.
+    assert (await RoleCapability.get(
+        player=seeded["players"]["Wenweia"], role="primary")
+    ).success_count == wen_before + 1
+    # Party 2's explicit LOSS did NOT — Minethuselah's HEALER stayed at 0.
+    await mine_cap.refresh_from_db()
+    assert mine_cap.success_count == 0

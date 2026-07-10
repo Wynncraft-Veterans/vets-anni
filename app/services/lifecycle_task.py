@@ -10,10 +10,13 @@ lifecycle so the destructive transition lives in exactly one place:
   skew can't strand the board frozen.
 * **WIPE** (now > stamp + ``grace_hours``): in **one transaction** — snapshot
   per-party results, bump ``success_count`` for every core role a WIN party
-  member was assigned, delete this event's ``BoardPlacement``/``Rsvp``, mark
-  ``wiped_at`` + ``is_active=False`` — then broadcast ``BOARD_WIPE``.
-  ``RoleCapability``/``AnniPlayer`` persist; a later future stamp makes a fresh
-  event via ``stamp_poller`` (a re-announce updates, never duplicates).
+  member was assigned (parties left ``TBD`` at wipe time are treated as WIN —
+  staff had the whole grace window to mark a ``LOSS``/``LAG`` and didn't, so
+  the members still get credit), delete this event's
+  ``BoardPlacement``/``Rsvp``, mark ``wiped_at`` + ``is_active=False`` — then
+  broadcast ``BOARD_WIPE``. ``RoleCapability``/``AnniPlayer`` persist; a later
+  future stamp makes a fresh event via ``stamp_poller`` (a re-announce
+  updates, never duplicates).
 """
 
 from __future__ import annotations
@@ -40,13 +43,18 @@ async def _credit_wins(event) -> int:
     """+1 ``success_count`` for each (player, core-role) a WIN party member was
     assigned this event. Returns the number of capabilities credited.
 
-    One query for the (event × WIN-party × core-role) cross-join — FILL /
+    ``TBD`` (unset) parties are credited too: staff had the full grace window
+    to record a ``LOSS``/``LAG`` and didn't, so we default the missing result
+    to WIN rather than silently deny credit to players who did their part.
+    Explicit ``LOSS``/``LAG`` still get no credit.
+
+    One query for the (event × credited-party × core-role) cross-join — FILL /
     unassigned placements are excluded by the ``assigned_role__in`` filter so
     they never reach the per-row capability update."""
     members = (
         await BoardPlacement.filter(
             event=event,
-            party__result=PartyResult.WIN,
+            party__result__in=(PartyResult.WIN, PartyResult.TBD),
             assigned_role__in=CAPABILITY_ROLES,
         )
         .select_related("player")
@@ -74,8 +82,8 @@ async def _wipe(event, state: AppState) -> None:
         event.is_active = False
         await event.save(update_fields=["wiped_at", "is_active"])
     logger.info(
-        "anni wiped (stamp=%d): %d placements cleared, %d WIN capabilities "
-        "credited; event marked inactive",
+        "anni wiped (stamp=%d): %d placements cleared, %d capabilities "
+        "credited (WIN + TBD-default-to-WIN); event marked inactive",
         event.stamp_epoch, placements, credited,
     )
     # The next presence tick recomputes empty (no active event); clear now so

@@ -234,6 +234,10 @@ BUCKET_LABEL: dict[BucketKind, str] = {
 
 
 class PartyResult(StrEnum):
+    # Still TBD when the grace-wipe runs = staff never recorded a result. The
+    # wipe treats that as WIN (see ``services/lifecycle_task._credit_wins``):
+    # staff had the whole 2h grace window to mark ``LOSS``/``LAG`` and didn't,
+    # so players who were assigned a core role still get success_count credit.
     TBD = "tbd" # This party is either about to fight, or is still fighting, anni. We don't know the result yet.
     LOSS = "loss" # This party lost.
     LAG = "lag" # This party's experience was so broken that, despite technically being a loss, we refuse to count it as such.

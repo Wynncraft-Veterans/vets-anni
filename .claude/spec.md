@@ -89,7 +89,7 @@
 
 **General Staff Dashboard:** staff-password login (admins can change it). Annihilation status section: when anni, who claimed organisation, staff online, party-formation status.
 
-**Organizer Dashboard:** organise the event. After the timestamp, a 2h grace period to record per-party results (`LOSS`/`LAG`/`WIN`), then a board wipe.
+**Organizer Dashboard:** organise the event. After the timestamp, a 2h grace period to record per-party results (`LOSS`/`LAG`/`WIN`), then a board wipe. Parties left unset at wipe time default to `WIN` (staff had the whole grace window and didn't record a `LOSS`/`LAG`, so credited members still get their `success_count` bump).
 - *Information Module:* live countdown + today's-organiser selector.
 - *Legend Module:* explains border colours (status) and background colours (assigned role) + a colourblind switch.
 - *Attendance Bucket Modules:* one draggable object per potentially-eligible person (rsvp'd / 1hr-early / joined later), same source as `/wv list` + the bot `/rsvp`. Object shows username, legacy name, skin avatar, role-capability pills (weapon/confidence/refinement/success count), **preferred region(s)** (the user's MaxMind GeoIP2 continent codes, or "Any region" if unset), status border, assigned-role background (gray if unassigned), membership eligibility. **At most one instance of each person on the page.** People start unassigned and are moved by staff. Staff can also **manually add any user by IGN** to the Unassigned bucket (e.g. a walk-in who never RSVP'd and isn't in `/wv list`); the IGN is resolved to the canonical UUID and the one-instance-per-person rule still applies (re-adding someone already on the board is a no-op).
