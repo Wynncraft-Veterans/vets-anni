@@ -211,9 +211,11 @@ CONTINENT_ORDER: tuple[ContinentCode, ...] = (
 #: it from the guild payload it already fetches). The conventional Wynncraft
 #: management ranks; widen/narrow per guild via ``STAFF_GUILD_RANKS`` env (see
 #: ``app.settings``). Matched case-insensitively (WAPI keys are lower-case:
-#: owner/chief/strategist/captain/recruiter/recruit).
+#: owner/chief/strategist/recruiter/recruit). Captain was retired in the
+#: 2026-07 permission restructure; if a stray Captain re-appears they are
+#: treated as a non-staff Returner.
 DEFAULT_STAFF_GUILD_RANKS: tuple[str, ...] = (
-    "owner", "chief", "strategist", "captain",
+    "owner", "chief", "strategist",
 )
 
 

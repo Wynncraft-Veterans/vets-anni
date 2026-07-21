@@ -115,8 +115,9 @@ class Settings(BaseSettings):
         description="WAPI guild member rank keys treated as staff — the "
         "lead-organiser candidate set (ALL of them, online or not). "
         "Comma-separated in env (STAFF_GUILD_RANKS); matched case-insensitively "
-        "against the v3 guild ranks (owner/chief/strategist/captain/recruiter/"
-        "recruit). Default = the management ranks; widen if recruiters organise.",
+        "against the v3 guild ranks (owner/chief/strategist/recruiter/recruit; "
+        "captain was retired in the 2026-07 permission restructure). Default = "
+        "the management ranks; widen if recruiters organise.",
     )
 
     enabled_regions: Annotated[list[str], NoDecode] = Field(

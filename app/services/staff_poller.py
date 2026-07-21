@@ -28,7 +28,7 @@ async def _tick(state: AppState, settings: Settings) -> None:
         snapshot[uuid] = {
             "uuid": uuid,
             "username": row.get("username") or uuid[:8],
-            "rank": row.get("rank") or "captain",
+            "rank": row.get("rank") or "recruiter",
             "online": bool(row.get("online", True)),
             "server": row.get("server"),
         }
