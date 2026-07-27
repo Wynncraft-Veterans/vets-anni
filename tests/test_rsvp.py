@@ -17,6 +17,7 @@ test surface is wide on purpose:
 
 from __future__ import annotations
 
+import inspect
 import time as _time
 from dataclasses import dataclass, field
 
@@ -430,6 +431,9 @@ class _FakeContext:
     author: _FakeAuthor = field(default_factory=_FakeAuthor)
     deferred_with: dict | None = None
     replies: list[tuple[str, bool]] = field(default_factory=list)
+    # Only the error-handler tests set this (``_usage_hint`` reads
+    # ``ctx.command.qualified_name`` to pick the right usage line).
+    command: object | None = None
 
     async def defer(self, *, ephemeral: bool = False):
         self.deferred_with = {"ephemeral": ephemeral}
@@ -851,8 +855,121 @@ async def test_execute_set_both_paths_miss(seeded, monkeypatch):
 
     assert "can't find" in outcome.private_message.lower()
     assert "TotallyMadeUpName" in outcome.private_message
+    # The miss has to be actionable: restate the syntax, not just the miss.
+    assert "\\rsvp set" in outcome.private_message
+    assert "hard|soft" in outcome.private_message
     assert outcome.public_message is None
     assert await Rsvp.all().count() == before
+
+
+async def test_execute_set_numeric_target_miss_explains_the_number(seeded, monkeypatch):
+    """``\\rsvp set 60 hard`` — the real-world confusion this wording fixes.
+
+    A bare number is read as a Discord user ID, so staff who meant a world
+    or a party number got an opaque "I can't find 60". Call that out.
+    """
+    _patch_member(monkeypatch, None)
+    from app.bot.cogs.rsvp import execute_rsvp_set
+    from app.services.state import AppState
+
+    outcome = await execute_rsvp_set(
+        _FakeContext(), "60", "hard", AppState()  # type: ignore[arg-type]
+    )
+
+    msg = outcome.private_message
+    assert "Discord user ID" in msg
+    assert "\\rsvp set" in msg
+    assert outcome.public_message is None
+
+
+async def test_target_miss_message_omits_id_note_for_names():
+    """The user-ID aside is digits-only — a name miss shouldn't carry it."""
+    from app.bot.cogs.rsvp import _target_miss_message
+
+    assert "Discord user ID" not in _target_miss_message("joejoe")
+
+
+# --- cog_command_error ------------------------------------------------------ #
+#
+# Prefix invocations are the only path that can reach these (Discord validates
+# the slash signature client-side). Before this handler, a mistyped
+# ``\rsvp set`` replied with *nothing at all* — staff just retyped it.
+
+
+@dataclass
+class _FakeCommand:
+    qualified_name: str = "rsvp set"
+
+
+async def test_cog_command_error_missing_argument_replies_with_usage():
+    """``\\rsvp set 60`` (no level) — silence was the original bug."""
+    import discord.ext.commands as dcommands
+
+    from app.bot.cogs.rsvp import RsvpCog
+
+    cog = RsvpCog(_FakeBot())  # type: ignore[arg-type]
+    ctx = _FakeContext(command=_FakeCommand())
+    param = dcommands.Parameter(
+        name="level", kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+    await cog.cog_command_error(  # type: ignore[arg-type]
+        ctx, dcommands.MissingRequiredArgument(param)
+    )
+
+    assert len(ctx.replies) == 1
+    msg, ephemeral = ctx.replies[0]
+    assert ephemeral is True
+    assert "level" in msg
+    assert "\\rsvp set" in msg
+
+
+async def test_cog_command_error_bad_literal_lists_the_choices():
+    """``\\rsvp set @joejoe tonight`` → name the accepted values."""
+    import discord.ext.commands as dcommands
+
+    from app.bot.cogs.rsvp import RsvpCog
+
+    cog = RsvpCog(_FakeBot())  # type: ignore[arg-type]
+    ctx = _FakeContext(command=_FakeCommand())
+    param = dcommands.Parameter(
+        name="level", kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+    await cog.cog_command_error(  # type: ignore[arg-type]
+        ctx, dcommands.BadLiteralArgument(param, ("hard", "soft"), [], "tonight")
+    )
+
+    msg = ctx.replies[0][0]
+    assert "`hard`" in msg and "`soft`" in msg
+
+
+async def test_cog_command_error_check_failure_still_says_staff_only():
+    import discord.ext.commands as dcommands
+
+    from app.bot.cogs.rsvp import RsvpCog
+
+    cog = RsvpCog(_FakeBot())  # type: ignore[arg-type]
+    ctx = _FakeContext(command=_FakeCommand())
+
+    await cog.cog_command_error(ctx, dcommands.CheckFailure())  # type: ignore[arg-type]
+
+    assert "staff-only" in ctx.replies[0][0]
+
+
+async def test_cog_command_error_reraises_real_bugs():
+    """Anything that isn't a check/input failure must still surface."""
+    import discord.ext.commands as dcommands
+
+    from app.bot.cogs.rsvp import RsvpCog
+
+    cog = RsvpCog(_FakeBot())  # type: ignore[arg-type]
+    ctx = _FakeContext(command=_FakeCommand())
+    boom = dcommands.CommandError("boom")
+
+    with pytest.raises(dcommands.CommandError):
+        await cog.cog_command_error(ctx, boom)  # type: ignore[arg-type]
+    assert ctx.replies == []
 
 
 # --- _is_staff predicate ---------------------------------------------------- #

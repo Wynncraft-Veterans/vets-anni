@@ -67,6 +67,49 @@ logger = logging.getLogger("anni.fishbot.rsvp")
 #: :func:`execute_rsvp`. Keep these aligned with the spec wording.
 Action = Literal["hard", "soft", "revoke", "status"]
 
+#: Usage strings keyed by ``Context.command.qualified_name``. One source for
+#: both the "bad input" reply (:meth:`RsvpCog.cog_command_error`) and the
+#: "no such target" reply (:func:`_target_miss_message`) so the syntax staff
+#: are shown can't drift between the two.
+_USAGE: dict[str, str] = {
+    "rsvp set": (
+        "`\\rsvp set <@member | in-game name> <hard|soft>` — "
+        "e.g. `\\rsvp set @joejoe hard`."
+    ),
+    "rsvp check": "`\\rsvp check <in-game name>` — e.g. `\\rsvp check Wenweia`.",
+}
+
+#: Shown for any subcommand without a specific entry in :data:`_USAGE`.
+_USAGE_FALLBACK = (
+    "`\\rsvp hard` / `soft` / `revoke` / `status` / `list` / "
+    "`check <username>`. Staff: `\\rsvp set <target> <hard|soft>`."
+)
+
+
+def _usage_hint(ctx: commands.Context) -> str:
+    """Usage line for whichever subcommand ``ctx`` invoked."""
+    name = getattr(getattr(ctx, "command", None), "qualified_name", "") or ""
+    return _USAGE.get(name, _USAGE_FALLBACK)
+
+
+def _input_error_message(
+    ctx: commands.Context, error: commands.UserInputError
+) -> str:
+    """Render a mistyped invocation as "what was wrong" + "what to type".
+
+    The two cases worth naming precisely are a missing argument and a
+    ``Literal`` that didn't match (``\\rsvp set <target> tonight``); anything
+    else falls back to the usage line alone rather than leaking discord.py's
+    internal phrasing.
+    """
+    detail = ""
+    if isinstance(error, commands.MissingRequiredArgument):
+        detail = f"Missing `{error.param.name}`. "
+    elif isinstance(error, commands.BadLiteralArgument):
+        allowed = " / ".join(f"`{lit}`" for lit in error.literals)
+        detail = f"`{error.param.name}` must be {allowed}. "
+    return f"{detail}Usage: {_usage_hint(ctx)}"
+
 
 @dataclass(frozen=True)
 class RsvpOutcome:
@@ -357,6 +400,34 @@ async def _resolve_member(
         return None
 
 
+def _target_miss_message(raw: str) -> str:
+    """Friendly "no such person" text for ``\\rsvp set``.
+
+    The bare "I can't find X" line was too terse to be actionable: staff who
+    typed something that *isn't a person* (a world number, a party ordinal)
+    got no hint that the first argument is a target at all. Restates the
+    usage, and calls out the all-digits case explicitly — the converter reads
+    a bare number as a Discord user ID, which is almost never what was meant.
+    """
+    lines = [
+        f"I can't find `{raw}` — that's not a Discord member or a known "
+        f"in-game name.",
+    ]
+    if raw.strip().isdigit():
+        lines.append(
+            f"(A bare number is read as a Discord user ID. If `{raw}` meant "
+            f"a world or a party, `\\rsvp set` doesn't take those — it only "
+            f"sets one person's RSVP.)"
+        )
+    lines.append(f"Usage: {_USAGE['rsvp set']}")
+    lines.append(
+        "Names only resolve once someone has logged into the dashboard, "
+        "RSVP'd, or appeared on the board — @-mention them instead if in "
+        "doubt."
+    )
+    return "\n".join(lines)
+
+
 async def _resolve_target(
     ctx: commands.Context, raw: str, state: AppState
 ) -> tuple[AnniPlayer | None, str | None]:
@@ -391,9 +462,7 @@ async def _resolve_target(
     # Fallback: maybe the staff member typed an IGN rather than a Discord ref.
     player = await _resolve_player_by_ign(raw, state)
     if player is None:
-        return None, (
-            f"I can't find `{raw}` — not a known Discord member or in-game name."
-        )
+        return None, _target_miss_message(raw)
     return player, None
 
 
@@ -602,9 +671,8 @@ class RsvpCog(commands.Cog):
         # Bare ``\rsvp`` / ``/rsvp`` with no subcommand — show what's available.
         if ctx.invoked_subcommand is None:
             await ctx.reply(
-                "Use `\\rsvp hard` / `soft` / `revoke` / `status` / `list` / "
-                "`check <username>` (or the `/rsvp …` slash form). "
-                "Staff: `\\rsvp set <target> <hard|soft>`.",
+                f"Use {_USAGE_FALLBACK}\n"
+                f"All of these also work as `/rsvp …` slash commands.",
                 ephemeral=True,
             )
 
@@ -725,12 +793,20 @@ class RsvpCog(commands.Cog):
     async def cog_command_error(
         self, ctx: commands.Context, error: commands.CommandError
     ) -> None:
-        """Map ``_is_staff()`` failures to a friendly ephemeral reply.
+        """Map check + bad-input failures to friendly ephemeral replies.
 
-        Without this, a non-staff user invoking ``\\rsvp set`` would see
-        discord.py's default "you do not have permission" traceback (or
-        nothing at all on slash). Other errors fall through to the global
-        handler unchanged.
+        Two cases are handled here; everything else re-raises so real bugs
+        still reach the global handler.
+
+        * ``CheckFailure`` — without this, a non-staff user invoking
+          ``\\rsvp set`` would see discord.py's default "you do not have
+          permission" traceback (or nothing at all on slash).
+        * ``UserInputError`` — a mistyped prefix invocation (missing
+          argument, a ``level`` that isn't hard/soft) otherwise produced
+          **complete silence**: discord.py logs it and replies with nothing,
+          so staff repeat the same broken command wondering if the bot is
+          down. Slash invocations can't reach this (Discord validates the
+          signature client-side); the prefix form is the whole point.
         """
         if isinstance(error, commands.CheckFailure):
             try:
@@ -739,6 +815,12 @@ class RsvpCog(commands.Cog):
                 )
             except discord.DiscordException:
                 logger.exception("failed to send staff-only reply")
+            return
+        if isinstance(error, commands.UserInputError):
+            try:
+                await ctx.reply(_input_error_message(ctx, error), ephemeral=True)
+            except discord.DiscordException:
+                logger.exception("failed to send usage reply")
             return
         # Re-raise so the global error handler still sees real bugs.
         raise error
