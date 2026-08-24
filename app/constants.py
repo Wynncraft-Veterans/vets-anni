@@ -104,15 +104,40 @@ RSVP_CUTOFF_SECONDS = 90 * 60
 
 
 class PresenceStatus(StrEnum):
-    """How we see a user *right now* for the active anni."""
+    """How we see a user *right now* for the active anni.
 
-    OFFLINE_GONE = "offline_gone"          # was here <=60 mins before, now offline.
-    OFFLINE_HARD = "offline_hard"          # offline, hard RSVP
-    OFFLINE_SOFT = "offline_soft"          # offline, soft RSVP
-    ONLINE_ELSEWHERE = "online_elsewhere"  # online, wrong world
+    Presence ONLY. The RSVP axis (hard/soft/revoked/none) used to be folded
+    in here as ``OFFLINE_HARD``/``OFFLINE_SOFT``; it now has its own
+    dedicated channel on the person card (:class:`RsvpState`, the badge left
+    of the avatar) so the status border answers exactly one question —
+    "where are they right now?". Declared most→least "present" (the legend
+    and the CB pattern ramp both read this order).
+    """
+
+    ONLINE_PARTY = "online_party"          # online, party world, in the party
     ONLINE_WORLD = "online_world"          # online, party world, not in party
-    ONLINE_PARTY = "online_party"          # online, in the party
+    ONLINE_ELSEWHERE = "online_elsewhere"  # online, wrong/unknown world or queued
+    OFFLINE = "offline"                    # offline, and we never saw them tonight
+    OFFLINE_GONE = "offline_gone"          # was online for this anni, now offline
     UNKNOWN = "unknown"                    # API disabled, not confident in world-change workaround or vetsmod-workaround guesses.
+
+
+class RsvpState(StrEnum):
+    """The RSVP axis, as the board renders it — the second, independent
+    channel next to :class:`PresenceStatus`.
+
+    Derived per (event, player) from :class:`app.db.models.Rsvp`: no row at
+    all is ``NONE`` (a walk-in — they never declared), a live row is
+    ``HARD``/``SOFT`` per its stored notice, and a soft-deleted one
+    (``revoked_at`` set) is ``REVOKED``. ``REVOKED`` deliberately outranks the
+    stored notice: "they pulled out" is the fact an organiser needs, not what
+    they had said before pulling out.
+    """
+
+    NONE = "none"        # never RSVP'd — a walk-in
+    HARD = "hard"        # live Rsvp row, notice=RSVP_HARD
+    SOFT = "soft"        # live Rsvp row, notice=RSVP_SOFT
+    REVOKED = "revoked"  # Rsvp row soft-deleted (revoked_at set)
 
 
 #: Anni has big queues, and players in queues are connecting: not gone.
@@ -264,8 +289,8 @@ PARTY_CAPACITY = 10
 @dataclass(frozen=True)
 class Style:
     """One palette entry — the four colour channels every chip uses. Defined
-    ONCE in ``STYLES`` and shared by both ROLE_STYLES and STATUS_STYLES so a
-    colour has a single source of truth. Mirrored by name in
+    ONCE in ``STYLES`` and shared by ROLE_STYLES, STATUS_STYLES and
+    RSVP_STYLES so a colour has a single source of truth. Mirrored by name in
     static/css/anni.css (``--c-*``) and swapped under ``body.cb`` by
     static/css/colourblind.css. ``light``/``dark`` are hand-tuned for legible
     text — they are NOT a uniform tint/shade; don't regenerate them."""
@@ -277,16 +302,23 @@ class Style:
 
 
 class PaletteColor(StrEnum):
-    """The shared colour vocabulary. Each role is paired with exactly one
-    status on the same entry (see ROLE_STYLES / STATUS_STYLES); GREY is the
-    neutral for 'no role' / 'unknown'."""
+    """The shared colour vocabulary.
+
+    Roles, statuses and RSVP flags all draw from this one set so a hue has a
+    single source of truth (and one CB swap). Roles and statuses used to be
+    *paired* one-to-one on the same entry; that pairing is gone — the status
+    ramp is now a self-contained presence scale (blue→green→orange→red→pink,
+    grey for unknown), which needed ORANGE and PINK that no role uses.
+    """
 
     RED = "red"
+    ORANGE = "orange"
     YELLOW = "yellow"
     GREEN = "green"
     BLUE = "blue"
     CYAN = "cyan"
     MAGENTA = "magenta"
+    PINK = "pink"
     GREY = "grey"
 
 
@@ -295,14 +327,20 @@ class PaletteColor(StrEnum):
 #: Values are hand-tuned for legibility — do not "uniformly" regenerate them.
 STYLES: dict[PaletteColor, Style] = {
     PaletteColor.RED:    Style("#ff0000", "#ff9292", "#990000", "#D55E00"),
+    # ORANGE + PINK are status-only (no role uses them). CB hues are the two
+    # Okabe-Ito entries the role set left unclaimed for a *border*: orange
+    # #E69F00, and reddish-purple #CC79A7 for pink. #CC79A7 is also MAGENTA's
+    # CB hue, which is fine — MAGENTA is only ever a role *background* and
+    # PINK only ever a status *border*, so they never have to be told apart.
+    PaletteColor.ORANGE: Style("#ff8c00", "#ffc98a", "#8f4a00", "#E69F00"),
     PaletteColor.YELLOW: Style("#fffb00", "#f5f36e", "#696800", "#F0E442"),
     PaletteColor.GREEN:  Style("#15ff00", "#83ff78", "#0a7700", "#009E73"),
     PaletteColor.BLUE:   Style("#0400ff", "#9290ff", "#0300AC", "#0072B2"),
     # CB hue is Okabe-Ito BLACK (not sky-blue): sky-blue #56B4E9 was too
-    # close to BLUE's #0072B2 to tell apart. CYAN is the shared FILL-role /
-    # ONLINE_WORLD-status entry, so both go black under cb.
+    # close to BLUE's #0072B2 to tell apart. CYAN backs the FILL role.
     PaletteColor.CYAN: Style("#00e1ff", "#4aeaff", "#007E8F", "#000000"),
     PaletteColor.MAGENTA: Style("#ff00dd", "#ff7aff", "#6000b9", "#CC79A7"),
+    PaletteColor.PINK:   Style("#ff69b4", "#ffb3d9", "#a1004f", "#CC79A7"),
     PaletteColor.GREY:   Style("#888888", "#d6d6d6", "#3d3d3d", "#999999"),
 }
 
@@ -330,9 +368,9 @@ class StatusStyle:
     ``pattern`` is the non-colour channel (CB-only — with cb off the border
     is a plain solid coloured outline). One uniform-width family, most→least
     "present", PARTY→GONE: ``double`` (in party) → ``solid`` (world) →
-    ``dash`` (elsewhere) → ``dash-dash-dot`` (hard RSVP) → ``dash-dot``
-    (soft RSVP) → ``dot`` (gone); ``dash-dot-dot`` = UNKNOWN
-    (unconfirmable). All render the border-colour **verbatim** (no
+    ``dash`` (elsewhere) → ``dash-dot`` (offline) → ``dot`` (gone);
+    ``dash-dot-dot`` = UNKNOWN (unconfirmable). All render the
+    border-colour **verbatim** (no
     groove/ridge 3-D shading) so under ``body.cb`` the line is the exact
     Okabe-Ito hue. Rendered by static/css/colourblind.css
     ``.status-border[data-pattern=…]`` (composites via a ``var(--stc)``
@@ -355,8 +393,9 @@ def _status(s: Style, pattern: str, glyph: str, label: str) -> StatusStyle:
     return StatusStyle(s.color, s.light, s.dark, s.cb, pattern, glyph, label)
 
 
-# Role → shared colour (spec.md [^5]). A role and its paired status share the
-# SAME STYLES entry — see STATUS_STYLES.
+# Role → shared colour (spec.md [^5]). Roles draw from the same ``STYLES``
+# table as statuses and RSVP flags, but each family now picks its own entries
+# — there is no longer a role↔status pairing to keep in step.
 ROLE_STYLES: dict[Role, RoleStyle] = {
     Role.PRIMARY:   _role(STYLES[PaletteColor.RED],    "PRIM", "Primary (boss killer)"),
     Role.SECONDARY: _role(STYLES[PaletteColor.YELLOW], "SUNK", "Secondary (sun killer)"),
@@ -385,33 +424,76 @@ ROLE_SORT_PRIORITY: dict[Role | None, int] = {
 }
 
 
-# Status border → the SAME shared colour as its paired role (spec.md [^6]):
-# GONE↔TANK(blue), SOFT↔PRIMARY(red), HARD↔TERTIARY(magenta),
-# ELSEWHERE↔HEALER(green), WORLD↔FILL(cyan), PARTY↔SECONDARY(yellow).
-# (Pairings re-aligned post test-run to match revised status semantics; role
-# colours stayed put, only which status each role pairs with changed.)
+# Status border — a self-contained "how close are they to being in position?"
+# ramp, declared most→least present. It is NO LONGER paired with the role
+# palette (roles keep their own hues; a status and a role sharing a hue is now
+# a coincidence, not a contract) and it no longer encodes RSVP at all — that
+# moved to RSVP_STYLES / the person card's RSVP badge.
+#
+#   ONLINE_PARTY     blue    — in position
+#   ONLINE_WORLD     green   — right world, not in the party yet
+#   ONLINE_ELSEWHERE orange  — online but somewhere else (or queued)
+#   OFFLINE          red     — not here, and we never saw them tonight
+#   OFFLINE_GONE     pink    — was here for this anni and left
+#   UNKNOWN          grey    — API disabled / unconfirmable
+#
+# The glyph ramp mirrors it: ● full → ◐ half → → moving → ○ empty → ! left →
+# ? unconfirmable, so the channel reads with no colour at all.
 STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
-    PresenceStatus.OFFLINE_GONE: _status(
-        STYLES[PaletteColor.BLUE], "dot", "!",
-        "A user who was here but has since logged out"),
-    PresenceStatus.OFFLINE_HARD: _status(
-        STYLES[PaletteColor.MAGENTA], "dash-dash-dot", "✓",
-        "A hard RSVP'd user who is not here yet"),
-    PresenceStatus.OFFLINE_SOFT: _status(
-        STYLES[PaletteColor.RED], "dash-dot", "~",
-        "A soft RSVP'd user who is not here yet"),
-    PresenceStatus.ONLINE_ELSEWHERE: _status(
-        STYLES[PaletteColor.GREEN], "dash", "→",
-        "An online user not on their party's world"),
-    PresenceStatus.ONLINE_WORLD: _status(
-        STYLES[PaletteColor.CYAN], "solid", "◐",
-        "An on-world online user who has not joined their party yet."),
     PresenceStatus.ONLINE_PARTY: _status(
-        STYLES[PaletteColor.YELLOW], "double", "●",
+        STYLES[PaletteColor.BLUE], "double", "●",
         "An online user who has joined their party."),
+    PresenceStatus.ONLINE_WORLD: _status(
+        STYLES[PaletteColor.GREEN], "solid", "◐",
+        "An on-world online user who has not joined their party yet."),
+    PresenceStatus.ONLINE_ELSEWHERE: _status(
+        STYLES[PaletteColor.ORANGE], "dash", "→",
+        "An online user not on their party's world"),
+    PresenceStatus.OFFLINE: _status(
+        STYLES[PaletteColor.RED], "dash-dot", "○",
+        "An offline user we have not seen tonight"),
+    PresenceStatus.OFFLINE_GONE: _status(
+        STYLES[PaletteColor.PINK], "dot", "!",
+        "A user who was here but has since logged out"),
     PresenceStatus.UNKNOWN: _status(
         STYLES[PaletteColor.GREY], "dash-dot-dot", "?",
         "Unknown — API disabled / unconfirmable"),
+}
+
+
+@dataclass(frozen=True)
+class RsvpStyle:
+    """The RSVP badge on the person card — the axis lifted *out* of the status
+    border. Same four shared colour channels as the other two chip families
+    plus ``glyph`` + ``label``, which are what actually carry the meaning (the
+    badge is small and the four glyphs are deliberately unmistakable in
+    greyscale, so colour is decoration here rather than signal)."""
+
+    color: str
+    light: str
+    dark: str
+    cb: str
+    glyph: str
+    label: str
+
+
+def _rsvp(s: Style, glyph: str, label: str) -> RsvpStyle:
+    return RsvpStyle(s.color, s.light, s.dark, s.cb, glyph, label)
+
+
+#: RSVP badge → shared colour + glyph + label. Traffic-light reading: green
+#: committed, yellow tentative, red pulled out, grey never said. ``W`` (for
+#: walk-in) rather than a symbol for NONE: "they never declared" is the one
+#: state with no natural mark, and a letter can't be misread as a tick.
+RSVP_STYLES: dict[RsvpState, RsvpStyle] = {
+    RsvpState.NONE: _rsvp(
+        STYLES[PaletteColor.GREY], "W", "No RSVP — walk-in"),
+    RsvpState.HARD: _rsvp(
+        STYLES[PaletteColor.GREEN], "✓", "Hard RSVP"),
+    RsvpState.SOFT: _rsvp(
+        STYLES[PaletteColor.YELLOW], "~", "Soft RSVP"),
+    RsvpState.REVOKED: _rsvp(
+        STYLES[PaletteColor.RED], "✕", "RSVP retracted"),
 }
 
 

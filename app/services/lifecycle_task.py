@@ -9,8 +9,10 @@ lifecycle so the destructive transition lives in exactly one place:
   ``board_hub`` via ``domain/schedule`` — not a flag we set here, so a clock
   skew can't strand the board frozen.
 * **WIPE** (now > stamp + ``grace_hours``): in **one transaction** — snapshot
-  per-party results, bump ``success_count`` for every core role a WIN party
-  member was assigned (parties left ``TBD`` at wipe time are treated as WIN —
+  per-party results, bump ``success_count`` for every core role a WIN *party*
+  member was assigned — bucketed players (Unassigned/Volunteers/Sitting-out)
+  never earn credit, assigned role or not (parties left ``TBD`` at wipe time
+  are treated as WIN —
   staff had the whole grace window to mark a ``LOSS``/``LAG`` and didn't, so
   the members still get credit), delete this event's
   ``BoardPlacement``/``Rsvp``, mark ``wiped_at`` + ``is_active=False`` — then
@@ -48,12 +50,25 @@ async def _credit_wins(event) -> int:
     to WIN rather than silently deny credit to players who did their part.
     Explicit ``LOSS``/``LAG`` still get no credit.
 
+    **Only players who actually sat in a party are credited.** Anyone left in
+    a bucket — Unassigned, Volunteers, Sitting-out — gets nothing, *even if
+    they carry an assigned role*: a role can be set on a card long before (or
+    after) it is dragged into a party, so ``assigned_role`` on a bucketed
+    placement records an intent that never happened. The ``party_id`` /
+    ``bucket`` predicates are what enforce that, and they are spelled out
+    rather than left to the ``party__result__in`` join: that join *happens*
+    to drop bucketed rows today (a LEFT JOIN makes ``NULL IN (...)`` false),
+    but win-credit is exactly the kind of rule that should not rest on SQL
+    three-valued-logic trivia.
+
     One query for the (event × credited-party × core-role) cross-join — FILL /
-    unassigned placements are excluded by the ``assigned_role__in`` filter so
+    role-less placements are excluded by the ``assigned_role__in`` filter so
     they never reach the per-row capability update."""
     members = (
         await BoardPlacement.filter(
             event=event,
+            party_id__isnull=False,
+            bucket__isnull=True,
             party__result__in=(PartyResult.WIN, PartyResult.TBD),
             assigned_role__in=CAPABILITY_ROLES,
         )
@@ -90,6 +105,9 @@ async def _wipe(event, state: AppState) -> None:
     # nothing stale lingers between ticks.
     state.presence_by_uuid = {}
     state.api_active_uuids = set()
+    # Per-event history: without this the next anni would open with everyone
+    # who logged in during the last one already reading as OFFLINE_GONE.
+    state.seen_online_uuids = set()
 
     from app.web.ws.board_hub import get_board_hub
 

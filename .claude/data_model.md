@@ -22,6 +22,23 @@ insert-then-delete); (3) `board_hub` applies ops sequentially on the event loop
 (SQLite single writer). A rejected concurrent move sends `REJECTED` so the
 client rolls back its optimistic DOM.
 
+## Deleting an `AnniPlayer` (`domain/players.py`)
+Rows are created lazily and generously — `buckets.add_walkin` ("Add Players"),
+`set_organizer`, `\rsvp set` and the auto-promoter all get-or-create by
+whatever uuid resolved — so a typo that happens to be a real Minecraft name
+becomes a ghost profile. `players.purge` is the **only** delete path, and it
+only ever destroys an empty shell: refused if the row has a `password_hash`,
+any `RoleCapability`, any `Rsvp` (revoked ones included — they're the audit
+trail), hosts a `Party`, or is an `AnniEvent.organizer`. `BoardPlacement` rows
+cascade with it deliberately (taking the ghost off the board is the point).
+Offered on the roles dashboard as "Delete profile", gated by the bulk twin
+`players.deletable_uuids()` so the button only appears on shells.
+
+Getting someone off the board *without* touching their profile is the separate
+`buckets.remove_player` (the board card's ✕ / `PLAYER_REMOVE`). Note that
+neither is permanent for an online guild member: the auto-promoter
+re-materialises a placeholder + placement on the next hot-window tick.
+
 ## Migrations (Aerich)
 Deliberate divergence from dazebot (which has none). Workflow:
 

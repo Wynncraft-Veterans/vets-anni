@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from app.constants import PartyResult
+from app.constants import BucketKind, PartyResult
 from app.db.lifecycle import get_active_event
 from app.db.models import (
     AnniPlayer,
@@ -139,3 +139,48 @@ async def test_expired_event_credits_tbd_parties_as_wins(seeded):
     # Party 2's explicit LOSS did NOT — Minethuselah's HEALER stayed at 0.
     await mine_cap.refresh_from_db()
     assert mine_cap.success_count == 0
+
+
+async def test_bucketed_players_never_earn_win_credit(seeded):
+    """Unassigned / Volunteering / Sitting-out earn NOTHING, even holding an
+    assigned role. Staff routinely set a role on a card before dragging it
+    into a party (and leave it set when they drag it back out), so a role on
+    a bucketed placement records an intent that never happened — crediting it
+    would hand out wins to people who sat the anni out."""
+    event = seeded["event"]
+    settings = get_settings()
+    grace = settings.grace_hours * 3600
+
+    # One player per bucket, each given a core role + a matching capability.
+    bucketed = {
+        "Paradrex": BucketKind.UNASSIGNED,    # unassigned (main lane)
+        "Sevisoup": BucketKind.VOLUNTEERS,    # volunteering
+        "ThinKing": BucketKind.WONTASSIGN,    # sitting out
+    }
+    caps = {}
+    for name, bucket in bucketed.items():
+        player = seeded["players"][name]
+        place = await BoardPlacement.get(event=event, player=player)
+        assert place.bucket is bucket and place.party_id is None
+        place.assigned_role = "tank"
+        await place.save(update_fields=["assigned_role"])
+        caps[name] = await RoleCapability.create(
+            player=player, role="tank", confidence="high",
+            build_quality="high", success_count=0,
+        )
+
+    event.stamp_epoch = int(time.time()) - grace - 10  # EXPIRED
+    await event.save(update_fields=["stamp_epoch"])
+    wen_before = (await RoleCapability.get(
+        player=seeded["players"]["Wenweia"], role="primary")).success_count
+
+    await lifecycle_task._tick(AppState(), settings)
+
+    for name, cap in caps.items():
+        await cap.refresh_from_db()
+        assert cap.success_count == 0, f"{name} was credited from a bucket"
+    # ...while a real party member on the same (TBD-defaults-to-WIN) event is
+    # still credited, so this asserts the exclusion and not a dead wipe.
+    assert (await RoleCapability.get(
+        player=seeded["players"]["Wenweia"], role="primary")
+    ).success_count == wen_before + 1

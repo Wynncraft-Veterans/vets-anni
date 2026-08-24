@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from app.constants import AttendanceNotice, MembershipTier
+from app.constants import AttendanceNotice, MembershipTier, RsvpState
 from app.db.lifecycle import get_active_event
 from app.db.models import AnniPlayer, BoardPlacement, Rsvp
 from app.domain import rsvp as rsvp_domain
@@ -1201,3 +1201,43 @@ async def test_rsvp_clears_placeholder_on_existing_player(seeded, monkeypatch):
     # Persisted, not just in-memory.
     await p.refresh_from_db()
     assert p.is_placeholder is False
+
+
+def test_state_of_collapses_a_row_to_the_board_axis():
+    """The board badge's vocabulary: revoked beats the stored notice, and
+    anything we never store (or no row at all) reads as a walk-in."""
+    assert rsvp_domain.state_of(AttendanceNotice.RSVP_HARD, False) is RsvpState.HARD
+    assert rsvp_domain.state_of(AttendanceNotice.RSVP_SOFT, False) is RsvpState.SOFT
+    assert rsvp_domain.state_of(None, False) is RsvpState.NONE
+    # Revoked wins whatever they had said before pulling out.
+    for notice in (AttendanceNotice.RSVP_HARD, AttendanceNotice.RSVP_SOFT, None):
+        assert rsvp_domain.state_of(notice, True) is RsvpState.REVOKED
+    # A derived notice can never reach Rsvp.notice, but if one somehow did we
+    # degrade to "walk-in" rather than raising in the middle of a render.
+    assert rsvp_domain.state_of(
+        AttendanceNotice.ATTEND_EARLY, False
+    ) is RsvpState.NONE
+
+
+async def test_states_by_uuid_includes_revoked_rows(seeded):
+    """Unlike every other read in the module, this one is unfiltered: a
+    revoked row is a *state* the board renders, not an absence to hide.
+    Players with no row at all are simply absent from the map."""
+    event = seeded["event"]
+    baz = seeded["players"]["baz"]   # no seeded RSVP
+    wen = seeded["players"]["Wenweia"]
+
+    states = await rsvp_domain.states_by_uuid(event)
+    assert states[wen.mc_uuid] is RsvpState.HARD
+    assert states[seeded["players"]["Paradrex"].mc_uuid] is RsvpState.SOFT
+    assert baz.mc_uuid not in states
+
+    await rsvp_domain.set_rsvp(baz, event, AttendanceNotice.RSVP_SOFT)
+    assert (await rsvp_domain.states_by_uuid(event))[baz.mc_uuid] is RsvpState.SOFT
+
+    await rsvp_domain.revoke(baz, event)
+    assert (await rsvp_domain.states_by_uuid(event))[baz.mc_uuid] is RsvpState.REVOKED
+
+    # Re-RSVPing revives the row, so the state goes back to a live one.
+    await rsvp_domain.set_rsvp(baz, event, AttendanceNotice.RSVP_HARD)
+    assert (await rsvp_domain.states_by_uuid(event))[baz.mc_uuid] is RsvpState.HARD

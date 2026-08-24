@@ -456,6 +456,53 @@ async def add_walkin(
     return OpResult(True, player_uuid=player.mc_uuid)
 
 
+async def remove_player(event: AnniEvent, player_uuid: str) -> OpResult:
+    """Take one person off the board — the inverse of :func:`add_walkin`.
+
+    Deletes the ``(event, player)`` :class:`BoardPlacement` and nothing else:
+    the :class:`AnniPlayer` row, their RSVP and their capabilities all
+    survive, because "shouldn't be on tonight's board" is not "isn't a
+    person". Deleting the *profile* of a mistaken add is a separate,
+    guarded operation (:mod:`app.domain.players`).
+
+    Refuses while the player hosts a party, mirroring :func:`delete_party`'s
+    refusal to delete a non-empty one: ``Party.host`` is a player FK, not a
+    placement FK, so removing them would leave a host who isn't on the board
+    (rendering as "— none —" in the host select while the collapsed party
+    head still names them). Staff change the host first; we never silently
+    rewrite a party as a side effect of a different action.
+
+    Not idempotent-friendly by design — removing someone who isn't placed is
+    a friendly reject, so a double-click on a stale card says so rather than
+    reporting success for a no-op.
+
+    Note for the caller: during the hot window the auto-promoter re-adds
+    anyone it sees online in the merge cache (``services/auto_promoter``), so
+    removing an online guild member is temporary by nature.
+    """
+    placement = await (
+        BoardPlacement.filter(event=event, player__mc_uuid=player_uuid)
+        .select_related("player")
+        .first()
+    )
+    if placement is None:
+        return OpResult(False, "That player isn't on the board.", player_uuid)
+
+    hosting = await Party.filter(event=event, host__mc_uuid=player_uuid).first()
+    if hosting is not None:
+        return OpResult(
+            False,
+            f"They're hosting Party {hosting.ordinal} — set that party's "
+            f"host to someone else first.",
+            player_uuid,
+        )
+
+    name = placement.player.mc_username
+    await placement.delete()
+    logger.info("removed from board: %s", name)
+    return OpResult(True, player_uuid=player_uuid)
+
+
 # --- parties ---------------------------------------------------------------
 async def create_party(event: AnniEvent) -> Party:
     """Append a new party with the next free ordinal (unique per event)."""

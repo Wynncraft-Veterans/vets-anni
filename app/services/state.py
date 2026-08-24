@@ -92,6 +92,14 @@ class AppState:
     presence_by_uuid: dict[str, str] = field(default_factory=dict)
     presence_fetched_at: float = 0.0
 
+    #: mc_uuids we have seen ONLINE at least once during the active anni. This
+    #: is what separates ``OFFLINE_GONE`` ("was here, left") from plain
+    #: ``OFFLINE`` ("never showed") — the presence machine has no history of
+    #: its own, so the poller accumulates it here and feeds it back in as
+    #: ``PresenceInputs.was_online``. Add-only within an event; the grace-wipe
+    #: clears it alongside ``presence_by_uuid`` so the next anni starts clean.
+    seen_online_uuids: set[str] = field(default_factory=set)
+
     # --- anni_party_observation (S7 vetsmod back-report) -------------------
     #: member_mc_uuid -> leader_mc_uuid. Source: S7 ``anni_party_observation``
     #: endpoint — vetsmod reports its local Wynncraft party roster when an

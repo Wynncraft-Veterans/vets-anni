@@ -79,6 +79,42 @@ web) → **2** ✅ App3 (staff/board) → **3** App2 (fishbot) → **4** App4
 verification. App4 vetsmod surface shipped 2026-06-18 (S7 completion of the
 multi-stage cross-repo plan).
 
+**Board channels rework (2026-08-24):** the person card now carries **two
+independent axes** instead of one overloaded border.
+- **Status border = presence only.** `OFFLINE_HARD`/`OFFLINE_SOFT` are gone,
+  replaced by a single `OFFLINE`; the ramp is blue (in party) → green (on
+  world) → orange (elsewhere) → red (offline) → pink (gone), grey unknown, and
+  is no longer paired one-to-one with the role palette (that pairing is what
+  ORANGE/PINK broke — `PaletteColor` gained both). CB pattern ramp lost its
+  `dash-dash-dot` step accordingly.
+- **`OFFLINE_GONE` finally means what it says.** It used to be inferred from
+  "offline with no RSVP"; it now keys off real history —
+  `AppState.seen_online_uuids`, accumulated by `presence_poller` and cleared
+  by the grace-wipe — surfaced as `PresenceInputs.was_online`. The user
+  dashboard reads the same set so its bar agrees with the staff border.
+- **RSVP is its own badge** (`RsvpState` + `RSVP_STYLES` + `rsvp_chip`), left
+  of the avatar, `W`/`✓`/`~`/`✕`. `REVOKED` outranks the stored notice.
+  `rsvp.states_by_uuid` is the codebase's one *unfiltered* Rsvp read — a
+  revoked row is a state to render, not an absence to hide. A static test
+  asserts RSVP glyphs are disjoint from status glyphs, so no mark on a card
+  ever means two things.
+- **"Offline soft RSVPs" sub-bucket** in Unassigned (above walk-ins) and in
+  every party (rendered only when occupied). **Derived, not stored**
+  (`board_view.is_offline_soft`): soft RSVP + `OFFLINE`/`OFFLINE_GONE`, never
+  `UNKNOWN`. It has to be derived — it tracks live presence and party
+  placements have no lane flags — so its dropzone deliberately targets the
+  same container as the lane above it and a drag in/out of it re-derives.
+  Carved out of the **main** Unassigned lane only (walk-ins never RSVP'd;
+  LATE is a provenance marker worth keeping whole). A party's `count` spans
+  both lanes so the N/10 header can't lie.
+- **Win credit is party-only.** `_credit_wins` now spells out
+  `party_id__isnull=False, bucket__isnull=True`: Unassigned / Volunteering /
+  Sitting-out earn nothing even holding an assigned role (a role is routinely
+  set before, or left set after, a card is dragged into a party). The
+  `party__result__in` join happened to drop bucketed rows already — via
+  `NULL IN (...)` on a LEFT JOIN — and that is far too subtle a thing for
+  this rule to rest on.
+
 **Phase 2 done (2026-05-18):** the staff/organizer board.
 `domain/schedule.py` (pure event-phase: PENDING/GRACE/EXPIRED) +
 `domain/buckets.py` (the **sole** `BoardPlacement` writer — UPSERT-in-

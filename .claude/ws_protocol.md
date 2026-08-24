@@ -6,6 +6,13 @@ Frames are JSON `{v:1, type, ...}`.
 
 ## Client → server (intents)
 - `HELLO {since_seq?}` — connect/resume.
+- `PLAYER_ADD {ign}` — staff walk-in by IGN; get-or-creates the `AnniPlayer`.
+- `PLAYER_REMOVE {player_uuid}` — take the card off the board. Deletes the
+  `BoardPlacement` **only**; the profile, RSVP and capabilities survive
+  (deleting a mis-added *profile* is `domain/players.purge`, offered on the
+  roles dashboard, not here). Rejected while the player hosts a party — same
+  posture as `PARTY_DELETE` on a non-empty one, since `Party.host` is a player
+  FK and would otherwise point off-board.
 - `MOVE {player_uuid, target:{bucket|party_id, sort_index}, op_id}`
 - `ASSIGN_ROLE {player_uuid, role|null, op_id}`
 - `PARTY_CREATE {}` · `PARTY_RENAME {party_id, ordinal}`

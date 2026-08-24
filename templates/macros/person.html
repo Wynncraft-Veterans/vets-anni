@@ -5,6 +5,10 @@
    * the STATUS is a coloured *border around the whole object* AND a
      non-colour `data-pattern` (online vs offline reads from the border alone)
      AND a glyph + aria-label;
+   * the RSVP is the badge left of the face — its own axis, deliberately NOT
+     folded into the border: where someone is and what they promised are two
+     independent facts an organiser reads together. Glyph (W/✓/~/✕) + title +
+     aria-label carry it; colour only reinforces;
    * the assigned ROLE is the card background (legible -dark shade, white
      text) plus the raw-hue glyph swatch + label;
    * tier / LATE / regions are plain text pills (no colour dependence).
@@ -24,7 +28,16 @@
        style="--stc: var({{ p.status_chip.css_var }});
               border-color: var({{ p.status_chip.css_var }});
               background-color: var({{ p.role_chip.css_var_dark }})"
-       aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}">
+       aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}, {{ p.rsvp_chip.label }}">
+    {# RSVP badge — first thing on the card, left of the face. Sized to the
+       32px avatar so the lane of badges reads as a column when you scan a
+       dropzone. `role="img"` + aria-label (not a bare title) so it is
+       announced; `draggable=false` keeps it from starting its own drag. #}
+    <span class="rsvp-flag rsvp-flag-lg" data-rsvp="{{ p.rsvp_chip.state }}"
+          style="background-color: var({{ p.rsvp_chip.css_var }})"
+          role="img" draggable="false"
+          title="{{ p.rsvp_chip.label }}"
+          aria-label="RSVP: {{ p.rsvp_chip.label }}">{{ p.rsvp_chip.glyph }}</span>
     <img class="person-face" src="{{ p.avatar }}" alt="" width="32" height="32"
          loading="lazy" onerror="this.remove()">
     <div class="person-main">
@@ -138,6 +151,18 @@
       {# Opt-in destination dropdown — alternative to drag-drop. Off by default
          (cookie cfg_dropdown_assign). Fires window.__moveViaSelect, defined in
          board.js, which parses the value and POSTs the move via HTMX. #}
+      {# Take the card off the board (placement only — the profile survives;
+         a mistaken add is deleted outright from Staff → Roles). Hidden during
+         grace, like the party delete: the hub would REJECT it anyway. #}
+      {% if not (snapshot and snapshot.event.frozen) %}
+        <button class="person-remove" type="button" draggable="false"
+                hx-post="/staff/board/player-remove"
+                hx-vals='{"player_uuid": "{{ p.uuid }}"}'
+                hx-target="#board" hx-swap="outerHTML"
+                hx-confirm="Take {{ p.name }} off the board? Their profile is kept — if they were added by mistake, delete the profile from the Roles dashboard."
+                aria-label="Remove {{ p.name }} from the board"
+                title="Remove from the board (keeps their profile)">×</button>
+      {% endif %}
       {% if dropdown_assign and snapshot %}
         <select class="person-move" aria-label="Move {{ p.name }}"
                 data-uuid="{{ p.uuid }}"

@@ -37,7 +37,25 @@
         <span class="pill pill-muted">{{ r.tier_label }}</span>
         {% if r.is_core %}<span class="pill pill-ok">Core</span>
         {% else %}<span class="pill pill-danger">Fill</span>{% endif %}
+        {# Only shells get a Delete: no password, no capabilities, no RSVP
+           ever, not a party host or lead organiser (domain/players). The
+           button's presence IS the signal that this profile holds nothing —
+           typically a mistyped "Add Players" / `\rsvp set` that resolved to
+           a real-but-wrong Minecraft name. #}
+        {% if r.can_delete %}
+          <button class="btn-sm btn-danger roles-delete"
+                  hx-post="/staff/roles/player/{{ r.uuid }}/delete"
+                  hx-target="#roles-row-{{ r.uuid }}" hx-swap="outerHTML"
+                  hx-confirm="Delete {{ r.name }}'s profile? They have no RSVP, capabilities or login, so this only removes the empty profile (and their card from the board)."
+                  title="Delete this empty profile — nothing of theirs is stored">
+            Delete profile
+          </button>
+        {% endif %}
       </span>
+      {% if row_error %}
+        <span class="roles-meta"><span class="pill pill-danger"
+              role="alert">{{ row_error }}</span></span>
+      {% endif %}
       <span class="roles-regions">{{ region_pills(r.regions) }}</span>
     </div>
   </div>

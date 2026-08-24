@@ -20,16 +20,31 @@ def _online(uuid: str, **kw) -> OnlinePlayer:
     return OnlinePlayer(uuid=uuid, username="x", **kw)
 
 
-async def test_offline_board_maps_by_rsvp_and_hides_api_disabled(seeded):
+async def test_offline_board_is_plain_offline_and_hides_api_disabled(seeded):
     p = seeded["players"]
-    got = await presence_poller._compute(AppState())  # nobody online
+    got = await presence_poller._compute(AppState())  # nobody online, no history
 
-    assert got[p["Wenweia"].mc_uuid] is S.OFFLINE_HARD     # hard RSVP, offline
-    assert got[p["Paradrex"].mc_uuid] is S.OFFLINE_SOFT     # soft RSVP, offline
-    assert got[p["Faulischlumpf"].mc_uuid] is S.OFFLINE_GONE  # no RSVP, offline
+    # RSVP no longer splits the offline branch — everyone we have never seen
+    # is plain OFFLINE regardless of what they promised.
+    assert got[p["Wenweia"].mc_uuid] is S.OFFLINE        # hard RSVP, offline
+    assert got[p["Paradrex"].mc_uuid] is S.OFFLINE       # soft RSVP, offline
+    assert got[p["Faulischlumpf"].mc_uuid] is S.OFFLINE  # no RSVP, offline
     # API-disabled + unconfirmable -> UNKNOWN even though Metrafish hard-RSVP'd
     # (never faked online, never downgraded to an OFFLINE_* it can't prove).
     assert got[p["Metrafish"].mc_uuid] is S.UNKNOWN
+
+
+async def test_seeing_someone_online_then_offline_makes_them_gone(seeded):
+    """The poller is where GONE's history comes from: one tick online writes
+    ``seen_online_uuids``, and the next tick with them offline reads it back."""
+    wen = seeded["players"]["Wenweia"].mc_uuid
+    state = AppState(online_by_uuid={wen: _online(wen)})
+
+    assert (await presence_poller._compute(state))[wen] is not S.OFFLINE_GONE
+    assert wen in state.seen_online_uuids
+
+    state.online_by_uuid = {}  # they log off
+    assert (await presence_poller._compute(state))[wen] is S.OFFLINE_GONE
 
 
 async def test_online_merge_drives_world_states(seeded):

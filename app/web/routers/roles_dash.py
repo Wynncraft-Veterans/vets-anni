@@ -26,12 +26,13 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.constants import MEMBERSHIP_PRIORITY, AttendanceNotice, MembershipTier
 from app.db.lifecycle import get_active_event
 from app.db.models import AnniPlayer, Rsvp
 from app.domain import capability as cap_domain
+from app.domain import players as players_domain
 from app.domain import regions as regions_domain
 from app.domain.colourblind import role_chip
 from app.domain.membership import label as tier_label
@@ -40,6 +41,7 @@ from app.services.state import AppState
 from app.web import auth
 from app.web.board_view import avatar
 from app.web.deps import render
+from app.web.ws.board_hub import broadcast_active_board
 
 logger = logging.getLogger("anni.web.roles")
 router = APIRouter()
@@ -52,9 +54,10 @@ async def view_signals(
 
     Returns ``(active_uuids, rsvp_by_uuid, has_event)``:
 
-    * ``active_uuids`` — online OR RSVP'd; powers the "Active only" toggle and
-      matches the green/yellow/blue/cyan/magenta org-board presence colours
-      (everything except OFFLINE_GONE/red and UNKNOWN/grey).
+    * ``active_uuids`` — online OR RSVP'd; powers the "Active only" toggle.
+      Deliberately a union of the two org-board axes rather than a mirror of
+      either: someone online with no RSVP and someone who RSVP'd but is not
+      on yet are both people staff still have to place.
     * ``rsvp_by_uuid`` — non-revoked RSVP notice keyed by player uuid; powers
       the ✓/✗ badge under each avatar.
     * ``has_event`` — ``False`` when no active event exists (RSVP is undefined,
@@ -80,6 +83,7 @@ def row_for(
     active_uuids: set[str] | None = None,
     rsvp_by_uuid: dict[str, AttendanceNotice] | None = None,
     has_event: bool = False,
+    deletable: bool = False,
 ) -> dict:
     """Build the single-player row dict the roles dashboard renders.
 
@@ -93,6 +97,11 @@ def row_for(
     (``rsvp_state='na'``) so we never render a misleading ✗; when the caller
     omits these the row degrades to "no presence info" — the toggle won't
     keep it visible and the badge is hidden.
+
+    ``deletable`` (from :func:`app.domain.players.deletable_uuids`) decides
+    whether the row offers "Delete profile" at all. Defaulting it to ``False``
+    means a caller that forgets it renders a *safe* row, and the button's mere
+    presence tells staff this profile holds nothing.
     """
     caps = sorted(player.capabilities, key=lambda c: c.role.value)
     is_core = cap_domain.is_core(len(caps))
@@ -122,6 +131,7 @@ def row_for(
         "is_core": is_core,
         "is_active": active_uuids is not None and player.mc_uuid in active_uuids,
         "rsvp_state": rsvp_state,
+        "can_delete": deletable,
         "wins_total": wins_total,
         "region_codes_csv": ",".join(c.value for c in region_codes),
         "role_values_csv": ",".join(c.role.value for c in caps),
@@ -158,8 +168,10 @@ async def roles_dashboard(request: Request):
     active, rsvp_by_uuid, has_event = await view_signals(
         request.app.state.appstate
     )
+    deletable = await players_domain.deletable_uuids()
     rows = [row_for(p, active_uuids=active, rsvp_by_uuid=rsvp_by_uuid,
-                    has_event=has_event) for p in players]
+                    has_event=has_event,
+                    deletable=p.mc_uuid in deletable) for p in players]
     core_count = sum(1 for r in rows if r["is_core"])
     # Highest-priority tier first, then Core before Fill, then name — the
     # order an organiser scans when filling a party.
@@ -183,3 +195,57 @@ async def roles_dashboard(request: Request):
                   total=len(rows), core_count=core_count,
                   tier_options=tier_options, role_options=role_options,
                   region_options=region_options)
+
+
+async def _row_response(
+    request: Request, player_uuid: str, *, error: str | None = None
+) -> HTMLResponse:
+    """Re-render one row standalone (the HTMX ``outerHTML`` swap target).
+
+    Local twin of ``staff_capability._row_response`` — that module imports
+    *this* one for :func:`row_for`/:func:`view_signals`, so reaching back the
+    other way would be a circular import. This one also carries the
+    ``error``/``deletable`` bits only the purge route needs.
+    """
+    player = (
+        await AnniPlayer.filter(mc_uuid=player_uuid)
+        .prefetch_related("capabilities__weapons")
+        .first()
+    )
+    if player is None:
+        return RedirectResponse("/staff/roles", status_code=303)
+    active, rsvp_by_uuid, has_event = await view_signals(
+        request.app.state.appstate
+    )
+    deletable = await players_domain.deletable_uuids()
+    return render(
+        request, "staff/_roles_row.html",
+        r=row_for(player, active_uuids=active, rsvp_by_uuid=rsvp_by_uuid,
+                  has_event=has_event, deletable=player.mc_uuid in deletable),
+        row_error=error,
+    )
+
+
+@router.post("/staff/roles/player/{player_uuid}/delete", include_in_schema=False)
+async def delete_player_profile(request: Request, player_uuid: str):
+    """Delete a profile that holds nothing (``domain/players.purge``).
+
+    The escape hatch for a mistaken "Add Players" / ``\\rsvp set`` — those
+    get-or-create an :class:`AnniPlayer` for whatever IGN resolved, and until
+    now nothing could undo it. The guard lives in the domain, so this route
+    can be blunt: on success the row is swapped out for nothing (HTMX
+    ``outerHTML`` with an empty body removes the ``<li>``) and live board tabs
+    re-snapshot, since the purge took the player's placement with it; on a
+    refusal the row comes back with the reason inline and its Delete button
+    gone (whatever now holds the profile also fails ``deletable_uuids``).
+    """
+    if not auth.is_staff(request):
+        return RedirectResponse("/staff", status_code=303)
+    result = await players_domain.purge(player_uuid)
+    if not result.ok:
+        logger.info("profile purge refused for %s: %s", player_uuid,
+                    result.reason)
+        return await _row_response(request, player_uuid, error=result.reason)
+    logger.info("profile purged via roles dashboard: %s", result.reason)
+    await broadcast_active_board()
+    return HTMLResponse("")

@@ -112,6 +112,9 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
             queued=bool(online and online.queued),
             api_disabled=identity.is_api_disabled(player.last_online),
             rsvp_notice=stored,
+            # Same "was here tonight" history the board reads, so the user's
+            # own bar agrees with the border staff are looking at.
+            was_online=player.mc_uuid in st.seen_online_uuids,
             has_party=party is not None,
             party_world=party.world if party else None,
             party_created=party is not None,

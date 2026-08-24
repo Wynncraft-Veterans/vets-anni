@@ -12,13 +12,15 @@ from pathlib import Path
 
 from app.constants import (
     ROLE_STYLES,
+    RSVP_STYLES,
     STATUS_STYLES,
     STYLES,
     PaletteColor,
     PresenceStatus,
     Role,
+    RsvpState,
 )
-from app.domain.colourblind import role_chip, status_chip
+from app.domain.colourblind import role_chip, rsvp_chip, status_chip
 
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "css"
 
@@ -37,13 +39,30 @@ def test_every_status_has_glyph_label_and_border_pattern():
     seq = [
         STATUS_STYLES[s].pattern for s in (
             PresenceStatus.ONLINE_PARTY, PresenceStatus.ONLINE_WORLD,
-            PresenceStatus.ONLINE_ELSEWHERE, PresenceStatus.OFFLINE_HARD,
-            PresenceStatus.OFFLINE_SOFT, PresenceStatus.OFFLINE_GONE)
+            PresenceStatus.ONLINE_ELSEWHERE, PresenceStatus.OFFLINE,
+            PresenceStatus.OFFLINE_GONE)
     ]
-    assert seq == ["double", "solid", "dash", "dash-dash-dot",
-                   "dash-dot", "dot"]
+    assert seq == ["double", "solid", "dash", "dash-dot", "dot"]
     assert STATUS_STYLES[PresenceStatus.UNKNOWN].pattern == "dash-dot-dot"
-    assert len(set(seq + ["dash-dot-dot"])) == 7  # every pattern distinct
+    assert len(set(seq + ["dash-dot-dot"])) == 6  # every pattern distinct
+    # Glyphs are the other non-colour channel and must be distinct too.
+    assert len({STATUS_STYLES[s].glyph for s in PresenceStatus}) == len(
+        PresenceStatus)
+
+
+def test_rsvp_is_a_separate_axis_with_its_own_non_colour_signal():
+    """RSVP came OUT of the status border and became its own badge — so it
+    needs its own glyph+label, and its glyphs must not be confusable with the
+    status ones sitting on the same card."""
+    for state in RsvpState:
+        s = RSVP_STYLES[state]
+        assert s.glyph and s.label, state
+    rsvp_glyphs = {RSVP_STYLES[s].glyph for s in RsvpState}
+    assert len(rsvp_glyphs) == len(RsvpState)
+    status_glyphs = {STATUS_STYLES[s].glyph for s in PresenceStatus}
+    assert not (rsvp_glyphs & status_glyphs), "a glyph means two things"
+    hard = rsvp_chip(RsvpState.HARD)
+    assert hard["css_var"] == "--rsvp-hard" and hard["state"] == "hard"
 
 
 def test_palette_actually_changes_under_cb():
@@ -62,21 +81,24 @@ def test_domain_chip_builders_emit_non_colour_signal():
     assert unknown["css_var"] == "--st-unknown"
 
 
-def test_css_defines_base_hues_and_swaps_all_seven_under_body_cb():
+def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
     anni = (_STATIC / "anni.css").read_text(encoding="utf-8")
     cbc = (_STATIC / "colourblind.css").read_text(encoding="utf-8")
-    hues = ["--c-red", "--c-yellow", "--c-green", "--c-blue", "--c-cyan",
-            "--c-magenta", "--c-grey"]
+    hues = ["--c-red", "--c-orange", "--c-yellow", "--c-green", "--c-blue",
+            "--c-cyan", "--c-magenta", "--c-pink", "--c-grey"]
     for h in hues:
         assert h in anni, f"{h} base hue missing from anni.css"
     assert "body.cb" in cbc
     cb_block = cbc[cbc.index("body.cb"):]
     for h in hues:
         assert h in cb_block, f"{h} not swapped under body.cb"
-    # Every status pattern has a body.cb rule (the channel exists from start).
-    for pat in ("solid", "double", "dash", "dot", "dash-dot",
-                "dash-dash-dot", "dash-dot-dot"):
+    # Every status pattern in use has a body.cb rule (the channel exists from
+    # start) — and no dead rules for patterns nothing renders any more.
+    patterns = {STATUS_STYLES[s].pattern for s in PresenceStatus}
+    for pat in patterns:
         assert f'body.cb .status-border[data-pattern="{pat}"]' in cbc
+    for pat in ("dash-dash-dot",):
+        assert f'data-pattern="{pat}"' not in cbc, f"dead {pat} rule"
 
     # Borders are VERBATIM Okabe-Ito under cb: the body.cb --c-* hex are
     # exactly STYLES[*].cb (single source of truth) ...

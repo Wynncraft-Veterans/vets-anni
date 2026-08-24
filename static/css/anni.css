@@ -6,14 +6,20 @@
 
 :root {
   /* Canonical chip palette — the single source mirrors STYLES in
-     app/constants.py. body.cb (colourblind.css) overrides ONLY the --c-*
-     base hue; the role/status aliases below follow automatically. */
+     app/constants.py. body.cb (colourblind.css) overrides the --c-* base
+     hues. The --role- / --st- / --rsvp- aliases below do NOT follow
+     automatically: they resolve here on :root, where the base hue is still
+     the default palette, so colourblind.css re-declares every one of them
+     under body.cb. Add an alias here => mirror it there (a static guard in
+     test_colourblind.py enforces it). */
   --c-red:     #ff0000; --c-red-light:     #ff9292; --c-red-dark:     #990000;
+  --c-orange:  #ff8c00; --c-orange-light:  #ffc98a; --c-orange-dark:  #8f4a00;
   --c-yellow:  #fffb00; --c-yellow-light:  #f5f36e; --c-yellow-dark:  #696800;
   --c-green:   #15ff00; --c-green-light:   #83ff78; --c-green-dark:   #0a7700;
   --c-blue:    #0400ff; --c-blue-light:    #9290ff; --c-blue-dark:    #0300ac;
   --c-cyan:    #00e1ff; --c-cyan-light:    #4aeaff; --c-cyan-dark:    #007e8f;
   --c-magenta: #ff00dd; --c-magenta-light: #ff7aff; --c-magenta-dark: #6000b9;
+  --c-pink:    #ff69b4; --c-pink-light:    #ffb3d9; --c-pink-dark:    #a1004f;
   --c-grey:    #888888; --c-grey-light:    #d6d6d6; --c-grey-dark:    #3d3d3d;
 
   /* Role → shared colour (spec.md [^5]; see ROLE_STYLES). */
@@ -44,15 +50,21 @@
   --role-tertiary-light:  var(--c-magenta-light);
   --role-healer-light:    var(--c-green-light);
   --role-tank-light:      var(--c-blue-light);
-  /* Status → the SAME shared colour as its paired role (spec.md [^6];
-     see STATUS_STYLES). */
-  --st-gone:        var(--c-blue);
-  --st-offhard:     var(--c-magenta);
-  --st-offsoft:     var(--c-red);
-  --st-elsewhere:   var(--c-green);
-  --st-world:       var(--c-cyan);
-  --st-party:       var(--c-yellow);
+  /* Status border — a self-contained presence ramp, most→least "in
+     position" (see STATUS_STYLES). No longer paired with the role palette,
+     and no longer carrying RSVP: that is the --rsvp-* set below. */
+  --st-party:       var(--c-blue);
+  --st-world:       var(--c-green);
+  --st-elsewhere:   var(--c-orange);
+  --st-offline:     var(--c-red);
+  --st-gone:        var(--c-pink);
   --st-unknown:     var(--c-grey);
+  /* RSVP badge — the card's second axis (see RSVP_STYLES). Traffic light:
+     committed / tentative / pulled out, grey for "never said". */
+  --rsvp-none:      var(--c-grey);
+  --rsvp-hard:      var(--c-green);
+  --rsvp-soft:      var(--c-yellow);
+  --rsvp-revoked:   var(--c-red);
 }
 
 body {
@@ -531,6 +543,12 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .dropzone.walkin { background:#eff6ff; border-color:#93c5fd; }
 .dropzone.late { background:#fff7ed; border-color:#fdba74; }
+/* Derived "offline soft RSVPs" lane. Muted/greyed rather than tinted a new
+   hue: it is a *view* of the lane above it (see board_view.is_offline_soft),
+   not a container staff move things into, and reading as slightly inert is
+   exactly the message — don't count on these people. */
+.dropzone.offsoft { background:#f8f7fb; border-color:#c9c3d6;
+  border-style:dotted; }
 .dz-empty { margin:.35rem .25rem; font-size:.8rem; }
 
 /* The person object. Background = assigned-role -dark shade (white text is
@@ -547,6 +565,24 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .person-ghost { opacity:.4; }
 .person-face { border-radius:6px; image-rendering:pixelated; background:#0003;
   flex:none; }
+/* RSVP badge (person card + legend key). Background is the raw --rsvp-* hue,
+   which spans #fffb00 to #009E73 depending on state and mode — so the glyph
+   is white with a thin black stroke, the same trick .role-tag .glyph uses to
+   stay legible on an arbitrary hue. The glyph, not the colour, is the signal
+   (W / ✓ / ~ / ✕ are unmistakable in greyscale). */
+.rsvp-flag {
+  display:inline-flex; align-items:center; justify-content:center; flex:none;
+  width:1.15rem; height:1.15rem; border-radius:6px;
+  font-size:.75rem; font-weight:800; line-height:1;
+  color:#fff; -webkit-text-stroke:.6px #000; paint-order:stroke fill;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);
+  user-select:none;
+}
+/* On-card size: exactly as tall as the 32px avatar it sits beside, so a
+   dropzone's badges line up as a scannable column down the left edge. */
+.rsvp-flag-lg { width:1.5rem; height:2rem; font-size:1rem; border-radius:7px; }
+.legend-rsvp { display:inline-flex; align-items:center; gap:.35rem;
+  font-size:.8rem; }
 .person-main { display:flex; flex-direction:column; gap:.15rem; min-width:0;
   flex:1; }
 .person-name { font-weight:700; font-size:.9rem; }
@@ -564,11 +600,23 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .status-tag .glyph { font-size:.8rem; }
 .person .pill { font-size:.68rem; }
-.person-actions { flex:none; }
+/* Stacked so the ✕ and the (optional) move dropdown don't fight the role
+   select for the card's narrow right-hand column. */
+.person-actions { flex:none; display:flex; flex-direction:column; gap:.25rem;
+  align-items:stretch; }
 .person-role, .person-move {
   width:auto; font-size:.74rem; padding:.2rem .35rem; border-radius:6px;
   background:rgba(255,255,255,.92); color:#111827; border:none;
 }
+/* Remove-from-board ✕ — the .party-delete affordance restyled for a
+   role-coloured (dark) card, where a red-on-white glyph would vanish. */
+.person-remove {
+  align-self:flex-end; width:1.35rem; height:1.35rem; flex:none; padding:0;
+  border:0; border-radius:6px; background:rgba(0,0,0,.28); color:#fff;
+  font-size:1rem; line-height:1; cursor:pointer;
+}
+.person-remove:hover { background:#dc2626; }
+.person-remove:focus-visible { outline:2px solid #fff; outline-offset:1px; }
 /* The status border itself (width/style/pattern come from colourblind.css,
    which applies in both modes; colour is the inline var(--st-*)). */
 .person.status-border { border-width:3px; }

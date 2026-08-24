@@ -166,6 +166,14 @@ class BoardHub:
                 event, str(d.get("ign", "")), state
             )
 
+        if intent.type == P.PLAYER_REMOVE:
+            # Take a card off the board. Placement-only — the profile (and
+            # their RSVP/capabilities) survives; deleting a mistaken add's
+            # *profile* is the roles dashboard's guarded purge.
+            return await buckets.remove_player(
+                event, str(d.get("player_uuid", ""))
+            )
+
         if intent.type == P.MOVE:
             target = d.get("target") or {}
             return await buckets.move(
@@ -261,6 +269,35 @@ def get_board_hub() -> BoardHub:
     if _hub is None:
         _hub = BoardHub()
     return _hub
+
+
+async def broadcast_active_board() -> None:
+    """Snapshot the active event's board to every live tab, unconditionally.
+
+    For edits made *outside* the board's own routes that staff still need to
+    see immediately — the roles dashboard's profile purge, which deletes the
+    player row (so :func:`maybe_broadcast_for` can no longer find the
+    placement it would have gated on).
+
+    Same best-effort posture as :func:`maybe_broadcast_for`: no active event,
+    no hub, or no appstate (unit tests) is a silent no-op, never an error the
+    caller has to handle.
+    """
+    try:
+        from app.db.lifecycle import get_active_event
+
+        event = await get_active_event()
+        if event is None:
+            return
+        from main import app  # local import: avoid web↔main circular at load
+
+        state: AppState = app.state.appstate
+        await get_board_hub().broadcast_snapshot(event, state)
+    except Exception:
+        logger.debug(
+            "broadcast_active_board skipped (no live hub/appstate here)",
+            exc_info=True,
+        )
 
 
 async def maybe_broadcast_for(player_uuid: str) -> None:

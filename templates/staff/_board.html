@@ -56,6 +56,23 @@
           {% endfor %}
         </div>
       </div>
+      {# The RSVP key. Its own block because the badge is a second axis, not a
+         variation of the border: a card can be any status × any RSVP. The
+         glyph shows in BOTH modes here (unlike the status row above) — it is
+         the badge's only non-colour channel, so the legend has to name it. #}
+      <div class="legend-block">
+        <div class="legend-row">
+          {% for state, s in RSVP_STYLES.items() %}
+            {% set rv = rsvp_chip(state) %}
+            <span class="legend-rsvp">
+              <span class="rsvp-flag" data-rsvp="{{ rv.state }}"
+                    style="background-color: var({{ rv.css_var }})"
+                    aria-hidden="true">{{ rv.glyph }}</span>
+              {{ rv.label }}
+            </span>
+          {% endfor %}
+        </div>
+      </div>
     </section>
 
     <section class="card board-controls">
@@ -136,7 +153,9 @@
                       aria-label="{{ 'Expand' if is_collapsed else 'Collapse' }} Party {{ party.ordinal }}"
                       title="{{ 'Expand' if is_collapsed else 'Collapse' }} this party">{{ '▸' if is_collapsed else '▾' }}</button>
               <strong>Party {{ party.ordinal }}</strong>
-              <span class="muted">{{ party.members | length }}/{{ party.capacity }}</span>
+              {# `count` spans BOTH lanes (main + offline-soft): an offline
+                 soft RSVP is still occupying one of the ten slots. #}
+              <span class="muted">{{ party.count }}/{{ party.capacity }}</span>
               {% if is_collapsed %}
                 {# Keep the one collapsed line informative at a glance. #}
                 <span class="muted party-summary">{{ party.world or 'no world' }}
@@ -147,7 +166,7 @@
                  members (buckets.delete_party rejects non-empty as a safety
                  net for hand-crafted requests). Hidden during grace too —
                  the hub would REJECT it anyway. #}
-              {% if not party.members and not snap.event.frozen %}
+              {% if not party.count and not snap.event.frozen %}
                 <button class="party-delete" type="button"
                         hx-post="/staff/board/party/{{ party.id }}/delete"
                         hx-target="#board" hx-swap="outerHTML"
@@ -198,6 +217,19 @@
                 <p class="muted dz-empty">Empty — drag players here.</p>
               {% endif %}
             </div>
+            {# Derived lane (board_view.is_offline_soft): this party's members
+               who only soft-RSVP'd and aren't online. Rendered only when
+               occupied — an always-on empty zone under every party is pure
+               noise, and it isn't a meaningful drop target anyway (it points
+               at the same party as the zone above, so a card dropped here
+               just re-derives). #}
+            {% if party.offline_soft %}
+              <h4 class="late-head">Offline soft RSVPs</h4>
+              <div class="dropzone offsoft" data-party-id="{{ party.id }}"
+                   aria-label="Party {{ party.ordinal }} — offline soft RSVPs">
+                {% for m in party.offline_soft %}{{ person(m) }}{% endfor %}
+              </div>
+            {% endif %}
             {% endif %}
           </div>
         {% else %}
@@ -220,11 +252,23 @@
         {% set u = snap.buckets.unassigned %}
         <div class="bucket">
           <h3>{{ u.label }}
-            <span class="muted">({{ u.on_time | length + u.walkin | length + u.late | length }})</span></h3>
+            <span class="muted">({{ u.on_time | length + u.offline_soft | length + u.walkin | length + u.late | length }})</span></h3>
           <div class="dropzone" data-bucket="unassigned"
                aria-label="Unassigned (on time)">
             {% for m in u.on_time %}{{ person(m) }}{% endfor %}
             {% if not u.on_time %}<p class="muted dz-empty">No one waiting.</p>{% endif %}
+          </div>
+          {# Derived lane — soft RSVPs who aren't online (board_view
+             .is_offline_soft), carved out of the main lane above. Always
+             rendered here (unlike the party one) because Unassigned's lanes
+             are a fixed, labelled set staff read top-to-bottom. Its dropzone
+             targets the plain main lane, so dragging a card out of it is the
+             same move as dragging it to the zone above. #}
+          <h4 class="late-head">Offline soft RSVPs</h4>
+          <div class="dropzone offsoft" data-bucket="unassigned"
+               aria-label="Unassigned (offline soft RSVPs)">
+            {% for m in u.offline_soft %}{{ person(m) }}{% endfor %}
+            {% if not u.offline_soft %}<p class="muted dz-empty">No offline soft RSVPs.</p>{% endif %}
           </div>
           <h4 class="late-head">Walk-in sub-bucket</h4>
           <div class="dropzone walkin" data-bucket="unassigned" data-walkin="1"

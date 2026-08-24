@@ -258,11 +258,12 @@
           ghostClass: "person-ghost",
           /* Sortable picks up mouse-downs on any descendant of `.person` and
              treats them as the start of a drag; this filter excludes the
-             interactive controls (capability dots + their popovers + the role
-             <select>) so a click on a dot is a real click, not a drag-start
-             that swallows the event. `preventOnFilter:false` lets the native
-             click still fire. */
-          filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role, .person-move",
+             interactive controls (capability dots + their popovers, the role
+             <select>, the remove ✕) so a click on a dot is a real click, not
+             a drag-start that swallows the event. `preventOnFilter:false`
+             lets the native click still fire. */
+          filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role, " +
+                  ".person-move, .person-remove",
           preventOnFilter: false,
           /* Touch-only long-press: on mobile the page is taller than the
              viewport, and an instant-drag would hijack every scroll attempt

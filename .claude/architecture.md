@@ -26,7 +26,8 @@ step**) + one WebSocket for the live board. Tortoise-ORM + **Aerich** + SQLite
 - `db/` — `models.py`, `config.py` (TORTOISE_ORM), `lifecycle.py`
   (connect + single-active-event invariant), `bootstrap.py` (schema safety net).
 - `domain/` — pure logic, no FastAPI/discord: `roles`, `membership`,
-  `capability`, `attendance`, `presence`, `buckets`, `identity`, `colourblind`.
+  `capability`, `attendance`, `presence`, `buckets`, `players`, `identity`,
+  `colourblind`.
 - `services/` — pollers + outbound clients: `wapi` (OWN token), `tempserver`,
   `dazebot_client`, `stamp_poller`, `staff_poller`, `online_merge`,
   `presence_poller`, `weapons_poller`, `api_disabled`, `lifecycle_task`.

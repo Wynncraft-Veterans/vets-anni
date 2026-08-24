@@ -249,3 +249,54 @@ async def test_set_organizer_claim_and_release(seeded):
     assert (await buckets.set_organizer(event, None)).ok
     await event.refresh_from_db()
     assert event.organizer_id is None
+
+
+# --- remove_player (the inverse of add_walkin) ------------------------------
+
+
+async def test_remove_player_deletes_only_the_placement(seeded):
+    """The card goes; the person — and their RSVP — stays."""
+    from app.db.models import AnniPlayer, Rsvp
+
+    event = seeded["event"]
+    para = seeded["players"]["Paradrex"]  # Unassigned main, has a SOFT RSVP
+    n0 = await BoardPlacement.filter(event=event).count()
+
+    r = await buckets.remove_player(event, para.mc_uuid)
+
+    assert r.ok and r.player_uuid == para.mc_uuid
+    assert await BoardPlacement.filter(event=event).count() == n0 - 1
+    assert not await BoardPlacement.filter(event=event, player=para).exists()
+    # Profile + RSVP untouched — "off tonight's board" isn't "isn't a person".
+    assert await AnniPlayer.filter(mc_uuid=para.mc_uuid).exists()
+    assert await Rsvp.filter(event=event, player=para).exists()
+
+
+async def test_remove_player_rejects_when_not_on_the_board(seeded):
+    """A stale card / double-click says so instead of reporting a no-op ok."""
+    event = seeded["event"]
+    holidaze = seeded["players"]["Holidaze"]  # organiser, deliberately unplaced
+
+    r = await buckets.remove_player(event, holidaze.mc_uuid)
+    assert not r.ok and "isn't on the board" in r.reason
+
+    r = await buckets.remove_player(event, "no-such-uuid")
+    assert not r.ok and "isn't on the board" in r.reason
+
+
+async def test_remove_player_refuses_a_party_host(seeded):
+    """Party.host is a *player* FK — removing them would leave a host who
+    isn't on the board. Same posture as delete_party on a non-empty party."""
+    event = seeded["event"]
+    naz = seeded["players"]["Nazzae"]  # hosts party 2, placed in party 1
+
+    r = await buckets.remove_player(event, naz.mc_uuid)
+
+    assert not r.ok and "hosting Party 2" in r.reason
+    assert await BoardPlacement.filter(event=event, player=naz).exists()
+
+    # Hand the party to someone else and the removal goes through.
+    party2 = await Party.get(event=event, ordinal=2)
+    assert (await buckets.set_party(
+        event, str(party2.id), host_uuid=seeded["players"]["foo"].mc_uuid)).ok
+    assert (await buckets.remove_player(event, naz.mc_uuid)).ok

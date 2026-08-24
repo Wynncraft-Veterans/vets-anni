@@ -16,10 +16,12 @@ from typing import TypedDict
 
 from app.constants import (
     ROLE_STYLES,
+    RSVP_STYLES,
     STATUS_STYLES,
     UNASSIGNED_STYLE,
     PresenceStatus,
     Role,
+    RsvpState,
 )
 
 #: Role -> the CSS custom-property the stylesheet exposes (``body.cb`` swaps
@@ -33,13 +35,18 @@ _ROLE_VAR: dict[Role, str] = {
     Role.FILL: "--role-fill",
 }
 _STATUS_VAR: dict[PresenceStatus, str] = {
-    PresenceStatus.OFFLINE_GONE: "--st-gone",
-    PresenceStatus.OFFLINE_HARD: "--st-offhard",
-    PresenceStatus.OFFLINE_SOFT: "--st-offsoft",
-    PresenceStatus.ONLINE_ELSEWHERE: "--st-elsewhere",
-    PresenceStatus.ONLINE_WORLD: "--st-world",
     PresenceStatus.ONLINE_PARTY: "--st-party",
+    PresenceStatus.ONLINE_WORLD: "--st-world",
+    PresenceStatus.ONLINE_ELSEWHERE: "--st-elsewhere",
+    PresenceStatus.OFFLINE: "--st-offline",
+    PresenceStatus.OFFLINE_GONE: "--st-gone",
     PresenceStatus.UNKNOWN: "--st-unknown",
+}
+_RSVP_VAR: dict[RsvpState, str] = {
+    RsvpState.NONE: "--rsvp-none",
+    RsvpState.HARD: "--rsvp-hard",
+    RsvpState.SOFT: "--rsvp-soft",
+    RsvpState.REVOKED: "--rsvp-revoked",
 }
 
 
@@ -55,6 +62,13 @@ class StatusChip(TypedDict):
     glyph: str
     label: str
     pattern: str   # data-pattern -> non-colour online/offline encoding
+
+
+class RsvpChip(TypedDict):
+    css_var: str
+    glyph: str     # W / ✓ / ~ / ✕ — the channel that survives greyscale
+    label: str
+    state: str     # the raw RsvpState value (data-attr / CSS hook)
 
 
 def role_chip(role: Role | None) -> RoleChip:
@@ -84,4 +98,21 @@ def status_chip(status: PresenceStatus) -> StatusChip:
         glyph=s.glyph,
         label=s.label,
         pattern=s.pattern,
+    )
+
+
+def rsvp_chip(state: RsvpState) -> RsvpChip:
+    """Badge for the RSVP axis — colour + glyph + label.
+
+    Deliberately has no ``pattern``: the badge is a ~1rem square, far too
+    small for a border rhythm to read. Its four glyphs are the non-colour
+    channel instead, and unlike the status ramp they are distinguishable at
+    that size with no colour at all.
+    """
+    s = RSVP_STYLES[state]
+    return RsvpChip(
+        css_var=_RSVP_VAR[state],
+        glyph=s.glyph,
+        label=s.label,
+        state=state.value,
     )

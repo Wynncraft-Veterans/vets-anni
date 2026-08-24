@@ -65,10 +65,18 @@ def test_normalize_world():
     assert nw("hub2") == "HUB2"
 
 
-def test_offline_maps_by_rsvp():
-    assert presence.classify(I(rsvp_notice=N.RSVP_HARD)) is S.OFFLINE_HARD
-    assert presence.classify(I(rsvp_notice=N.RSVP_SOFT)) is S.OFFLINE_SOFT
-    assert presence.classify(I()) is S.OFFLINE_GONE  # offline, no RSVP
+def test_offline_splits_on_history_not_rsvp():
+    """The offline branch keys off ``was_online``, NOT the RSVP — the RSVP is
+    its own board axis now (``RsvpState``). GONE means "was here and left"."""
+    assert presence.classify(I()) is S.OFFLINE                      # never seen
+    assert presence.classify(I(was_online=True)) is S.OFFLINE_GONE  # here, left
+    # Every RSVP flavour lands in the same status: the border no longer says
+    # anything about what someone promised.
+    for notice in (N.RSVP_HARD, N.RSVP_SOFT, None):
+        assert presence.classify(I(rsvp_notice=notice)) is S.OFFLINE
+        assert presence.classify(
+            I(rsvp_notice=notice, was_online=True)
+        ) is S.OFFLINE_GONE
 
 
 def test_api_disabled_offline_is_unknown_but_online_merge_confirms():
@@ -79,9 +87,22 @@ def test_api_disabled_offline_is_unknown_but_online_merge_confirms():
 
 
 def test_bar_flash_thresholds():
-    assert presence.view(I()).flash is True  # GONE flashes immediately
+    # GONE flashes immediately, whatever the countdown says.
+    assert presence.view(I(was_online=True)).flash is True
+    # OFFLINE escalates on the RSVP instead — the status no longer carries it.
     assert presence.view(I(rsvp_notice=N.RSVP_HARD, seconds_to_anni=600)).flash is True
     assert presence.view(I(rsvp_notice=N.RSVP_HARD, seconds_to_anni=3000)).flash is False
     assert presence.view(I(rsvp_notice=N.RSVP_SOFT, seconds_to_anni=2000)).flash is True
+    assert presence.view(I(rsvp_notice=N.RSVP_SOFT, seconds_to_anni=3000)).flash is False
+    # No RSVP at all => never nagged. They never said they were coming.
+    assert presence.view(I(seconds_to_anni=60)).flash is False
     v = presence.view(I(online=True, has_party=False))
     assert v.status is S.ONLINE_ELSEWHERE and v.bar_class.startswith("bar-")
+
+
+def test_offline_bar_message_still_names_the_rsvp():
+    """The status collapsed, the *copy* didn't: a hard/soft RSVP who isn't on
+    yet is still told which promise they're about to miss."""
+    assert "hard-RSVP" in presence.view(I(rsvp_notice=N.RSVP_HARD)).message
+    assert "soft-RSVP" in presence.view(I(rsvp_notice=N.RSVP_SOFT)).message
+    assert "not online" in presence.view(I()).message

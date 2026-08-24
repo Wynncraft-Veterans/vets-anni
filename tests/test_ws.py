@@ -177,3 +177,57 @@ async def test_grace_freezes_board_except_party_result_stage(db):
     assert P.APPLIED in c.types()
     await party.refresh_from_db()
     assert party.result.value == "win" and party.stage == 5
+
+
+async def test_player_remove_via_ws_broadcasts_and_keeps_the_profile(seeded):
+    """PLAYER_REMOVE is the inverse of PLAYER_ADD: the card goes, the person
+    stays. Both tabs converge on the post-removal snapshot."""
+    from app.db.models import AnniPlayer
+
+    hub, state = BoardHub(), AppState()
+    actor, other = FakeClient(), FakeClient()
+    hub.register(actor)
+    hub.register(other)
+    event = seeded["event"]
+    baz = seeded["players"]["baz"]
+
+    await hub.handle(actor, P.Intent(P.PLAYER_REMOVE, op_id="pr",
+                                     data={"player_uuid": baz.mc_uuid}),
+                     event, state)
+
+    assert actor.last()["type"] == P.APPLIED
+    assert other.types() == [P.PATCH]          # everyone re-snapshots
+    assert not await BoardPlacement.filter(event=event, player=baz).exists()
+    assert await AnniPlayer.filter(mc_uuid=baz.mc_uuid).exists()
+
+
+async def test_player_remove_rejects_without_touching_the_board(seeded):
+    hub = BoardHub()
+    c = FakeClient()
+    hub.register(c)
+    event = seeded["event"]
+    n0 = await BoardPlacement.filter(event=event).count()
+
+    await hub.handle(c, P.Intent(P.PLAYER_REMOVE, op_id="pr",
+                                 data={"player_uuid": "ghost"}),
+                     event, AppState())
+
+    assert c.last()["type"] == P.REJECTED
+    assert "isn't on the board" in c.last()["reason"]
+    assert await BoardPlacement.filter(event=event).count() == n0
+
+
+async def test_player_remove_is_frozen_during_grace(db):
+    """It mutates the board, so the grace gate covers it like every other
+    mutating intent (the UI hides the ✕ then, this is the safety net)."""
+    hub, state = BoardHub(), AppState()
+    past = int(time.time()) - 60
+    event = await AnniEvent.create(stamp_epoch=past, is_active=True)
+    c = FakeClient()
+    hub.register(c)
+
+    await hub.handle(c, P.Intent(P.PLAYER_REMOVE, op_id="pr",
+                                 data={"player_uuid": "anyone"}),
+                     event, state)
+
+    assert c.last()["type"] == P.REJECTED and "read-only" in c.last()["reason"]

@@ -4,26 +4,34 @@ All encoded in `app/constants.py` (data) + `app/domain/*` (logic, pure &
 unit-tested). No FastAPI/discord imports in either.
 
 ## Roles & colours (spec.md [^5]/[^6])
-ONE shared palette (`constants.STYLES`, keyed by `PaletteColor`) backs **both**
-the role background and the status border — a role and its paired status are
-the *same* colour entry:
+ONE shared palette (`constants.STYLES`, keyed by `PaletteColor`) backs the
+role background, the status border **and** the RSVP badge. The three families
+each pick their own entries; roles and statuses used to be *paired* one-to-one
+on the same entry and no longer are (the status ramp needed ORANGE and PINK,
+which no role uses):
 
-| Colour | Role      | Status border    |
-|--------|-----------|------------------|
-| RED    | primary   | offline-soft     |
-| YELLOW | secondary | online-party     |
-| GREEN  | healer    | online-elsewhere |
-| BLUE   | tank      | offline-gone     |
-| CYAN   | fill      | online-world     |
-| MAGENTA| tertiary  | offline-hard     |
-| GREY   | unassigned| unknown          |
+| Colour  | Role       | Status border    | RSVP badge |
+|---------|------------|------------------|------------|
+| RED     | primary    | offline          | revoked    |
+| ORANGE  | —          | online-elsewhere | —          |
+| YELLOW  | secondary  | —                | soft       |
+| GREEN   | healer     | online-world     | hard       |
+| BLUE    | tank       | online-party     | —          |
+| CYAN    | fill       | —                | —          |
+| MAGENTA | tertiary   | —                | —          |
+| PINK    | —          | offline-gone     | —          |
+| GREY    | unassigned | unknown          | none       |
 
 Each `STYLES` entry has `color` (default), `light`/`dark` (legible surfaces
-for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`).
-`ROLE_STYLES`/`STATUS_STYLES` only attach the glyph + label (+ border pattern
-for statuses) to a `STYLES` entry, so colour is never load-bearing — see
-`colourblind.md`. Capability rows use the 5 core roles; FILL is
-assignable/colourable only.
+for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`). PINK's `cb`
+is the same reddish-purple as MAGENTA's on purpose: MAGENTA is only ever a
+role *background* and PINK only ever a status *border*, so the two never have
+to be told apart, and the only unclaimed Okabe-Ito hue left (sky-blue) sits
+too close to the BLUE the status ramp now uses.
+`ROLE_STYLES`/`STATUS_STYLES`/`RSVP_STYLES` only attach the glyph + label
+(+ border pattern for statuses) to a `STYLES` entry, so colour is never
+load-bearing — see `colourblind.md`. Capability rows use the 5 core roles;
+FILL is assignable/colourable only.
 
 ## Membership (`domain/membership.py`)
 `MEMBER` = in guild `RETURNERS_GUILD_NAME`; `COMMUNITY` = guildless; `ALLY` =
@@ -127,28 +135,40 @@ non-trackable tier with no RSVP, so such a user falls to the lowest band
 
 ## Presence state machine (`domain/presence.py`)
 Inputs: online-merge membership, assigned `Party.world` vs current server,
-`Party.stage`, `Rsvp.notice`, countdown (stamp−now), api-disabled inference.
-Outputs a `PresenceStatus` + escalating bottom-bar text:
+`Party.stage`, `Rsvp.notice`, `was_online` (seen online at any point this
+anni), countdown (stamp−now), api-disabled inference. Outputs a
+`PresenceStatus` + escalating bottom-bar text.
 
-An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE_HARD` /
-`OFFLINE_SOFT`; once gone, 1hr-early vs late is tracked elsewhere and irrelevant).
-- OFFLINE_GONE (was here <= T-60m, no longer here):
-  - Staff see: BLUE border outlining user object in staff dashboard.
+**The status is presence ONLY — it does not encode the RSVP.** It used to:
+the offline branch was split `OFFLINE_HARD`/`OFFLINE_SOFT`. The RSVP is now
+its own board channel (`RsvpState`, below), so the border answers exactly one
+question — *where are they right now* — and the two facts can be read
+together instead of one hiding the other. What the notice still drives is how
+loudly the **user dashboard bar** nags someone who isn't on yet.
+
+An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE`:
+- OFFLINE_GONE (was here at some point this anni, no longer here):
+  - Staff see: PINK border outlining user object in staff dashboard.
   - Users see: subtly flashing bar under relevant module in user dashboard.
-- OFFLINE_HARD: (hard rsvp'd, but is not here (yet)):
-  - Staff see: MAGENTA border outlining user object in staff dashboard.
-  - Users see: Red bar under relevant module in user dashboard, starts flashing T-20m.
-- OFFLINE_SOFT: (soft rsvp'd, is not here (yet)):
+  - The "was here" half is real history now, not inferred from the absence of
+    an RSVP: `presence_poller` accumulates every uuid it sees online into
+    `AppState.seen_online_uuids` and feeds it back as `was_online`. The
+    grace-wipe clears the set, so it never leaks across events.
+- OFFLINE (not here, and we have not seen them tonight):
   - Staff see: RED border outlining user object in staff dashboard.
-  - Users see: Red bar under relevant module in user dashboard, starts flashing T-45m.
+  - Users see: Red bar under relevant module in user dashboard. It starts
+    flashing at T-20m with a hard RSVP, T-45m with a soft one, and **never**
+    for someone who never RSVP'd — they never said they were coming, so there
+    is nothing to be late for. The bar copy still names the promise ("You
+    hard-RSVP'd but aren't online yet").
 - ONLINE_ELSEWHERE (online, but in a queue or otherwise not on their assigned party's world. Or, they haven't been assigned to a party yet):
-  - Staff see: GREEN border outlining user object in staff dashboard.
+  - Staff see: ORANGE border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their world has been announced.
 - ONLINE_WORLD (online, in the correct world, but not in their assigned party)
-  - Staff see: CYAN border outlining user object in staff dashboard.
+  - Staff see: GREEN border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their party has been created.
 - ONLINE_PARTY (online, in the correct world, in their assigned party)
-  - Staff see: YELLOW border outlining user object in staff dashboard.
+  - Staff see: BLUE border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard.
 - UNKNOWN: (The user has their API disabled and we are not comfortable in our aproximations of if they are online or offline. We have several sources (world shift and vetsmod reporting -- see wv list), but if we are unsure, we can use this list their status as unconfirmable).
   - Staff see: GREY border outlining user object in staff dashboard.
@@ -156,10 +176,58 @@ An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE_HARD` /
 
 **NOTE THAT** users in queues (reported as `queued` in online-merge, see the /wv list implementation for reference (i.e. queued on /v1/outbound/list)) are `ONLINE_ELSEWHERE`, not `OFFLINE_*`. Anni is a very queue-intensive event, so this will likely be encountered *a lot*
 
+## RSVP axis (`constants.RsvpState`, `domain/rsvp.state_of`)
+The second, independent channel on every person card — the badge left of the
+avatar. Derived per (event, player) from the `Rsvp` row, never stored
+separately:
+
+| State | Glyph | Colour | Means |
+|---|---|---|---|
+| `NONE` | `W` | GREY | no `Rsvp` row — a walk-in, they never declared |
+| `HARD` | `✓` | GREEN | live row, `notice=RSVP_HARD` |
+| `SOFT` | `~` | YELLOW | live row, `notice=RSVP_SOFT` |
+| `REVOKED` | `✕` | RED | row soft-deleted (`revoked_at` set) |
+
+`REVOKED` deliberately outranks the stored notice: once someone pulls out,
+"they retracted" is the fact staff act on, not what they had said before.
+`rsvp.states_by_uuid(event)` is the one *unfiltered* Rsvp read in the codebase
+(everything else filters `revoked_at__isnull=True`) precisely because a
+revoked row is a state to render, not an absence to hide.
+
+## Board sub-buckets (`web/board_view`)
+Unassigned has four lanes and every party has two. Three of them are
+**stored** (`BoardPlacement.is_late` / `.is_walkin` — how someone arrived);
+one is **derived** on every render:
+
+- Unassigned: `on_time` → `offline_soft` → `walkin` → `late`.
+- Each party: its members → `offline_soft`.
+
+`board_view.is_offline_soft` is the whole rule: soft RSVP **and** a presence
+status of `OFFLINE`/`OFFLINE_GONE`. `UNKNOWN` is excluded — unconfirmable is
+not absent, and parking someone in the "don't count on them" lane on a guess
+is the fabrication the spec forbids.
+
+It has to be derived rather than a fourth stored flag: it tracks live
+presence, so a soft RSVP logging on must leave the lane on the next presence
+tick without anyone dragging them, and party placements have no lane flags at
+all. Consequences worth knowing:
+- The lane's **dropzone targets the same container as the lane above it** (the
+  party, or the main Unassigned lane). Dragging a card in or out of it is a
+  no-op that re-derives on the next render — it is a *view* of a container,
+  not a container.
+- It is carved out of the **main lane only**. Walk-ins by definition never
+  RSVP'd so they cannot qualify; LATE is a provenance marker worth keeping
+  whole, so a late soft-RSVP stays in LATE.
+- A party's `count` (the N/10 header) spans both lanes — an offline soft RSVP
+  is still occupying a slot.
+
 ## Lifecycle & grace-wipe (`services/lifecycle_task.py`)
 `stamp` future → active event. now>stamp & ≤stamp+2h → grace (board read-only
 except per-party result + stage). now>stamp+2h → wipe in ONE transaction:
-snapshot results, increment `success_count` for WIN parties, delete
+snapshot results, increment `success_count` for WIN **party members only** —
+anyone left in a bucket (Unassigned / Volunteers / Sitting-out) earns nothing
+even if their card carries an assigned role, since a role is routinely set
+before (or left set after) a card is dragged into a party — delete
 `BoardPlacement`/`Rsvp` for the event, mark `wiped_at`+`is_active=False`,
 broadcast `BOARD_WIPE`. `RoleCapability`/`AnniPlayer` persist. A new/changed
 future stamp updates the active event (re-announcement), not a duplicate.

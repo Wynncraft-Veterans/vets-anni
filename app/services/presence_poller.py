@@ -7,6 +7,11 @@ pushes only the changes to the board hub as a ``PATCH`` of status-border
 updates. The full map is also cached on :class:`AppState` so a fresh SSR paint
 or a non-WS client shows the identical status without recomputing.
 
+It also owns the one bit of presence *history* the pure classifier can't
+have: every uuid it sees online goes into ``state.seen_online_uuids`` and is
+fed back next tick as ``was_online``, which is what makes ``OFFLINE_GONE``
+("was here, logged out") distinguishable from ``OFFLINE`` ("never showed").
+
 Online truth is the online-merge set (hard rule — never the bare server API),
 plus one extra signal: an API-disabled player the slow ``api_disabled`` probe
 *inferred* active counts as online (→ ``ONLINE_ELSEWHERE``, since we still
@@ -66,6 +71,11 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         is_online = online is not None or (
             api_disabled and uuid in state.api_active_uuids
         )
+        # History for the GONE-vs-OFFLINE split: the classifier is pure and
+        # sees one instant, so "was here at some point tonight" has to be
+        # accumulated out here. Add-only; cleared by the grace-wipe.
+        if is_online:
+            state.seen_online_uuids.add(uuid)
         party = p.party
         # Corroboration: vetsmod-reporting players send their Wynncraft party
         # roster via the S7 ``anni_party_observation`` frame when an organiser
@@ -94,6 +104,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
                 queued=bool(online and online.queued),
                 api_disabled=api_disabled,
                 rsvp_notice=notice_by_uuid.get(uuid),
+                was_online=uuid in state.seen_online_uuids,
                 has_party=party is not None,
                 party_world=party.world if party else None,
                 party_created=party is not None,

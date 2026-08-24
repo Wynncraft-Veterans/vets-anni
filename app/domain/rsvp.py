@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.constants import AttendanceNotice
+from app.constants import AttendanceNotice, RsvpState
 from app.db.models import AnniEvent, AnniPlayer, Rsvp
 
 #: The only notice values that may be stored on ``Rsvp.notice``.
@@ -72,3 +72,41 @@ async def revoke(player: AnniPlayer, event: AnniEvent) -> Rsvp | None:
     row.revoked_at = datetime.now(timezone.utc)
     await row.save(update_fields=["revoked_at", "updated_at"])
     return row
+
+
+def state_of(notice: AttendanceNotice | None, revoked: bool) -> RsvpState:
+    """Collapse one ``Rsvp`` row (or its absence) to a :class:`RsvpState`.
+
+    ``revoked`` wins over the stored notice on purpose: once someone pulls
+    out, "they retracted" is the fact an organiser is acting on — what they
+    had said beforehand is history. An absent row, or a row carrying a
+    notice we never store (only HARD/SOFT ever reach ``Rsvp.notice``), reads
+    as ``NONE`` — a walk-in.
+    """
+    if revoked:
+        return RsvpState.REVOKED
+    if notice == AttendanceNotice.RSVP_HARD:
+        return RsvpState.HARD
+    if notice == AttendanceNotice.RSVP_SOFT:
+        return RsvpState.SOFT
+    return RsvpState.NONE
+
+
+async def states_by_uuid(event: AnniEvent) -> dict[str, RsvpState]:
+    """``{player_uuid: RsvpState}`` for every RSVP row on ``event``.
+
+    Revoked rows are *included* (that is the whole point — they carry
+    ``REVOKED``), so this is one unfiltered query rather than the
+    ``revoked_at__isnull=True`` reads the rest of the module does. Players
+    with no row simply aren't in the dict; callers default them to
+    :attr:`RsvpState.NONE` (see :func:`state_of`).
+
+    ``Rsvp.player`` FKs ``AnniPlayer.mc_uuid`` (the PK), so ``player_id`` is
+    already the uuid — no join needed.
+    """
+    return {
+        r.player_id: state_of(r.notice, r.revoked_at is not None)
+        for r in await Rsvp.filter(event=event).only(
+            "id", "player_id", "notice", "revoked_at"
+        )
+    }

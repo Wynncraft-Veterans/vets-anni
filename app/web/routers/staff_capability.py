@@ -24,12 +24,12 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.constants import MAX_WEAPONS_PER_CAPABILITY
-from app.db.models import AnniPlayer, RoleCapability
+from app.db.models import RoleCapability
 from app.domain.roles import guidance
 from app.web import auth
 from app.web.deps import render
 from app.web.routers.capability import _parse_conf, _write_weapons
-from app.web.routers.roles_dash import row_for, view_signals
+from app.web.routers.roles_dash import _row_response as roles_row_response
 from app.web.ws.board_hub import maybe_broadcast_for
 
 logger = logging.getLogger("anni.web.staff_capability")
@@ -39,19 +39,11 @@ router = APIRouter()
 async def _row_response(
     request: Request, player_uuid: str
 ) -> HTMLResponse:
-    player = (
-        await AnniPlayer.filter(mc_uuid=player_uuid)
-        .prefetch_related("capabilities__weapons")
-        .first()
-    )
-    if player is None:
-        return RedirectResponse("/staff/roles", status_code=303)
-    active, rsvp_by_uuid, has_event = await view_signals(
-        request.app.state.appstate
-    )
-    return render(request, "staff/_roles_row.html",
-                  r=row_for(player, active_uuids=active,
-                            rsvp_by_uuid=rsvp_by_uuid, has_event=has_event))
+    """Re-render the swapped row. Delegates to the roles dashboard's renderer
+    so the row keeps *all* its state after a capability edit — notably the
+    "Delete profile" affordance, which a player who just lost their last
+    capability may have gained."""
+    return await roles_row_response(request, player_uuid)
 
 
 def _render_modal(

@@ -9,10 +9,12 @@ and the dashboards are colour-dense.
   module). No reload of state needed — it sets/clears the cookie and bounces
   back; `<body class="cb">` is added server-side.
 - `static/css/anni.css` defines ONE canonical palette as `--c-*` custom
-  properties (mirroring `constants.STYLES`); `--role-*`/`--st-*` are aliases
-  onto it, and a role shares its colour with its paired status.
-  `static/css/colourblind.css` swaps **only the seven `--c-*` base hues**
-  under `body.cb` to the canonical **Okabe-Ito** CVD-safe set, so every alias
+  properties (mirroring `constants.STYLES`); `--role-*`, `--st-*` and
+  `--rsvp-*` are aliases onto it. The three families each pick their own
+  entries — a role and a status sharing a hue is a coincidence, not a
+  contract (the old one-to-one role↔status pairing is gone).
+  `static/css/colourblind.css` swaps **only the `--c-*` base hues** under
+  `body.cb` to the canonical **Okabe-Ito** CVD-safe set, so every alias
   follows in one step (swap is instant — class scope). `app/constants.py`
   (`STYLES`) stays the single source of truth for server-rendered
   colours/glyphs/labels.
@@ -22,14 +24,22 @@ and the dashboards are colour-dense.
   cookie), never anyone else's. `AppConfig` holds **no** colourblind key.
 
 ## Colour is never the only signal
-Every role/status chip emitted by the shared macros (`templates/macros/*`)
-carries, in addition to colour:
-- a short **glyph** (`RoleStyle.glyph` / `StatusStyle.glyph`, e.g. `PRIM`, `●`),
+Every role/status/RSVP chip emitted by the shared macros
+(`templates/macros/*`) carries, in addition to colour:
+- a short **glyph** (`RoleStyle.glyph` / `StatusStyle.glyph` /
+  `RsvpStyle.glyph`, e.g. `PRIM`, `●`, `✓`),
 - an accessible **label** (`aria-label`, e.g. "A RSVP'd user not here yet."),
 - for statuses, a **border pattern** (`StatusStyle.pattern`) via
   `data-pattern` → `colourblind.css`. ONE uniform-width family, most→least
-  "present" (PARTY→GONE): `double`→`solid`→`dash`→`dash-dash-dot`→`dash-dot`
-  →`dot`; `dash-dot-dot` = unknown.
+  "present" (PARTY→GONE): `double`→`solid`→`dash`→`dash-dot`→`dot`;
+  `dash-dot-dot` = unknown. (A sixth step, `dash-dash-dot`, existed while the
+  offline branch was split hard-RSVP vs soft-RSVP; the RSVP badge owns that
+  distinction now.)
+- for the RSVP badge, **no pattern** — a ~1rem square cannot carry a border
+  rhythm. Its four glyphs (`W` walk-in / `✓` hard / `~` soft / `✕` revoked)
+  are the non-colour channel, and `test_colourblind.py` asserts they are
+  mutually distinct *and* disjoint from the status glyph set, so no mark on a
+  person card ever means two things.
 - for assigned roles, a **card-background texture** keyed off the `data-role`
   attribute on `.person` (already in the DOM at all times). Six visually
   distinct, faint shape rhythms — PRIMARY `/` 45° stripes, SECONDARY `\` 135°
@@ -51,8 +61,8 @@ carries, in addition to colour:
 **Verbatim Okabe-Ito under `body.cb`:** the border colour is *always* the
 exact Okabe-Ito hue (`--stc`/`--st-*` → `--c-*`, == `STYLES[*].cb`). Only
 `solid`/`double`/`dash`(dashed)/`dot`(dotted) are native border-styles (they
-render `border-color` exactly); the composites (`dash-dot`, `dash-dash-dot`,
-`dash-dot-dot`) are a `repeating-linear-gradient` **border-image fed by
+render `border-color` exactly); the composites (`dash-dot`, `dash-dot-dot`)
+are a `repeating-linear-gradient` **border-image fed by
 `var(--stc)`**, so the line is still the exact hue. No `groove`/`ridge`/
 `inset`/`outset` anywhere — those 3-D-shade (lighten/darken) the colour and
 would break "verbatim". Card *backgrounds* are the `--role-*-dark` aliases,
@@ -99,3 +109,19 @@ modes; nothing is colour-only. The **status** border/glyph/pattern is
 a **staff-board** device (Phase 2): the Phase-1 user dashboard deliberately
 shows presence as plain words + the escalating warning bar instead (no
 staff-style indicator for end users).
+
+## Two axes on one card
+The person card carries **two independent colour channels**, and the CB rules
+above apply to each separately:
+
+| Channel | Where | Vocabulary | Non-colour signal |
+|---|---|---|---|
+| Presence | border around the whole card | `PresenceStatus` (6) | `data-pattern` + glyph + `aria-label` |
+| RSVP | badge left of the face | `RsvpState` (4) | glyph + `title` + `aria-label` |
+
+They were one channel until the status border was reduced to presence alone;
+keeping them separate is what lets an organiser read "online, but only ever
+soft-RSVP'd" at a glance. The board legend renders a key for each — the RSVP
+row shows its glyph in **both** modes (unlike the status row, which drops the
+glyph when `cb` is off and lets colour carry it), because the glyph is the
+badge's only non-colour channel.

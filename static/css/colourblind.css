@@ -23,11 +23,17 @@
 
 body.cb {
   --c-red:     #D55E00;  /* vermillion */
+  --c-orange:  #E69F00;  /* orange */
   --c-yellow:  #F0E442;  /* yellow */
   --c-green:   #009E73;  /* bluish green */
   --c-blue:    #0072B2;  /* blue */
   --c-cyan:    #000000;  /* black (Okabe-Ito) — sky-blue was too near blue */
   --c-magenta: #CC79A7;  /* reddish purple */
+  /* Same reddish-purple as magenta on purpose: magenta is only ever a role
+     BACKGROUND and pink only ever a status BORDER, so the two never need
+     telling apart, and the alternative (sky-blue #56B4E9) collides with
+     --c-blue, which the status ramp now uses for ONLINE_PARTY. */
+  --c-pink:    #CC79A7;
   --c-grey:    #999999;
 
   /* Re-resolve the role / status aliases against the swapped --c-* (see the
@@ -41,13 +47,16 @@ body.cb {
   --role-tank:       var(--c-blue);
   --role-fill:       var(--c-cyan);
   --role-unassigned: var(--c-grey);
-  --st-gone:      var(--c-blue);
-  --st-offhard:   var(--c-magenta);
-  --st-offsoft:   var(--c-red);
-  --st-elsewhere: var(--c-green);
-  --st-world:     var(--c-cyan);
-  --st-party:     var(--c-yellow);
+  --st-party:     var(--c-blue);
+  --st-world:     var(--c-green);
+  --st-elsewhere: var(--c-orange);
+  --st-offline:   var(--c-red);
+  --st-gone:      var(--c-pink);
   --st-unknown:   var(--c-grey);
+  --rsvp-none:    var(--c-grey);
+  --rsvp-hard:    var(--c-green);
+  --rsvp-soft:    var(--c-yellow);
+  --rsvp-revoked: var(--c-red);
 
   /* Role-chip BODIES adopt CVD-safe hues here too (the user dashboard's only
      palette element is the role chip, so cb must visibly change it). These
@@ -146,8 +155,10 @@ body.cb .cap-letter { display: inline !important; }
 
 /* CB ON: the non-colour pattern channel becomes load-bearing (the spec's
    hard rule). ONE uniform 4px family, most→least "present" (PARTY→GONE):
-   double → solid → dash → dash-dash-dot → dash-dot → dot; dash-dot-dot =
-   UNKNOWN. The colour is ALWAYS the verbatim `--stc` Okabe-Ito hue — only
+   double → solid → dash → dash-dot → dot; dash-dot-dot = UNKNOWN. (A sixth
+   step, dash-dash-dot, existed while OFFLINE was split hard-vs-soft RSVP;
+   the RSVP badge owns that distinction now, so the ramp is one shorter.)
+   The colour is ALWAYS the verbatim `--stc` Okabe-Ito hue — only
    solid/double/dashed/dotted are native border-styles (they render
    border-color exactly); the composite dash-dot variants are a
    `repeating-linear-gradient` border-image fed by `var(--stc)`, so the line
@@ -186,13 +197,6 @@ body.cb .status-border[data-pattern="dash-dot"]::after {
   border-image: repeating-linear-gradient(90deg,
     var(--stc) 0 12px, transparent 12px 17px,
     var(--stc) 17px 20px, transparent 20px 25px) 4;
-}
-body.cb .status-border[data-pattern="dash-dash-dot"]::after {
-  border-style: solid;
-  border-image: repeating-linear-gradient(90deg,
-    var(--stc) 0 12px, transparent 12px 17px,
-    var(--stc) 17px 29px, transparent 29px 34px,
-    var(--stc) 34px 37px, transparent 37px 42px) 4;
 }
 body.cb .status-border[data-pattern="dash-dot-dot"]::after {
   border-style: solid;
