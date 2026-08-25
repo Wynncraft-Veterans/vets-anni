@@ -106,7 +106,7 @@ async def _wipe(event, state: AppState) -> None:
     state.presence_by_uuid = {}
     state.api_active_uuids = set()
     # Per-event history: without this the next anni would open with everyone
-    # who logged in during the last one already reading as OFFLINE_GONE.
+    # who logged in during the last one already wearing the "gone" stamp.
     state.seen_online_uuids = set()
 
     from app.web.ws.board_hub import get_board_hub

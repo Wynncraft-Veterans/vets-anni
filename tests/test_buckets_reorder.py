@@ -32,7 +32,7 @@ async def test_within_lane_reorder_lands_at_target_and_siblings_renumber(seeded)
     # Seed puts Metrafish/Paradrex/Trixomaniac/foo at i=0..3 in the main lane.
     lane = BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     )
     before = await lane.order_by("sort_index")
     assert len(before) >= 4, "seed populates at least four main-lane cards"
@@ -41,7 +41,7 @@ async def test_within_lane_reorder_lands_at_target_and_siblings_renumber(seeded)
     r = await buckets.move(
         event, last.player_id,
         bucket=BucketKind.UNASSIGNED, sort_index=1,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     )
     assert r.ok
 
@@ -60,14 +60,14 @@ async def test_within_lane_reorder_target_beyond_tail_clamps(seeded):
     event = seeded["event"]
     lane = BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     )
     first = (await lane.order_by("sort_index"))[0]
 
     r = await buckets.move(
         event, first.player_id,
         bucket=BucketKind.UNASSIGNED, sort_index=9999,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     )
     assert r.ok
 
@@ -83,20 +83,20 @@ async def test_cross_lane_move_renumbers_destination_only(seeded):
     event = seeded["event"]
     walkin = BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=True,
+        is_walkin=True,
     )
     walker = (await walkin.order_by("sort_index"))[0]
 
     r = await buckets.move(
         event, walker.player_id,
         bucket=BucketKind.UNASSIGNED, sort_index=0,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     )
     assert r.ok
 
     on_time = await BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     ).order_by("sort_index")
     assert [p.sort_index for p in on_time] == list(range(len(on_time)))
     assert on_time[0].player_id == walker.player_id
@@ -112,7 +112,7 @@ async def test_auto_place_lands_after_all_role_assigned_cards(seeded):
     lane_ids = [
         p.player_id for p in (await BoardPlacement.filter(
             event=event, bucket=BucketKind.UNASSIGNED,
-            is_late=False, is_walkin=False,
+            is_walkin=False,
         ).order_by("sort_index"))[:3]
     ]
     for uuid, role in zip(lane_ids, [Role.PRIMARY, Role.SECONDARY, Role.TANK]):
@@ -120,7 +120,7 @@ async def test_auto_place_lands_after_all_role_assigned_cards(seeded):
 
     fresh = await AnniPlayer.create(mc_uuid="uuid-fresh-role",
                                     mc_username="FreshRole")
-    inserted = await buckets.ensure_placed(event, fresh, is_late=False)
+    inserted = await buckets.ensure_placed(event, fresh)
     assert inserted is True
 
     placed = await BoardPlacement.get(event=event, player=fresh)
@@ -128,7 +128,7 @@ async def test_auto_place_lands_after_all_role_assigned_cards(seeded):
     # newcomer is None (priority 6) so slots at the tail.
     lane = await BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=False,
+        is_walkin=False,
     ).order_by("sort_index")
     assert placed.sort_index == lane[-1].sort_index
     assert lane[-1].player_id == fresh.mc_uuid
@@ -144,7 +144,7 @@ async def test_auto_place_walkin_uses_role_priority_slot(seeded):
 
     walkin = await BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=True,
+        is_walkin=True,
     ).order_by("sort_index")
     assert len(walkin) >= 2
     assert (await buckets.assign_role(
@@ -161,7 +161,7 @@ async def test_auto_place_walkin_uses_role_priority_slot(seeded):
 
     final = await BoardPlacement.filter(
         event=event, bucket=BucketKind.UNASSIGNED,
-        is_late=False, is_walkin=True,
+        is_walkin=True,
     ).select_related("player").order_by("sort_index")
     # The new walker sits at the tail (assigned_role=None > FILL).
     assert final[-1].player.mc_username == "NewWalker"

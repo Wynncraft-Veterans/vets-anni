@@ -1165,21 +1165,24 @@ async def test_execute_revoke_demotes_from_unassigned_to_wontassign(seeded, monk
     assert placed.bucket is BucketKind.WONTASSIGN
 
 
-async def test_execute_revoke_keeps_party_placement(seeded, monkeypatch):
-    """A user in a party slot stays put on revoke (staff intent wins); only
-    the view layer surfaces the retraction via the Retracted pill."""
+async def test_execute_revoke_frees_the_party_slot(seeded, monkeypatch):
+    """Revoking from a party slot moves the card to Sitting out. That is the
+    case the rule exists for: an organiser needs the seat back, and a card
+    left in place is easy to miss."""
+    from app.constants import BucketKind
+
     wen = seeded["players"]["Wenweia"]  # seeded into a party with HARD RSVP
     _patch_identity(monkeypatch, _ident(wen, tier="member"))
 
     from app.bot.cogs.rsvp import execute_rsvp
-    before = await BoardPlacement.get(event=seeded["event"], player=wen)
-    party_id = before.party_id
+    assert (await BoardPlacement.get(
+        event=seeded["event"], player=wen)).party_id is not None
 
     await execute_rsvp(123, "revoke")
 
     after = await BoardPlacement.get(event=seeded["event"], player=wen)
-    assert after.party_id == party_id  # still in the same party
-    assert after.bucket is None
+    assert after.party_id is None
+    assert after.bucket is BucketKind.WONTASSIGN
 
 
 async def test_rsvp_clears_placeholder_on_existing_player(seeded, monkeypatch):

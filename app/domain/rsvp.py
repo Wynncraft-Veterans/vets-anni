@@ -92,6 +92,19 @@ def state_of(notice: AttendanceNotice | None, revoked: bool) -> RsvpState:
     return RsvpState.NONE
 
 
+async def state_for(player: AnniPlayer, event: AnniEvent) -> RsvpState:
+    """:class:`RsvpState` for one (event, player) — the single-row twin of
+    :func:`states_by_uuid`, for the write paths that need one player's state
+    (``buckets.ensure_placed`` deciding whether an arrival is late).
+
+    Unfiltered for the same reason: a revoked row is a state, not an absence.
+    """
+    row = await Rsvp.filter(event=event, player=player).first()
+    if row is None:
+        return RsvpState.NONE
+    return state_of(row.notice, row.revoked_at is not None)
+
+
 async def states_by_uuid(event: AnniEvent) -> dict[str, RsvpState]:
     """``{player_uuid: RsvpState}`` for every RSVP row on ``event``.
 

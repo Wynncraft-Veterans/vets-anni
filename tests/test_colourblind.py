@@ -8,6 +8,7 @@ load-bearing and the spec is violated.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from app.constants import (
@@ -23,6 +24,7 @@ from app.constants import (
 from app.domain.colourblind import role_chip, rsvp_chip, status_chip
 
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "css"
+_TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 
 
 def test_every_role_has_a_glyph_and_label():
@@ -35,40 +37,64 @@ def test_every_status_has_glyph_label_and_border_pattern():
     for status in PresenceStatus:
         s = STATUS_STYLES[status]
         assert s.glyph and s.label and s.pattern, status
-    # One uniform family, most→least "present" PARTY→GONE, all distinct.
+    # One uniform family, most→least "present", all distinct.
     seq = [
         STATUS_STYLES[s].pattern for s in (
             PresenceStatus.ONLINE_PARTY, PresenceStatus.ONLINE_WORLD,
-            PresenceStatus.ONLINE_ELSEWHERE, PresenceStatus.OFFLINE,
-            PresenceStatus.OFFLINE_GONE)
+            PresenceStatus.ONLINE_ELSEWHERE, PresenceStatus.OFFLINE)
     ]
-    assert seq == ["double", "solid", "dash", "dash-dot", "dot"]
+    assert seq == ["double", "solid", "dash", "dash-dot"]
     assert STATUS_STYLES[PresenceStatus.UNKNOWN].pattern == "dash-dot-dot"
-    assert len(set(seq + ["dash-dot-dot"])) == 6  # every pattern distinct
+    assert len(set(seq + ["dash-dot-dot"])) == 5  # every pattern distinct
     # Glyphs are the other non-colour channel and must be distinct too.
     assert len({STATUS_STYLES[s].glyph for s in PresenceStatus}) == len(
         PresenceStatus)
 
 
 def test_rsvp_is_a_separate_axis_with_its_own_non_colour_signal():
-    """RSVP came OUT of the status border and became its own badge — so it
-    needs its own glyph+label, and its glyphs must not be confusable with the
-    status ones sitting on the same card."""
+    """RSVP came OUT of the status border and became its own icon. The badge
+    has no chip or outline box, so the icon SHAPE is its whole non-colour
+    channel — every state needs a distinct one, and macros/icons.html must
+    actually draw it (a missing branch renders an empty <svg>, which is
+    invisible rather than loud)."""
     for state in RsvpState:
         s = RSVP_STYLES[state]
-        assert s.glyph and s.label, state
-    rsvp_glyphs = {RSVP_STYLES[s].glyph for s in RsvpState}
-    assert len(rsvp_glyphs) == len(RsvpState)
-    status_glyphs = {STATUS_STYLES[s].glyph for s in PresenceStatus}
-    assert not (rsvp_glyphs & status_glyphs), "a glyph means two things"
+        assert s.icon and s.label, state
+    icons = {RSVP_STYLES[s].icon for s in RsvpState}
+    assert len(icons) == len(RsvpState), "two states share a shape"
+
     hard = rsvp_chip(RsvpState.HARD)
     assert hard["css_var"] == "--rsvp-hard" and hard["state"] == "hard"
+    # Both channels of the hue: the ticket's strokes and the plate behind it.
+    assert hard["css_var_dark"] == "--rsvp-hard-dark"
+    assert hard["icon"] == RSVP_STYLES[RsvpState.HARD].icon
+
+    macro = (_TEMPLATES / "macros" / "icons.html").read_text(encoding="utf-8")
+    for icon in icons:
+        assert f'name == "{icon}"' in macro, f"icons.html draws no {icon!r}"
+    # The icon takes its hue from the wrapper and never names one itself —
+    # that is what lets ONE file serve every state in both palettes. The only
+    # literals allowed are the two achromatic keylines the rings are built
+    # from (black inside the line, white outside it).
+    assert "currentColor" in macro
+    literals = set(re.findall(r"#[0-9a-fA-F]{3,8}", macro))
+    assert literals <= {"#000", "#fff"}, f"icons.html hardcodes a hue: {literals}"
 
 
 def test_palette_actually_changes_under_cb():
     assert set(STYLES) == set(PaletteColor)
     for colour, style in STYLES.items():
         assert style.cb != style.color, f"{colour} CB hue must differ"
+
+
+def test_the_status_ramp_stays_mutually_distinct_in_both_modes():
+    """Role and status hues are allowed to collide (background vs border, and
+    every chip carries a glyph anyway). What is NOT allowed is two *statuses*
+    sharing a hue — the border is the same channel in the same place, so a
+    collision there is a genuine ambiguity. Holds in both palettes."""
+    for attr in ("color", "cb"):
+        hues = [getattr(STATUS_STYLES[s], attr) for s in PresenceStatus]
+        assert len(set(hues)) == len(hues), f"status hues collide in {attr}"
 
 
 def test_domain_chip_builders_emit_non_colour_signal():
@@ -84,8 +110,9 @@ def test_domain_chip_builders_emit_non_colour_signal():
 def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
     anni = (_STATIC / "anni.css").read_text(encoding="utf-8")
     cbc = (_STATIC / "colourblind.css").read_text(encoding="utf-8")
-    hues = ["--c-red", "--c-orange", "--c-yellow", "--c-green", "--c-blue",
-            "--c-cyan", "--c-magenta", "--c-pink", "--c-grey"]
+    # Derived from the enum, not hand-listed: a new palette entry that nobody
+    # remembered to add to the stylesheets should fail HERE, not in a browser.
+    hues = [f"--c-{c.value}" for c in PaletteColor]
     for h in hues:
         assert h in anni, f"{h} base hue missing from anni.css"
     assert "body.cb" in cbc
@@ -97,8 +124,9 @@ def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
     patterns = {STATUS_STYLES[s].pattern for s in PresenceStatus}
     for pat in patterns:
         assert f'body.cb .status-border[data-pattern="{pat}"]' in cbc
-    for pat in ("dash-dash-dot",):
-        assert f'data-pattern="{pat}"' not in cbc, f"dead {pat} rule"
+    # ...and no dead rules for patterns that retired with their statuses.
+    for pat in ("dash-dash-dot", "dot"):
+        assert f'data-pattern="{pat}"]' not in cbc, f"dead {pat} rule"
 
     # Borders are VERBATIM Okabe-Ito under cb: the body.cb --c-* hex are
     # exactly STYLES[*].cb (single source of truth) ...
@@ -163,8 +191,6 @@ def test_every_var_c_alias_is_re_declared_under_body_cb():
     swaps --c-* on <body>). So body.cb MUST re-declare every such alias or CB
     mode silently keeps the bright #ff0000 etc. (the exact bug that shipped:
     red borders/glyphs in CB). This catches it without a browser."""
-    import re
-
     anni = (_STATIC / "anni.css").read_text(encoding="utf-8")
     cbc = (_STATIC / "colourblind.css").read_text(encoding="utf-8")
     root = anni[anni.index(":root"):anni.index("}", anni.index(":root"))]

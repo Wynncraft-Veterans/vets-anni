@@ -192,10 +192,11 @@ async def _auto_place_after_rsvp(player: AnniPlayer, event: AnniEvent) -> bool:
     """Land the player in Unassigned after an RSVP.
 
     RSVP'd users **always** land in the main Unassigned lane — never
-    walk-in (that lane is reserved for non-RSVP auto-detected arrivals)
-    and never LATE (even when ``\\rsvp set`` lands after T-60). The
-    EXPIRED phase gate still applies: after grace ends there is no live
-    event to place onto.
+    walk-in (that lane is reserved for non-RSVP auto-detected arrivals).
+    They may still be flagged a late *arrival* — ``ensure_placed`` decides
+    that from the countdown and their RSVP — but that is a badge on the
+    card, not a lane. The EXPIRED phase gate still applies: after grace ends
+    there is no live event to place onto.
 
     Three-case dispatch:
 
@@ -216,9 +217,7 @@ async def _auto_place_after_rsvp(player: AnniPlayer, event: AnniEvent) -> bool:
         return False
     if await buckets_domain.promote_from_wontassign(event, player):
         return True
-    return await buckets_domain.ensure_placed(
-        event, player, is_late=False, is_walkin=False,
-    )
+    return await buckets_domain.ensure_placed(event, player, is_walkin=False)
 
 
 async def _render_status(player: AnniPlayer, event: AnniEvent) -> RsvpOutcome:

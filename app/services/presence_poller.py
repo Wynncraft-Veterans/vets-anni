@@ -8,9 +8,12 @@ updates. The full map is also cached on :class:`AppState` so a fresh SSR paint
 or a non-WS client shows the identical status without recomputing.
 
 It also owns the one bit of presence *history* the pure classifier can't
-have: every uuid it sees online goes into ``state.seen_online_uuids`` and is
-fed back next tick as ``was_online``, which is what makes ``OFFLINE_GONE``
-("was here, logged out") distinguishable from ``OFFLINE`` ("never showed").
+have: every uuid it sees online goes into ``state.seen_online_uuids``. That
+set is what makes "was here, logged out" knowable at all — the board renders
+it as the `?` stamp (``web/board_view``'s ``is_gone``) and the user dashboard
+reads it back as ``was_online`` to sharpen its bar copy. It is deliberately
+NOT a status: absence is absence, and folding the history into the border
+meant it overwrote the present instead of adding to it.
 
 Online truth is the online-merge set (hard rule — never the bare server API),
 plus one extra signal: an API-disabled player the slow ``api_disabled`` probe

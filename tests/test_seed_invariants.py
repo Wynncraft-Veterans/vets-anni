@@ -42,13 +42,14 @@ async def test_exactly_one_active_event_eager_loads_organizer(seeded):
     assert event.organizer.mc_username == "Holidaze"
 
 
-async def test_unassigned_split_across_main_walkin_and_late(seeded):
-    """The seed populates every Unassigned sub-bucket so the board demo
-    shows the full lane spread at a glance. Hard rule: every name in the
-    *main* lane MUST have an active (non-revoked) RSVP; every name in the
-    *walk-in* or *LATE* lane MUST NOT. This is the same contract the
+async def test_unassigned_split_across_main_and_walkin(seeded):
+    """The seed populates every Unassigned lane so the board demo shows the
+    full spread at a glance. Hard rule: every name in the *main* lane MUST
+    have an active (non-revoked) RSVP; every name in the *walk-in* lane MUST
+    NOT — the lane means "never declared". This is the same contract the
     runtime auto-promoter / RSVP cog enforce — if it regresses here, the
-    seed is misleading."""
+    seed is misleading. (Lateness is orthogonal: it is a badge on the card,
+    so it is asserted separately below rather than as a lane.)"""
     event = seeded["event"]
     rsvped_ids = set(
         await Rsvp.filter(event=event, revoked_at=None)
@@ -59,16 +60,17 @@ async def test_unassigned_split_across_main_walkin_and_late(seeded):
         BoardPlacement.filter(event=event, bucket=BucketKind.UNASSIGNED)
         .select_related("player")
     )
-    main = [pl for pl in unassigned if not pl.is_late and not pl.is_walkin]
-    walkin = [pl for pl in unassigned if not pl.is_late and pl.is_walkin]
-    late = [pl for pl in unassigned if pl.is_late]
+    main = [pl for pl in unassigned if not pl.is_walkin]
+    walkin = [pl for pl in unassigned if pl.is_walkin]
 
     # Numbers chosen for visual coverage — keep them tight so a regression
     # surfaces immediately rather than as a "feels off" board.
-    assert len(main) == 4 and len(walkin) == 2 and len(late) == 2
-    # Lane contract: main = RSVP'd, walk-in/LATE = not RSVP'd.
+    assert len(main) == 4 and len(walkin) == 4
+    # Lane contract: main = RSVP'd, walk-in = not RSVP'd.
     assert all(pl.player_id in rsvped_ids for pl in main)
-    assert all(pl.player_id not in rsvped_ids for pl in (*walkin, *late))
+    assert all(pl.player_id not in rsvped_ids for pl in walkin)
+    # And the badge the LATE lane became still has demo coverage.
+    assert len([pl for pl in unassigned if pl.is_late]) == 2
 
 
 async def test_single_instance_per_person_is_enforced(seeded):

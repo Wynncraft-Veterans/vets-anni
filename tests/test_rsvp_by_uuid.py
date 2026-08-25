@@ -139,34 +139,31 @@ async def test_revoke_then_re_rsvp_promotes_back_to_unassigned(seeded):
     assert placement.is_walkin is False
 
 
-async def test_revoke_then_re_rsvp_does_not_promote_party_placement(seeded):
-    """Re-RSVP after revoke must NOT yank a party-placed player out of
-    their party. The promote-from-wontassign path only fires for
-    WONTASSIGN — staff intent (party placement) wins everywhere else.
-    """
-    p = seeded["players"]["Wenweia"]  # seeded with a party placement
+async def test_revoke_frees_the_party_slot_and_re_rsvp_requeues(seeded):
+    """Revoking from a party frees the seat (WONTASSIGN); re-RSVPing puts
+    them back in the Unassigned queue rather than silently reclaiming the
+    slot, which is the organiser's call to make."""
+    from app.constants import BucketKind
 
-    # Capture baseline party assignment
+    p = seeded["players"]["Wenweia"]  # seeded with a party placement
     baseline = await BoardPlacement.filter(
         event=seeded["event"], player=p
     ).first()
-    assert baseline is not None
-    assert baseline.party_id is not None
-    party_id_baseline = baseline.party_id
+    assert baseline is not None and baseline.party_id is not None
 
     await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
     after_revoke = await BoardPlacement.filter(
         event=seeded["event"], player=p
     ).first()
-    # revoke is a no-op on a party-placed player (staff intent wins).
-    assert after_revoke.party_id == party_id_baseline
+    assert after_revoke.party_id is None
+    assert after_revoke.bucket is BucketKind.WONTASSIGN
 
     await execute_uuid_rsvp(None, p.mc_uuid, "hard")
     after_re_rsvp = await BoardPlacement.filter(
         event=seeded["event"], player=p
     ).first()
-    # Re-RSVP must NOT pull them out of their party.
-    assert after_re_rsvp.party_id == party_id_baseline
+    assert after_re_rsvp.bucket is BucketKind.UNASSIGNED
+    assert after_re_rsvp.party_id is None
 
 
 async def test_wont_reason_is_retracted_when_player_revoked(seeded):

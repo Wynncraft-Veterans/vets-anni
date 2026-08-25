@@ -41,7 +41,10 @@ async def test_label_toggle_default_hidden_off_cb_and_flip(as_staff, seeded):
     cookie that flips both body classes together."""
     r = await as_staff.get("/staff/board")
     assert "hide-rolelabel" in r.text and "hide-statuslabel" in r.text
-    assert "<h3>Configs</h3>" in r.text
+    # No "Configs" heading — the switches label themselves, and the heading
+    # was what made this card taller than the legend it sits beside.
+    assert "<h3>Configs</h3>" not in r.text
+    assert 'aria-label="Board display options"' in r.text   # region still named
     assert "Role/Status info" in r.text
     assert "cfg-switch" in r.text                  # the switch control
     assert "Hide the text tags" not in r.text      # subheading removed
@@ -103,8 +106,9 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     # Buckets render all three Unassigned sub-buckets: the seed populates
     # main (Metrafish & co.), walk-in (Faulischlumpf/baz), and LATE
     # (Salted/Jumla) so every lane has at least one card on demo boots.
-    assert "Walk-in sub-bucket" in body and "Late sub-bucket" in body
-    assert "Offline soft RSVPs" in body   # the derived lane, above walk-ins
+    assert "Walk-in sub-bucket" in body
+    assert "Soft RSVP sub-bucket" in body   # the derived lane, above walk-ins
+    assert "Late sub-bucket" not in body    # retired: lateness is a badge now
     assert "Sitting out" in body
     # The names that drive each sub-bucket also land on the page (so a
     # missing-row regression in the seed surfaces as a failing assertion,
@@ -266,50 +270,37 @@ async def test_board_requires_staff(client, seeded):
 # --- getting a mistaken add back off the board / out of the DB -------------
 #
 # "Add Players" get-or-creates an AnniPlayer for whatever IGN resolved, so a
-# typo that happens to be a real Minecraft name used to be permanent. Two
-# surfaces undo it: the board card's ✕ (placement only) and the roles
-# dashboard's Delete profile (the guarded purge).
+# typo that happens to be a real Minecraft name used to be permanent. One
+# surface undoes it now: the roles dashboard's Delete profile. The board card
+# used to carry a "remove from board" ✕ too; it was redundant with dragging
+# someone to Sitting out, so it went.
 
 
-async def test_person_card_offers_a_remove_control(as_staff, seeded):
+async def test_person_card_has_no_remove_from_board_control(as_staff, seeded):
+    """Taking a card off the board is what Sitting out is for. The ✕ (and the
+    whole PLAYER_REMOVE path behind it) is gone — assert the route too, not
+    just the button, so a half-revert can't leave a live mutation endpoint
+    with no UI."""
     body = (await as_staff.get("/staff/board")).text
-    assert 'hx-post="/staff/board/player-remove"' in body
-    assert "person-remove" in body
-    # The confirm has to say what it does NOT do, or staff will assume the
-    # profile went with it.
-    assert "Their profile is kept" in body
-
-
-async def test_rest_player_remove_twin_deletes_only_the_placement(as_staff, seeded):
-    from app.db.models import AnniPlayer
-
-    event = seeded["event"]
-    baz = seeded["players"]["baz"]
-    n0 = await BoardPlacement.filter(event=event).count()
+    assert "person-remove" not in body
+    assert "/staff/board/player-remove" not in body
 
     r = await as_staff.post("/staff/board/player-remove",
-                            data={"player_uuid": baz.mc_uuid})
-
-    assert r.status_code == 200 and 'id="board"' in r.text
-    assert await BoardPlacement.filter(event=event).count() == n0 - 1
-    assert await AnniPlayer.filter(mc_uuid=baz.mc_uuid).exists()
+                            data={"player_uuid": "anyone"})
+    assert r.status_code == 404
 
 
-async def test_rest_player_remove_shows_the_host_refusal_inline(as_staff, seeded):
-    naz = seeded["players"]["Nazzae"]  # hosts party 2
-    r = await as_staff.post("/staff/board/player-remove",
-                            data={"player_uuid": naz.mc_uuid})
-    assert r.status_code == 200
-    assert "hosting Party 2" in r.text and 'class="bar bar-danger"' in r.text
-
-
-async def test_roles_row_offers_delete_only_for_empty_profiles(as_staff, seeded):
+async def test_roles_row_offers_delete_for_every_profile(as_staff, seeded):
     body = (await as_staff.get("/staff/roles")).text
     baz = seeded["players"]["baz"]            # no caps / RSVP / password
     wen = seeded["players"]["Wenweia"]        # caps + RSVP
 
+    # Both — the restriction to empty shells is gone.
     assert f'/staff/roles/player/{baz.mc_uuid}/delete' in body
-    assert f'/staff/roles/player/{wen.mc_uuid}/delete' not in body
+    assert f'/staff/roles/player/{wen.mc_uuid}/delete' in body
+    # What guards the destructive one is the confirmation naming what goes.
+    assert "This CANNOT be undone" in body
+    assert "It holds nothing" in body       # ...and the harmless one says so
 
 
 async def test_roles_delete_purges_the_profile_and_empties_the_row(as_staff, seeded):
@@ -323,17 +314,32 @@ async def test_roles_delete_purges_the_profile_and_empties_the_row(as_staff, see
     assert not await AnniPlayer.filter(mc_uuid=baz.mc_uuid).exists()
 
 
-async def test_roles_delete_refusal_returns_the_row_with_the_reason(as_staff, seeded):
-    from app.db.models import AnniPlayer
+async def test_roles_delete_destroys_a_profile_that_holds_real_data(
+    as_staff, seeded
+):
+    """The case the shells-only rule used to block, which is the case staff
+    actually need: a profile a typo has already attached an RSVP and
+    capabilities to. It goes, and so does everything hanging off it."""
+    from app.db.models import AnniPlayer, RoleCapability, Rsvp
 
     wen = seeded["players"]["Wenweia"]
+    assert await RoleCapability.filter(player=wen).exists()
+    assert await Rsvp.filter(player=wen).exists()
+
     r = await as_staff.post(f"/staff/roles/player/{wen.mc_uuid}/delete")
 
     assert r.status_code == 200
-    assert f'id="roles-row-{wen.mc_uuid}"' in r.text   # row swapped back in
-    assert "capabilities" in r.text
-    assert f'/staff/roles/player/{wen.mc_uuid}/delete' not in r.text  # no button
-    assert await AnniPlayer.filter(mc_uuid=wen.mc_uuid).exists()
+    assert r.text.strip() == ""   # the row goes, same as any other delete
+    assert not await AnniPlayer.filter(mc_uuid=wen.mc_uuid).exists()
+    assert not await RoleCapability.filter(player_id=wen.mc_uuid).exists()
+    assert not await Rsvp.filter(player_id=wen.mc_uuid).exists()
+
+
+async def test_roles_delete_of_an_unknown_uuid_returns_the_list(as_staff, seeded):
+    """The only refusal left. It has no row to swap back, so it bounces."""
+    r = await as_staff.post("/staff/roles/player/no-such-uuid/delete",
+                            follow_redirects=False)
+    assert r.status_code == 303
 
 
 async def test_roles_delete_is_staff_gated(client, seeded):
@@ -362,31 +368,59 @@ async def test_person_card_carries_the_rsvp_badge(as_staff, seeded):
     assert card.index("rsvp-flag") < card.index("person-face")
 
 
-async def test_board_renders_the_offline_soft_lane_when_it_fills(
-    as_staff, seeded
-):
-    """Presence drives the derived lane end to end: with a soft RSVP marked
-    offline in the live presence map, their card renders inside the
-    ``offsoft`` dropzone instead of the main Unassigned one."""
-    from main import app
-    from app.constants import PresenceStatus
+async def test_board_renders_the_soft_rsvp_lane(as_staff, seeded):
+    """The derived Unassigned lane renders end to end: every soft RSVP lands
+    in the ``offsoft`` dropzone regardless of presence, carved out of the
+    main lane above it."""
+    body = (await as_staff.get("/staff/board/fragment")).text
 
-    para = seeded["players"]["Paradrex"]
-    app.state.appstate.presence_by_uuid = {
-        para.mc_uuid: PresenceStatus.OFFLINE.value,
-    }
-    try:
-        body = (await as_staff.get("/staff/board/fragment")).text
-    finally:
-        app.state.appstate.presence_by_uuid = {}
-
-    # The Unassigned column, sliced into its four labelled lanes in order.
+    # The Unassigned column, sliced into its three labelled lanes in order.
     unassigned = body[body.index('aria-label="Unassigned (on time)"'):]
-    main_lane, rest = unassigned.split("Offline soft RSVPs", 1)
+    main_lane, rest = unassigned.split("Soft RSVP sub-bucket", 1)
     soft_lane, walkin_lane = rest.split("Walk-in sub-bucket", 1)
     assert 'class="dropzone offsoft"' in soft_lane
-    assert "Paradrex" in soft_lane
+    # Both seeded soft RSVPs, and neither is online in this fixture.
+    assert "Paradrex" in soft_lane and "Trixomaniac" in soft_lane
     assert "Paradrex" not in main_lane
     # Everyone else stayed put — the lane is a carve-out, not a stampede.
     assert "Metrafish" in main_lane
     assert "Faulischlumpf" in walkin_lane
+
+
+async def test_gone_stamp_outranks_the_late_hourglass(as_staff, seeded):
+    """Both facts stay in the view model — they are independent — but only
+    the more urgent stamp is drawn. "Not here" is what an organiser acts on;
+    "was late getting here" is water under the bridge. And because is_gone is
+    derived from live presence, logging back on restores the hourglass with
+    no state to unwind."""
+    from main import app
+    from app.constants import PresenceStatus
+    from app.db.models import BoardPlacement
+
+    para = seeded["players"]["Paradrex"]
+    placement = await BoardPlacement.get(event=seeded["event"], player=para)
+    placement.is_late = True
+    await placement.save(update_fields=["is_late"])
+
+    def card_of(body: str) -> str:
+        """One card's markup: from its data-uuid to the next card's. A fixed
+        slice is not enough — the RSVP ticket alone is ~1.5kB of inline SVG."""
+        rest = body[body.index(f'data-uuid="{para.mc_uuid}"'):]
+        nxt = rest.find("data-uuid=", 10)
+        return rest if nxt == -1 else rest[:nxt]
+
+    st = app.state.appstate
+    st.presence_by_uuid = {para.mc_uuid: PresenceStatus.OFFLINE.value}
+    st.seen_online_uuids = {para.mc_uuid}
+    try:
+        card = card_of((await as_staff.get("/staff/board/fragment")).text)
+        assert "gone-mark" in card and "late-mark" not in card
+
+        # They come back: gone clears, the hourglass returns by itself.
+        st.presence_by_uuid = {
+            para.mc_uuid: PresenceStatus.ONLINE_ELSEWHERE.value}
+        card = card_of((await as_staff.get("/staff/board/fragment")).text)
+        assert "late-mark" in card and "gone-mark" not in card
+    finally:
+        st.presence_by_uuid = {}
+        st.seen_online_uuids = set()

@@ -5,31 +5,64 @@ unit-tested). No FastAPI/discord imports in either.
 
 ## Roles & colours (spec.md [^5]/[^6])
 ONE shared palette (`constants.STYLES`, keyed by `PaletteColor`) backs the
-role background, the status border **and** the RSVP badge. The three families
-each pick their own entries; roles and statuses used to be *paired* one-to-one
-on the same entry and no longer are (the status ramp needed ORANGE and PINK,
-which no role uses):
+role background, the status border **and** the RSVP icon. Roles and statuses
+used to be *paired* one-to-one on the same entry; that is gone, replaced by
+two disjoint tonal families:
 
-| Colour  | Role       | Status border    | RSVP badge |
-|---------|------------|------------------|------------|
-| RED     | primary    | offline          | revoked    |
-| ORANGE  | —          | online-elsewhere | —          |
-| YELLOW  | secondary  | —                | soft       |
-| GREEN   | healer     | online-world     | hard       |
-| BLUE    | tank       | online-party     | —          |
-| CYAN    | fill       | —                | —          |
-| MAGENTA | tertiary   | —                | —          |
-| PINK    | —          | offline-gone     | —          |
-| GREY    | unassigned | unknown          | none       |
+| Family | Entries | Used by |
+|---|---|---|
+| **neon** | RED, YELLOW, GREEN, BLUE, CYAN, MAGENTA | the role chips **and** the status borders |
+| **mid-tone** | TEAL, LIME, BRICK, ORCHID | the RSVP tickets |
+| neutral | GREY | unassigned role, unknown status |
+
+| Colour  | Default   | CB (Okabe-Ito)   | Used for            |
+|---------|-----------|------------------|---------------------|
+| RED     | `#ff0000` | vermillion       | primary / revoked   |
+| YELLOW  | `#fffb00` | yellow           | secondary / soft    |
+| GREEN   | `#15ff00` | bluish green     | healer / hard       |
+| BLUE    | `#0400ff` | blue             | tank                |
+| CYAN    | `#00e1ff` | black            | fill                |
+| MAGENTA | `#ff00dd` | reddish purple   | tertiary            |
+| TEAL    | `#37c5c8` | sky blue         | hard RSVP           |
+| LIME    | `#93bd42` | yellow           | walk-in             |
+| BRICK   | `#c93e36` | vermillion       | retracted           |
+| ORCHID  | `#c13eab` | reddish purple   | soft RSVP           |
+| GREY    | `#888888` | grey             | unassigned/unknown  |
+
+**Statuses re-use role hues on purpose** — in-party is FILL's aqua, on-world
+is HEALER's green, elsewhere is SECONDARY's sun-gold, offline is PRIMARY's
+red. It is a mnemonic: the board is already dense, and a status palette an
+organiser has to learn separately is one more thing to learn. Safe because a
+role and a status never share a channel — a role is a card background or a
+glyph swatch, a status is the border around the whole card.
+
+(This inverts an earlier arrangement in which statuses had the mid-tone set
+to themselves *precisely* so they could not be confused with roles. What
+changed is the judgement, not the constraint: a deliberate echo teaches
+faster than an unrelated palette avoids confusion.)
+
+The RSVP ticket keeps its own family, because unlike the other two it is an
+object sitting ON the card rather than a colouring of part of it.
+
+Keeping the families disjoint means a role hue and a status hue can never be
+mistaken for each other on a card, which the old shared-entry scheme could not
+promise. The status ramp is picked as a *set* — cyan → green → yellow-green →
+red → orchid walks the wheel one way, so the six borders read as one scale.
+LIME is the "yellow between orange and green" step: a true yellow-green,
+which is what sits between them on the wheel.
+
+CB hues repeat across the families (LIME and YELLOW both land on yellow,
+BRICK and RED both on vermillion, and so on). That is deliberate: a role is a
+*background or glyph swatch*, a status is a *border*, and an RSVP ticket is an
+*object on the card*, so none of them ever has to be told apart from another.
+What must hold — and is enforced by `test_colourblind.py` in **both**
+palettes — is that the STATUS hues stay mutually distinct, since they share
+one channel in one place.
 
 Each `STYLES` entry has `color` (default), `light`/`dark` (legible surfaces
-for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`). PINK's `cb`
-is the same reddish-purple as MAGENTA's on purpose: MAGENTA is only ever a
-role *background* and PINK only ever a status *border*, so the two never have
-to be told apart, and the only unclaimed Okabe-Ito hue left (sky-blue) sits
-too close to the BLUE the status ramp now uses.
-`ROLE_STYLES`/`STATUS_STYLES`/`RSVP_STYLES` only attach the glyph + label
-(+ border pattern for statuses) to a `STYLES` entry, so colour is never
+for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`).
+`ROLE_STYLES`/`STATUS_STYLES`/`RSVP_STYLES` only attach the glyph/icon +
+label (+ border pattern for statuses) to a `STYLES` entry, so colour is never
 load-bearing — see `colourblind.md`. Capability rows use the 5 core roles;
 FILL is assignable/colourable only.
 
@@ -146,29 +179,29 @@ question — *where are they right now* — and the two facts can be read
 together instead of one hiding the other. What the notice still drives is how
 loudly the **user dashboard bar** nags someone who isn't on yet.
 
-An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE`:
-- OFFLINE_GONE (was here at some point this anni, no longer here):
-  - Staff see: PINK border outlining user object in staff dashboard.
-  - Users see: subtly flashing bar under relevant module in user dashboard.
-  - The "was here" half is real history now, not inferred from the absence of
-    an RSVP: `presence_poller` accumulates every uuid it sees online into
-    `AppState.seen_online_uuids` and feeds it back as `was_online`. The
-    grace-wipe clears the set, so it never leaks across events.
-- OFFLINE (not here, and we have not seen them tonight):
-  - Staff see: RED border outlining user object in staff dashboard.
-  - Users see: Red bar under relevant module in user dashboard. It starts
-    flashing at T-20m with a hard RSVP, T-45m with a soft one, and **never**
-    for someone who never RSVP'd — they never said they were coming, so there
-    is nothing to be late for. The bar copy still names the promise ("You
-    hard-RSVP'd but aren't online yet").
+Absence is ONE status. `OFFLINE_GONE` used to be a second one and is now a
+badge (see below), because "was here earlier" is *history*, not a degree of
+presence — as a sixth border it overwrote the present rather than adding to
+it, so an organiser could not see "not here" and "and they were, ten minutes
+ago" at the same time.
+- OFFLINE (not here right now, whether or not we saw them earlier):
+  - Staff see: PRIMARY red (`#ff0000`) border outlining user object in staff dashboard.
+  - Users see: Red bar under relevant module in user dashboard. It flashes
+    immediately for someone who was here and left (they have already shown
+    they can make it, so the countdown can't soften that), else from T-20m
+    with a hard RSVP and T-45m with a soft one — and **never** for someone
+    who never RSVP'd, since they never said they were coming. The bar copy
+    names whichever fact is the more specific: the history if there is one
+    ("We saw you around…"), otherwise the promise ("You hard-RSVP'd but
+    aren't online yet").
 - ONLINE_ELSEWHERE (online, but in a queue or otherwise not on their assigned party's world. Or, they haven't been assigned to a party yet):
-  - Staff see: ORANGE border outlining user object in staff dashboard.
+  - Staff see: SECONDARY sun-gold (`#fffb00`) border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their world has been announced.
 - ONLINE_WORLD (online, in the correct world, but not in their assigned party)
-  - Staff see: GREEN border outlining user object in staff dashboard.
+  - Staff see: HEALER green (`#15ff00`) border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard, switches to a yellow bar when their party has been created.
 - ONLINE_PARTY (online, in the correct world, in their assigned party)
-  - Staff see: BLUE border outlining user object in staff dashboard.
+  - Staff see: FILL aqua (`#00e1ff`) border outlining user object in staff dashboard.
   - Users see: Green bar under relevant module in user dashboard.
 - UNKNOWN: (The user has their API disabled and we are not comfortable in our aproximations of if they are online or offline. We have several sources (world shift and vetsmod reporting -- see wv list), but if we are unsure, we can use this list their status as unconfirmable).
   - Staff see: GREY border outlining user object in staff dashboard.
@@ -177,16 +210,54 @@ An offline person is exactly one of `OFFLINE_GONE` / `OFFLINE`:
 **NOTE THAT** users in queues (reported as `queued` in online-merge, see the /wv list implementation for reference (i.e. queued on /v1/outbound/list)) are `ONLINE_ELSEWHERE`, not `OFFLINE_*`. Anni is a very queue-intensive event, so this will likely be encountered *a lot*
 
 ## RSVP axis (`constants.RsvpState`, `domain/rsvp.state_of`)
-The second, independent channel on every person card — the badge left of the
+The second, independent channel on every person card — the icon left of the
 avatar. Derived per (event, player) from the `Rsvp` row, never stored
 separately:
 
-| State | Glyph | Colour | Means |
+Every state is a **ticket** — the differences are what is on it, whether the
+outline is solid or dotted, and whether the silhouette is whole or torn:
+
+| State | Ticket | Colour | Means |
 |---|---|---|---|
-| `NONE` | `W` | GREY | no `Rsvp` row — a walk-in, they never declared |
-| `HARD` | `✓` | GREEN | live row, `notice=RSVP_HARD` |
-| `SOFT` | `~` | YELLOW | live row, `notice=RSVP_SOFT` |
-| `REVOKED` | `✕` | RED | row soft-deleted (`revoked_at` set) |
+| `NONE` | dashed outline, exclamation | LIME (yellow-green) | no `Rsvp` row — a walk-in, they never declared |
+|  |  |  | *(a fourth axis, the hourglass over the avatar, marks a late arrival — see below; any RSVP state can carry it)* |
+| `HARD` | tick | TEAL (green-blue) | live row, `notice=RSVP_HARD` |
+| `SOFT` | clock | ORCHID (red-purple) | live row, `notice=RSVP_SOFT` |
+| `REVOKED` | blank, torn in half | BRICK (red-orange) | row soft-deleted (`revoked_at` set) |
+
+Drawn as inline SVG in `templates/macros/icons.html`, hand-pathed on a 24×20
+grid to match the `fa-slab-duo fa-regular fa-ticket` reference (~1.25:1,
+generous corners, **two** semicircular bites per end). The app vendors every
+asset, and hand paths dodge icon-font licensing.
+
+**The edge is what makes it a ticket.** Two bites per end, not one — flat,
+notch, longer flat, notch, flat. A single central notch reads as a waist: the
+silhouette pinches in the middle and the thing looks like a spool. Two
+shallower ones read as perforations, which is the whole visual argument that
+this is a ticket. Notch depth is bounded by the outline weight (ink grows
+outward from the path, so a bite much shallower than the line is
+half-swallowed and stops registering), which is why the rings run lighter than
+a true slab — the silhouette matters more than the weight. For the same
+reason the walk-in ticket is **dashed, not dotted**: round dots at this scale
+swallowed the notches and corners, and a ticket you cannot see the edge of is
+not recognisably a ticket.
+
+**Three layers, one hue.** The wrapper sets `color` to the hue's `-light`
+tint (the linework) and `--tk-fill` to its `-dark` shade (the ticket's body).
+The dark is a **fill on the ticket path**, never a background behind the icon,
+so it stops at the ticket's edge instead of boxing it in — which is also why
+it has to arrive as a custom property read by a CSS rule, since `var()` is
+inert inside an SVG presentation attribute. The silhouette is then stroked
+three times over the same path, widest first (white, colour, black), and the
+body fill is drawn **last**: a centred stroke straddles its path, so the fill
+clips the inner half of all three rings and what survives reads outward from
+the body as black hairline → coloured slab → white hairline. SVG has no inner
+border and no way to offset a stroke to one side of its path; the ring stack
+is how you get an asymmetric edge out of it.
+
+Since the ticket brings its own dark body, one icon file reads identically on
+a dark role-coloured card and on the pale legend — no keyline hack needed, and
+the linework can stay thin enough for the mark on it to register.
 
 `REVOKED` deliberately outranks the stored notice: once someone pulls out,
 "they retracted" is the fact staff act on, not what they had said before.
@@ -195,31 +266,88 @@ separately:
 revoked row is a state to render, not an absence to hide.
 
 ## Board sub-buckets (`web/board_view`)
-Unassigned has four lanes and every party has two. Three of them are
-**stored** (`BoardPlacement.is_late` / `.is_walkin` — how someone arrived);
-one is **derived** on every render:
+Unassigned has three lanes and every party has two. Only **one** of them is
+stored (`BoardPlacement.is_walkin` — "never declared"); the soft-RSVP lanes
+are derived on every render:
 
-- Unassigned: `on_time` → `offline_soft` → `walkin` → `late`.
+- Unassigned: `on_time` → `soft` → `walkin`.
 - Each party: its members → `offline_soft`.
 
-`board_view.is_offline_soft` is the whole rule: soft RSVP **and** a presence
-status of `OFFLINE`/`OFFLINE_GONE`. `UNKNOWN` is excluded — unconfirmable is
-not absent, and parking someone in the "don't count on them" lane on a guess
-is the fabrication the spec forbids.
+The two derived lanes deliberately use **different** predicates:
 
-It has to be derived rather than a fourth stored flag: it tracks live
-presence, so a soft RSVP logging on must leave the lane on the next presence
-tick without anyone dragging them, and party placements have no lane flags at
-all. Consequences worth knowing:
-- The lane's **dropzone targets the same container as the lane above it** (the
+| Lane | Predicate | Why |
+|---|---|---|
+| Unassigned `soft` | `is_soft` — soft RSVP, online or not | Unassigned is a queue an organiser is placing *from*, so they want every maybe together |
+| Party `offline_soft` | `is_offline_soft` — soft RSVP **and** `OFFLINE` | A party slot is already allocated, so the only ones worth flagging are the maybes who haven't turned up |
+
+`UNKNOWN` is excluded from the party predicate — unconfirmable is not absent,
+and parking someone in the "don't count on them" lane on a guess is the
+fabrication the spec forbids.
+
+Deriving rather than storing is what makes the **auto-promote** work: a soft
+RSVP in a party who logs on is pulled back into the party proper on the next
+presence tick, with nobody dragging them. A stored flag would go stale, and
+party placements have no lane flags at all. Consequences worth knowing:
+- A lane's **dropzone targets the same container as the lane above it** (the
   party, or the main Unassigned lane). Dragging a card in or out of it is a
   no-op that re-derives on the next render — it is a *view* of a container,
   not a container.
-- It is carved out of the **main lane only**. Walk-ins by definition never
-  RSVP'd so they cannot qualify; LATE is a provenance marker worth keeping
-  whole, so a late soft-RSVP stays in LATE.
 - A party's `count` (the N/10 header) spans both lanes — an offline soft RSVP
   is still occupying a slot.
+
+**There is no LATE lane.** Lateness stopped being a partition of the queue
+when its threshold started sliding with the RSVP (below); it is a fact about
+one card, and renders as the hourglass over that card's avatar.
+
+## Avatar stamps: gone and late
+Two facts are *history* rather than presence, so neither is a status — each
+is a stamp on the person card's avatar. Both can be true; **at most one is
+drawn, and gone outranks late**. "They are not here" is what an organiser
+acts on; "they were late getting here" is water under the bridge. When they
+log back on the `?` clears and the hourglass reappears on its own, because
+gone is derived rather than stored — there is no state to unwind.
+
+- **gone** (`board_view`'s `is_gone`, a white `?`) — status is `OFFLINE`
+  **and** the uuid is in `AppState.seen_online_uuids`, the add-only set
+  `presence_poller` accumulates and the grace-wipe clears. Derived per
+  render, so it tracks live presence exactly.
+- **late** (`BoardPlacement.is_late`, a white hourglass) — see below. Stored
+  at insert, because it is a fact about a moment that has passed.
+
+Both render as a translucent black disc with an opaque white glyph, centred
+on the face — see `colourblind.md` for why that treatment and not `opacity`.
+
+## Late arrivals (`constants.LATE_ARRIVAL_SECONDS`, `hot_window.is_late_arrival`)
+Whether an arrival counts as late depends on what they had promised — someone
+who committed has earned more slack than someone nobody was told about:
+
+| RSVP | Late if they arrive after |
+|---|---|
+| hard | T-15 |
+| soft | T-35 |
+| walk-in (none) | T-50 |
+| retracted | n/a — never late |
+
+Evaluated **once**, when the card lands on the board (`buckets.ensure_placed`
+/ `add_walkin` — never the caller, so the three insert paths can't drift), and
+stored on `BoardPlacement.is_late`. It is a fact about when someone turned up,
+so no move touches it: dragging a latecomer into a party must not launder the
+hourglass away. (This is also why `buckets.move` has no `is_late` parameter at
+all — while it was a lane, every move supplied one, and a REST move defaulting
+it to False would have silently cleared the mark.)
+
+`hot_window.is_late_bucket` is a *different* thing that kept its name: the
+T-60 switch behind the board's `live` pill label.
+
+## Retraction (`buckets.demote_on_revoke`)
+Revoking an RSVP moves the card to **Sitting out** from wherever it currently
+sits, a party included. Re-RSVPing undoes it (`promote_from_wontassign` pulls
+them back to the main Unassigned lane), so it is never a dead end.
+
+This used to only demote out of Unassigned, on the reasoning that staff intent
+should beat a user action. That was backwards for the case that matters:
+someone sitting in a party who pulls out is exactly when an organiser needs
+the seat freed, and a card left in place was easy to miss.
 
 ## Lifecycle & grace-wipe (`services/lifecycle_task.py`)
 `stamp` future → active event. now>stamp & ≤stamp+2h → grace (board read-only

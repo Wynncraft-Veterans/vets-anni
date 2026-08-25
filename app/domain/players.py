@@ -7,22 +7,29 @@ fine right up until a typo does: ``\\rsvp set``, the staff board's "Add Players"
 Minecraft name became a permanent ghost — on the board, in the roles
 dashboard, in every host/organiser dropdown, with no way back out.
 
-This module is the way back out, with one hard rule: **a purge may only ever
-destroy an empty shell.** :func:`blockers` enumerates everything that makes a
-row somebody's actual data — a dashboard login, declared capabilities, any
-RSVP (revoked ones included; they're an audit trail), hosting a party, being
-an event's lead organiser — and :func:`purge` refuses while any of them hold,
-naming the one it found. What a purge *does* cascade is
-:class:`BoardPlacement` rows, deliberately: taking the ghost off the board is
-the point of deleting it, and by then we've proven the placement is the only
-thing referencing it.
+This module is the way back out, for **any** profile — not just the empty
+shells it originally covered. Restricting it to shells sounded prudent and
+wasn't: the profiles staff most need gone are the ones a typo has already
+attached an RSVP or a capability to, and refusing those left the ghost
+permanent while the button sat there greyed out.
 
-Deleting a shell is therefore recoverable by construction: the next
-walk-in add / RSVP / login recreates the row from the same resolver that
-created it in the first place. (It can also come back on its own — the
-auto-promoter re-materialises a placeholder for any guild member it sees
-online during the hot window. Nothing to do about that here; it's the
-auto-promoter working as specified.)
+So :func:`purge` always deletes, and :func:`holdings` moved from being a
+*veto* to being a *warning*: it enumerates everything that makes a row
+somebody's actual data — a dashboard login, declared capabilities, any RSVP
+(revoked ones included; they're an audit trail), hosting a party, being an
+event's lead organiser — and the caller puts that in the confirmation so
+nobody destroys those unknowingly. A delete cascades
+:class:`BoardPlacement`, :class:`RoleCapability` and :class:`Rsvp`; a party
+host or lead organiser FK is ``SET_NULL``, so those survive the delete
+minus a name.
+
+Deleting a shell is recoverable by construction: the next walk-in add / RSVP
+/ login recreates the row from the same resolver that created it in the
+first place. (It can also come back on its own — the auto-promoter
+re-materialises a placeholder for any guild member it sees online during the
+hot window. Nothing to do about that here; it's the auto-promoter working as
+specified.) Deleting a profile that held real data is NOT recoverable, which
+is exactly why the warning exists.
 
 Pure domain, ORM-only (mirrors ``domain/buckets``): no FastAPI, no discord.
 """
@@ -44,12 +51,13 @@ from app.domain.buckets import OpResult
 logger = logging.getLogger("anni.players")
 
 
-async def blockers(player: AnniPlayer) -> list[str]:
-    """Every reason ``player``'s profile is real data, in staff-facing words.
+async def holdings(player: AnniPlayer) -> list[str]:
+    """Everything that makes ``player``'s profile real data, in staff-facing
+    words. Empty list => the row is an empty shell.
 
-    Empty list => the row is a shell that :func:`purge` may delete. Ordered
-    most-decisive first so a caller that only shows one reason shows the
-    most convincing one.
+    A warning, not a veto (see the module docstring): callers surface it in
+    the delete confirmation. Ordered most-decisive first so a caller with
+    room for one line shows the most consequential one.
     """
     found: list[str] = []
 
@@ -83,68 +91,89 @@ async def blockers(player: AnniPlayer) -> list[str]:
 
 
 async def purge(player_uuid: str) -> OpResult:
-    """Delete a profile that holds nothing, or explain why it can't be.
+    """Delete a profile outright, whatever it holds.
+
+    The only refusal left is "no such profile" — everything else is the
+    caller's to warn about (:func:`holdings`), because a staff member looking
+    at a ghost row is better placed than this function to judge whether the
+    RSVP hanging off it is real. Cascades placements, capabilities and RSVPs;
+    nulls any party-host / lead-organiser FK.
 
     Returns the same :class:`~app.domain.buckets.OpResult` the board
     mutations use, so callers relay ``reason`` verbatim the way the hub
-    does. On success the reason field carries a short "what happened" line
-    (including whether a board placement went with it) — the only place a
-    successful OpResult uses it.
+    does. On success the reason field carries a short "what happened" line —
+    the only place a successful OpResult uses it — and it names what went
+    with the profile, since by then it is the only record that it existed.
     """
     player = await AnniPlayer.filter(mc_uuid=player_uuid).first()
     if player is None:
         return OpResult(False, "That profile no longer exists.", player_uuid)
 
-    held = await blockers(player)
-    if held:
-        return OpResult(
-            False,
-            f"Can't delete {player.mc_username}: {held[0]}. Remove them from "
-            f"the board instead.",
-            player_uuid,
-        )
-
     name = player.mc_username
+    held = await holdings(player)
     placements = await BoardPlacement.filter(player=player).count()
-    await player.delete()  # cascades the placement rows proven empty above
-    logger.info("purged profile: %s (%d placement(s))", name, placements)
+    await player.delete()  # cascades placements, capabilities and RSVPs
+    logger.info(
+        "purged profile: %s (%d placement(s); held: %s)",
+        name, placements, "; ".join(held) or "nothing",
+    )
+    took = []
+    if placements:
+        took.append("took them off the board")
+    if held:
+        took.append(f"and destroyed what it held ({held[0]})")
     return OpResult(
         True,
-        (
-            f"Deleted {name}'s profile"
-            + (" and removed them from the board." if placements else ".")
+        f"Deleted {name}'s profile" + (
+            " — " + " ".join(took) + "." if took else "."
         ),
         player_uuid,
     )
 
 
-async def deletable_uuids() -> set[str]:
-    """The uuids :func:`purge` would accept, resolved in one bulk pass.
+async def holdings_by_uuid() -> dict[str, list[str]]:
+    """:func:`holdings` for every player at once, as ``{uuid: [reason, ...]}``.
 
-    The roles dashboard renders a row per player and only offers Delete on
-    shells, so it needs this answer for *every* player at once — a
-    per-row :func:`blockers` call would be five queries per player. Same
-    predicate, expressed as set subtraction: five constant-cost queries for
-    the whole page.
+    The roles dashboard renders a row per player and needs each one's warning
+    text; a per-row :func:`holdings` call would be five queries per player.
+    Same predicate, expressed as bulk grouping: six constant-cost queries for
+    the whole page. Players holding nothing are absent from the dict.
+
+    Phrasing is duplicated from :func:`holdings` rather than shared, because
+    the two answer slightly different questions — this one counts rows in
+    bulk and never loads a player object. A test pins them to agree.
     """
-    all_uuids: set[str] = set(
-        await AnniPlayer.all().values_list("mc_uuid", flat=True)
-    )
-    with_password: set[str] = set(
-        await AnniPlayer.exclude(password_hash=None)
-        .values_list("mc_uuid", flat=True)
-    )
-    with_caps: set[str] = set(
-        await RoleCapability.all().values_list("player_id", flat=True)
-    )
-    with_rsvp: set[str] = set(
-        await Rsvp.all().values_list("player_id", flat=True)
-    )
-    hosts: set[str] = set(
-        await Party.exclude(host=None).values_list("host_id", flat=True)
-    )
-    organizers: set[str] = set(
-        await AnniEvent.exclude(organizer=None)
-        .values_list("organizer_id", flat=True)
-    )
-    return all_uuids - with_password - with_caps - with_rsvp - hosts - organizers
+    from collections import Counter
+
+    out: dict[str, list[str]] = {}
+
+    def add(uuid: str, phrase: str) -> None:
+        out.setdefault(uuid, []).append(phrase)
+
+    # Ordered to match holdings()'s most-decisive-first sequence.
+    for uuid in await AnniPlayer.exclude(password_hash=None).values_list(
+        "mc_uuid", flat=True
+    ):
+        add(uuid, "they have set a dashboard password")
+
+    caps = Counter(await RoleCapability.all().values_list("player_id", flat=True))
+    for uuid, n in caps.items():
+        add(uuid, f"they have declared {n} role "
+                  f"{'capability' if n == 1 else 'capabilities'}")
+
+    rsvps = Counter(await Rsvp.all().values_list("player_id", flat=True))
+    for uuid, n in rsvps.items():
+        add(uuid, f"they have {n} RSVP{'' if n == 1 else 's'} on record")
+
+    for host_id, ordinal in await Party.exclude(host=None).order_by(
+        "ordinal"
+    ).values_list("host_id", "ordinal"):
+        if not any(r.startswith("they are the host") for r in out.get(host_id, [])):
+            add(host_id, f"they are the host of Party {ordinal}")
+
+    for uuid in await AnniEvent.exclude(organizer=None).values_list(
+        "organizer_id", flat=True
+    ):
+        add(uuid, "they are an anni's lead organiser")
+
+    return out

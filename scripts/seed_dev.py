@@ -203,9 +203,9 @@ async def populate() -> dict[str, object]:
     # --- board placements (single instance per person) -----------------------
     # The Unassigned bucket has three sub-buckets — main (RSVP'd; the only
     # lane the /rsvp cog and boot-heal sweep ever write into), walk-in (auto-
-    # promoter for non-RSVP'd online players before T-60), and LATE (anything
-    # placed after T-60). The seed populates all three so the board renders a
-    # realistic spread of every lane at once.
+    # promoter for non-RSVP'd online players). ``late`` is no longer a lane —
+    # it is the arrived-late hourglass on the card — but the seed still sets
+    # it on a couple of names so the demo board shows the badge.
     async def place(name, *, party=None, bucket=None, role=None,
                     late=False, walkin=False, i=0):
         await BoardPlacement.create(
@@ -225,9 +225,13 @@ async def populate() -> dict[str, object]:
     # UNASSIGNED walk-in — non-RSVP'd auto-detected arrivals (T-70..T-60).
     await place("Faulischlumpf", bucket=BucketKind.UNASSIGNED, walkin=True, i=0)
     await place("baz", bucket=BucketKind.UNASSIGNED, walkin=True, i=1)  # Fill, no caps
-    # UNASSIGNED LATE — anything placed after T-60.
-    await place("Salted", bucket=BucketKind.UNASSIGNED, late=True, i=0)
-    await place("Jumla", bucket=BucketKind.UNASSIGNED, late=True, i=1)
+    # Two late arrivals, so the hourglass badge shows on the demo board.
+    # They sit in the walk-in lane (no RSVP), which is where the runtime
+    # would have put them; lateness is orthogonal to the lane now.
+    await place("Salted", bucket=BucketKind.UNASSIGNED, late=True,
+                walkin=True, i=2)
+    await place("Jumla", bucket=BucketKind.UNASSIGNED, late=True,
+                walkin=True, i=3)
     await place("Sevisoup", bucket=BucketKind.VOLUNTEERS, i=0)
     await place("bar", bucket=BucketKind.VOLUNTEERS, i=1)
     await place("ThinKing", bucket=BucketKind.WONTASSIGN, i=0)
@@ -282,7 +286,7 @@ async def main() -> None:
         f"Seeded dev data: 1 active event (anni ~93m, organiser Holidaze), "
         f"{len(PLAYERS)} real-name players (incl. API-disabled Metrafish + "
         f"rename-desync _akaPasta), 2 parties (stages 3 & 1), "
-        f"15 placements (4 main / 2 walk-in / 2 LATE in Unassigned), "
+        f"15 placements (4 main / 4 walk-in, 2 of them late, in Unassigned), "
         f"6 RSVPs. Run the dev server -> http://127.0.0.1:8000/"
     )
 

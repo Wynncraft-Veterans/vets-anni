@@ -7,9 +7,11 @@ Pure (every input passed in, no DB / FastAPI / discord), mirroring
   ``auto_promoter``: at ``T-HOT_WINDOW_OPEN`` (default 70 min before the anni)
   every "is X online" poller switches from its normal interval to its hot
   interval, and stays there through ``stamp + grace``;
-* the **LATE-bucket switch** in ``domain.buckets.ensure_placed`` and the RSVP
-  cog: at ``T-EARLY_NOTICE_CUTOFF`` (60 min) new auto-placements flip from
-  the main Unassigned lane to the LATE sub-bucket (``is_late=True``);
+* the **monitoring switch** behind the board's ``live`` pill: at
+  ``T-EARLY_NOTICE_CUTOFF`` (60 min) the label flips from "1hr+ early
+  joiners" to "late players". This used to also flip new auto-placements
+  into a LATE sub-bucket; that lane is gone and lateness is now a per-person
+  badge on a sliding, RSVP-dependent threshold (:func:`is_late_arrival`);
 * the **RSVP cutoff** in ``execute_rsvp``: at ``T-RSVP_CUTOFF`` (90 min) the
   user-facing ``\\rsvp hard`` / ``\\rsvp soft`` are refused. Staff override
   (``\\rsvp set``) and revokes are unaffected.
@@ -25,7 +27,11 @@ from __future__ import annotations
 import time
 from typing import Protocol
 
-from app.constants import EARLY_NOTICE_CUTOFF_SECONDS, RSVP_CUTOFF_SECONDS
+from app.constants import (
+    EARLY_NOTICE_CUTOFF_SECONDS,
+    LATE_ARRIVAL_SECONDS,
+    RSVP_CUTOFF_SECONDS,
+)
 
 
 class _StampedEvent(Protocol):
@@ -61,19 +67,52 @@ def is_hot(
 def is_late_bucket(
     event: _StampedEvent | None, *, now: int | None = None
 ) -> bool:
-    """True iff a new auto-placement for ``event`` should land in the
-    LATE sub-bucket (``is_late=True``) rather than the main Unassigned lane.
+    """True iff ``now`` is past the T-60 monitoring switch.
 
     Equivalent to ``seconds_to_anni < EARLY_NOTICE_CUTOFF_SECONDS`` — handles
     negative values during grace (always True) and bails to False for a
-    missing event (no event means no auto-placements happen anyway, but the
-    helper stays well-defined).
+    missing event.
+
+    Named for the LATE sub-bucket it used to gate. That lane is gone; this
+    now only drives the board's ``live`` pill label (see
+    :func:`monitoring_state`). Whether a given *person* counts as a late
+    arrival is :func:`is_late_arrival`, which slides with their RSVP.
     """
     if event is None:
         return False
     current = int(time.time()) if now is None else now
     seconds_to_anni = event.stamp_epoch - current
     return seconds_to_anni < EARLY_NOTICE_CUTOFF_SECONDS
+
+
+def is_late_arrival(
+    event: _StampedEvent | None,
+    rsvp_state: str,
+    *,
+    now: int | None = None,
+) -> bool:
+    """True iff someone turning up *now* counts as a late arrival — the
+    hourglass on their card.
+
+    The threshold slides with what they promised
+    (:data:`app.constants.LATE_ARRIVAL_SECONDS`): T-15 for a hard RSVP, T-35
+    for a soft one, T-50 for a walk-in nobody was told about. A retracted
+    RSVP has no threshold at all and is never late.
+
+    ``rsvp_state`` is an :class:`app.constants.RsvpState` value (the raw
+    string, so this module stays enum-free like the rest of its inputs). An
+    unknown value is treated as the walk-in threshold — the strictest of the
+    real ones, so a vocabulary drift errs toward flagging rather than hiding.
+    """
+    if event is None:
+        return False
+    threshold = LATE_ARRIVAL_SECONDS.get(
+        rsvp_state, LATE_ARRIVAL_SECONDS["none"]
+    )
+    if threshold is None:
+        return False
+    current = int(time.time()) if now is None else now
+    return event.stamp_epoch - current < threshold
 
 
 def is_rsvp_closed(
@@ -108,8 +147,8 @@ def monitoring_state(
     """Three-state label used by the board's ``live`` pill.
 
     * ``idle`` — outside the hot window (T > open, or no event, or post-wipe).
-    * ``early`` — in the hot window, before the LATE-bucket switch.
-    * ``late`` — in the hot window, at-or-after the LATE switch (incl. grace).
+    * ``early`` — in the hot window, before the T-60 switch.
+    * ``late`` — in the hot window, at-or-after the switch (incl. grace).
     """
     if not is_hot(
         event,

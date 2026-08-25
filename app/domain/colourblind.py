@@ -39,7 +39,6 @@ _STATUS_VAR: dict[PresenceStatus, str] = {
     PresenceStatus.ONLINE_WORLD: "--st-world",
     PresenceStatus.ONLINE_ELSEWHERE: "--st-elsewhere",
     PresenceStatus.OFFLINE: "--st-offline",
-    PresenceStatus.OFFLINE_GONE: "--st-gone",
     PresenceStatus.UNKNOWN: "--st-unknown",
 }
 _RSVP_VAR: dict[RsvpState, str] = {
@@ -58,15 +57,18 @@ class RoleChip(TypedDict):
 
 
 class StatusChip(TypedDict):
-    css_var: str
+    css_var: str       # the border hue
+    css_var_dark: str  # its dark shade — the hairline just inside the border
     glyph: str
-    label: str
+    label: str         # short name ("In Party")
+    description: str   # the full sentence, for a hover title
     pattern: str   # data-pattern -> non-colour online/offline encoding
 
 
 class RsvpChip(TypedDict):
-    css_var: str
-    glyph: str     # W / ✓ / ~ / ✕ — the channel that survives greyscale
+    css_var: str       # bright hue — the ticket's strokes
+    css_var_dark: str  # matching dark shade — the plate behind it
+    icon: str      # shape name in macros/icons.html — the greyscale channel
     label: str
     state: str     # the raw RsvpState value (data-attr / CSS hook)
 
@@ -91,12 +93,22 @@ def role_chip(role: Role | None) -> RoleChip:
 
 
 def status_chip(status: PresenceStatus) -> StatusChip:
-    """Border chip for a presence status — colour + glyph + label + pattern."""
+    """Border chip for a presence status — colour + glyph + label + pattern.
+
+    Two channels of the one hue, same split as :func:`role_chip`: the bright
+    shade is the card's outline and the dark one is a hairline just inside
+    it. The hairline carries no information the border doesn't — it is there
+    because a bright status band sits directly on a bright role background,
+    and without an edge between them the two colours bleed into each other.
+    """
     s = STATUS_STYLES[status]
+    var = _STATUS_VAR[status]
     return StatusChip(
-        css_var=_STATUS_VAR[status],
+        css_var=var,
+        css_var_dark=f"{var}-dark",
         glyph=s.glyph,
         label=s.label,
+        description=s.description,
         pattern=s.pattern,
     )
 
@@ -104,15 +116,23 @@ def status_chip(status: PresenceStatus) -> StatusChip:
 def rsvp_chip(state: RsvpState) -> RsvpChip:
     """Badge for the RSVP axis — colour + glyph + label.
 
-    Deliberately has no ``pattern``: the badge is a ~1rem square, far too
-    small for a border rhythm to read. Its four glyphs are the non-colour
-    channel instead, and unlike the status ramp they are distinguishable at
-    that size with no colour at all.
+    Deliberately has no ``pattern``: there is no border to draw a rhythm on.
+    Its four ticket *shapes* are the non-colour channel instead — what is
+    printed on each ticket, whether the outline is solid or dotted, and
+    whether the silhouette is whole or torn.
+
+    Two colour channels, same hue: ``css_var`` is the bright stroke and
+    ``css_var_dark`` the plate behind it (same split as
+    :func:`role_chip`). The plate is what lets one icon file read identically
+    on a dark role-coloured card and on the pale legend — it brings its own
+    background instead of relying on a keyline to survive both.
     """
     s = RSVP_STYLES[state]
+    var = _RSVP_VAR[state]
     return RsvpChip(
-        css_var=_RSVP_VAR[state],
-        glyph=s.glyph,
+        css_var=var,
+        css_var_dark=f"{var}-dark",
+        icon=s.icon,
         label=s.label,
         state=state.value,
     )

@@ -70,7 +70,7 @@ async def test_idle_outside_hot_window_no_inserts(seeded, monkeypatch):
 
 
 async def test_inside_hot_window_lands_online_users(seeded, monkeypatch):
-    """T-65min (in hot, before LATE switch): online player gets is_late=False."""
+    """T-65min: a walk-in is well inside their T-50 grace, so is_late=False."""
     broadcast = await _patch_broadcast(monkeypatch)
     await _reset_sweep_guard(monkeypatch)
     await _set_event_stamp(seeded, 65 * 60)
@@ -94,8 +94,10 @@ async def test_inside_hot_window_lands_online_users(seeded, monkeypatch):
     assert hot_window.is_currently_hot() is True
 
 
-async def test_late_window_uses_late_lane(seeded, monkeypatch):
-    """T-30min (past T-60): new auto-placements land in the LATE sub-bucket."""
+async def test_walkin_past_their_threshold_is_flagged_late(seeded, monkeypatch):
+    """T-30min: a walk-in's threshold is T-50, so they arrive flagged late.
+    The flag is a badge on the card now — they still land in the walk-in
+    lane, since the lane means "never declared", not "arrived late"."""
     await _patch_broadcast(monkeypatch)
     await _reset_sweep_guard(monkeypatch)
     await _set_event_stamp(seeded, 30 * 60)
@@ -109,6 +111,7 @@ async def test_late_window_uses_late_lane(seeded, monkeypatch):
         event=seeded["event"], player__mc_uuid="uuid-tardy",
     )
     assert placed.bucket is BucketKind.UNASSIGNED
+    assert placed.is_walkin is True
     assert placed.is_late is True
 
 
@@ -161,3 +164,32 @@ async def test_boot_heal_sweeps_outstanding_rsvps(seeded, monkeypatch):
     # Subsequent tick is a no-op (guard set).
     await auto_promoter._tick(state, Settings())
     assert await BoardPlacement.filter(event=seeded["event"]).count() == n1
+
+
+async def test_hard_rsvp_at_t30_is_not_late_but_a_walkin_is(seeded, monkeypatch):
+    """The threshold slides with what was promised: at T-30 a hard RSVP is
+    still early (their line is T-15) while a walk-in beside them is late."""
+    from app.constants import AttendanceNotice
+    from app.db.models import Rsvp
+
+    await _patch_broadcast(monkeypatch)
+    await _reset_sweep_guard(monkeypatch)
+    await _set_event_stamp(seeded, 30 * 60)
+
+    promised = await AnniPlayer.create(
+        mc_uuid="uuid-promised", mc_username="Promised")
+    await Rsvp.create(event=seeded["event"], player=promised,
+                      notice=AttendanceNotice.RSVP_HARD)
+    state = AppState(online_by_uuid={
+        "uuid-promised": OnlinePlayer(uuid="uuid-promised", username="Promised"),
+        "uuid-nobody": OnlinePlayer(uuid="uuid-nobody", username="Nobody"),
+    })
+
+    await auto_promoter._tick(state, Settings())
+
+    hard = await BoardPlacement.get(
+        event=seeded["event"], player__mc_uuid="uuid-promised")
+    walkin = await BoardPlacement.get(
+        event=seeded["event"], player__mc_uuid="uuid-nobody")
+    assert hard.is_late is False and hard.is_walkin is False
+    assert walkin.is_late is True and walkin.is_walkin is True

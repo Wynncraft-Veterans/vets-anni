@@ -77,13 +77,33 @@ async def view_signals(
     return online_uuids | set(rsvp_by_uuid.keys()), rsvp_by_uuid, event is not None
 
 
+def _delete_warning(name: str, holds: list[str] | None) -> str:
+    """The hx-confirm text for a row's Delete profile button.
+
+    Spelled out rather than a generic "are you sure?": the whole reason
+    deleting non-empty profiles is allowed at all is that staff can judge
+    the tradeoff, and they can only judge it if the dialog says what goes.
+    """
+    if not holds:
+        return (
+            f"Delete {name}'s profile? It holds nothing — no password, "
+            f"capabilities or RSVPs — so this just removes the empty profile "
+            f"(and their card from the board)."
+        )
+    return (
+        f"Delete {name}'s profile? This CANNOT be undone: "
+        + ", ".join(holds)
+        + ". Deleting destroys all of it, plus their card on the board."
+    )
+
+
 def row_for(
     player: AnniPlayer,
     *,
     active_uuids: set[str] | None = None,
     rsvp_by_uuid: dict[str, AttendanceNotice] | None = None,
     has_event: bool = False,
-    deletable: bool = False,
+    holds: list[str] | None = None,
 ) -> dict:
     """Build the single-player row dict the roles dashboard renders.
 
@@ -98,10 +118,12 @@ def row_for(
     omits these the row degrades to "no presence info" — the toggle won't
     keep it visible and the badge is hidden.
 
-    ``deletable`` (from :func:`app.domain.players.deletable_uuids`) decides
-    whether the row offers "Delete profile" at all. Defaulting it to ``False``
-    means a caller that forgets it renders a *safe* row, and the button's mere
-    presence tells staff this profile holds nothing.
+    ``holds`` (one entry of :func:`app.domain.players.holdings_by_uuid`) is
+    what the profile would destroy if deleted, in staff-facing words. Every
+    row offers Delete now — the restriction to empty shells is gone — so this
+    is what the confirmation warns with. An empty/omitted list renders the
+    "holds nothing" wording, which is the safe default: it under-promises
+    rather than telling staff a delete is harmless when it isn't.
     """
     caps = sorted(player.capabilities, key=lambda c: c.role.value)
     is_core = cap_domain.is_core(len(caps))
@@ -131,7 +153,7 @@ def row_for(
         "is_core": is_core,
         "is_active": active_uuids is not None and player.mc_uuid in active_uuids,
         "rsvp_state": rsvp_state,
-        "can_delete": deletable,
+        "delete_warning": _delete_warning(player.mc_username, holds),
         "wins_total": wins_total,
         "region_codes_csv": ",".join(c.value for c in region_codes),
         "role_values_csv": ",".join(c.role.value for c in caps),
@@ -168,10 +190,10 @@ async def roles_dashboard(request: Request):
     active, rsvp_by_uuid, has_event = await view_signals(
         request.app.state.appstate
     )
-    deletable = await players_domain.deletable_uuids()
+    holds = await players_domain.holdings_by_uuid()
     rows = [row_for(p, active_uuids=active, rsvp_by_uuid=rsvp_by_uuid,
                     has_event=has_event,
-                    deletable=p.mc_uuid in deletable) for p in players]
+                    holds=holds.get(p.mc_uuid)) for p in players]
     core_count = sum(1 for r in rows if r["is_core"])
     # Highest-priority tier first, then Core before Fill, then name — the
     # order an organiser scans when filling a party.
@@ -205,7 +227,7 @@ async def _row_response(
     Local twin of ``staff_capability._row_response`` — that module imports
     *this* one for :func:`row_for`/:func:`view_signals`, so reaching back the
     other way would be a circular import. This one also carries the
-    ``error``/``deletable`` bits only the purge route needs.
+    ``error``/``holds`` bits only the purge route needs.
     """
     player = (
         await AnniPlayer.filter(mc_uuid=player_uuid)
@@ -217,27 +239,30 @@ async def _row_response(
     active, rsvp_by_uuid, has_event = await view_signals(
         request.app.state.appstate
     )
-    deletable = await players_domain.deletable_uuids()
+    holds = await players_domain.holdings_by_uuid()
     return render(
         request, "staff/_roles_row.html",
         r=row_for(player, active_uuids=active, rsvp_by_uuid=rsvp_by_uuid,
-                  has_event=has_event, deletable=player.mc_uuid in deletable),
+                  has_event=has_event, holds=holds.get(player.mc_uuid)),
         row_error=error,
     )
 
 
 @router.post("/staff/roles/player/{player_uuid}/delete", include_in_schema=False)
 async def delete_player_profile(request: Request, player_uuid: str):
-    """Delete a profile that holds nothing (``domain/players.purge``).
+    """Delete a profile outright (``domain/players.purge``).
 
     The escape hatch for a mistaken "Add Players" / ``\\rsvp set`` — those
     get-or-create an :class:`AnniPlayer` for whatever IGN resolved, and until
-    now nothing could undo it. The guard lives in the domain, so this route
-    can be blunt: on success the row is swapped out for nothing (HTMX
-    ``outerHTML`` with an empty body removes the ``<li>``) and live board tabs
-    re-snapshot, since the purge took the player's placement with it; on a
-    refusal the row comes back with the reason inline and its Delete button
-    gone (whatever now holds the profile also fails ``deletable_uuids``).
+    now nothing could undo it. Offered for every profile, not just empty
+    shells: the ones staff most need gone are exactly the ones a typo has
+    already attached an RSVP to. What stops an accident is the confirmation
+    naming what will be destroyed (:func:`_delete_warning`), not a veto.
+
+    On success the row is swapped out for nothing (HTMX ``outerHTML`` with an
+    empty body removes the ``<li>``) and live board tabs re-snapshot, since
+    the purge took the player's placement with it. The only refusal left is
+    "no such profile", which comes back inline.
     """
     if not auth.is_staff(request):
         return RedirectResponse("/staff", status_code=303)

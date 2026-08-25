@@ -222,11 +222,16 @@ class BoardPlacement(Model):
         null=True, on_delete=fields.SET_NULL,
     )
     assigned_role = fields.CharEnumField(Role, max_length=16, null=True)
-    # UNASSIGNED has three lanes: main (RSVP'd), walk-in (auto-detected
-    # non-RSVP before T-60), late (anything placed after T-60). ``is_late``
-    # wins if both are set; outside UNASSIGNED both are ignored.
-    is_late = fields.BooleanField(default=False)
+    # ``is_walkin`` is UNASSIGNED's one stored lane split — main (declared)
+    # vs walk-in (never did); ignored outside UNASSIGNED. The soft-RSVP lanes
+    # are derived per render in ``app/web/board_view``.
     is_walkin = fields.BooleanField(default=False)
+    # ``is_late`` is NOT a lane: it is a fact about when this person turned
+    # up, measured against a threshold that slides with what they had
+    # promised (``constants.LATE_ARRIVAL_SECONDS``). Stamped once by
+    # ``domain.buckets.ensure_placed``/``add_walkin`` and never touched by a
+    # move, so dragging a latecomer around cannot launder the hourglass away.
+    is_late = fields.BooleanField(default=False)
     sort_index = fields.IntField(default=0)       # ordering within container
 
     updated_at = fields.DatetimeField(auto_now=True)

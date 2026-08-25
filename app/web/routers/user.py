@@ -165,10 +165,11 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
             "bucket": placement.bucket,
         }
 
-    # "Given Notice" precedence: a staff LATE flag is an *observed fact* and
-    # overrides the rosy countdown projection (otherwise a late joiner reads
-    # "you showed up on time!" AND is in the LATE bucket — contradictory).
-    # Then a stored RSVP; otherwise the on-time/late countdown projection.
+    # "Given Notice" precedence: the LATE flag is an *observed fact* — when
+    # they actually turned up, against the threshold their RSVP earned them —
+    # so it overrides the rosy countdown projection. Otherwise a late joiner
+    # would read "you showed up on time!" while their board card wears an
+    # hourglass. Then a stored RSVP; otherwise the countdown projection.
     if placement is not None and placement.is_late:
         notice = AttendanceNotice.ATTEND_LATE
     else:

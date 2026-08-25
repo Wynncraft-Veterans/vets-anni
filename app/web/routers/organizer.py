@@ -169,16 +169,6 @@ async def rest_player_add(request: Request, ign: str = Form("")):
                                                data={"ign": ign}))
 
 
-@router.post("/staff/board/player-remove", include_in_schema=False)
-async def rest_player_remove(request: Request, player_uuid: str = Form(...)):
-    """Remove a player's card from the board (their profile is untouched —
-    see ``domain/players.purge`` for deleting a mistaken add outright).
-    Rejections (not placed, hosting a party) surface inline like any other
-    twin's."""
-    return await _apply_rest(request, P.Intent(
-        P.PLAYER_REMOVE, data={"player_uuid": player_uuid}))
-
-
 @router.post("/staff/board/move", include_in_schema=False)
 async def rest_move(
     request: Request,
@@ -186,11 +176,10 @@ async def rest_move(
     bucket: str = Form(""),
     party_id: str = Form(""),
     sort_index: int = Form(0),
-    is_late: bool = Form(False),
     is_walkin: bool = Form(False),
 ):
     target: dict = {
-        "sort_index": sort_index, "is_late": is_late, "is_walkin": is_walkin,
+        "sort_index": sort_index, "is_walkin": is_walkin,
     }
     if party_id:
         target["party_id"] = party_id

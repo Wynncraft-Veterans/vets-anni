@@ -12,14 +12,19 @@
      the default palette, so colourblind.css re-declares every one of them
      under body.cb. Add an alias here => mirror it there (a static guard in
      test_colourblind.py enforces it). */
+  /* Neon family — the role chips + the RSVP icons. */
   --c-red:     #ff0000; --c-red-light:     #ff9292; --c-red-dark:     #990000;
-  --c-orange:  #ff8c00; --c-orange-light:  #ffc98a; --c-orange-dark:  #8f4a00;
   --c-yellow:  #fffb00; --c-yellow-light:  #f5f36e; --c-yellow-dark:  #696800;
   --c-green:   #15ff00; --c-green-light:   #83ff78; --c-green-dark:   #0a7700;
   --c-blue:    #0400ff; --c-blue-light:    #9290ff; --c-blue-dark:    #0300ac;
   --c-cyan:    #00e1ff; --c-cyan-light:    #4aeaff; --c-cyan-dark:    #007e8f;
   --c-magenta: #ff00dd; --c-magenta-light: #ff7aff; --c-magenta-dark: #6000b9;
-  --c-pink:    #ff69b4; --c-pink-light:    #ffb3d9; --c-pink-dark:    #a1004f;
+  /* Mid-tone family — the RSVP tickets. Picked as a SET so the four read as
+     one object family; they are not tints of the neon hues. */
+  --c-teal:    #37c5c8; --c-teal-light:    #a5e6e7; --c-teal-dark:    #16686a;
+  --c-lime:    #93bd42; --c-lime-light:    #d3e5a8; --c-lime-dark:    #4d6420;
+  --c-brick:   #c93e36; --c-brick-light:   #eeb0ac; --c-brick-dark:   #6b201c;
+  --c-orchid:  #c13eab; --c-orchid-light:  #e9aede; --c-orchid-dark:  #66205a;
   --c-grey:    #888888; --c-grey-light:    #d6d6d6; --c-grey-dark:    #3d3d3d;
 
   /* Role → shared colour (spec.md [^5]; see ROLE_STYLES). */
@@ -50,21 +55,42 @@
   --role-tertiary-light:  var(--c-magenta-light);
   --role-healer-light:    var(--c-green-light);
   --role-tank-light:      var(--c-blue-light);
-  /* Status border — a self-contained presence ramp, most→least "in
-     position" (see STATUS_STYLES). No longer paired with the role palette,
-     and no longer carrying RSVP: that is the --rsvp-* set below. */
-  --st-party:       var(--c-blue);
+  /* Status border — most→least "in position" (see STATUS_STYLES). Each is
+     the ROLE hue of the state it evokes, as a mnemonic: FILL's aqua for in
+     position, HEALER's green for on-world, SECONDARY's sun-gold for
+     elsewhere, PRIMARY's red for absent. Safe to share with roles because
+     they never share a channel — role is a background/swatch, status is the
+     border. "Was here and left" is NOT here: it is a badge on the avatar,
+     because it is history and would otherwise have to overwrite the present.
+     RSVP is not here either; that is the --rsvp-* set below. */
+  --st-party:       var(--c-cyan);
   --st-world:       var(--c-green);
-  --st-elsewhere:   var(--c-orange);
+  --st-elsewhere:   var(--c-yellow);
   --st-offline:     var(--c-red);
-  --st-gone:        var(--c-pink);
   --st-unknown:     var(--c-grey);
-  /* RSVP badge — the card's second axis (see RSVP_STYLES). Traffic light:
-     committed / tentative / pulled out, grey for "never said". */
-  --rsvp-none:      var(--c-grey);
-  --rsvp-hard:      var(--c-green);
-  --rsvp-soft:      var(--c-yellow);
-  --rsvp-revoked:   var(--c-red);
+  /* ...and the dark shade each one spills down the card's right edge. */
+  --st-party-dark:     var(--c-cyan-dark);
+  --st-world-dark:     var(--c-green-dark);
+  --st-elsewhere-dark: var(--c-yellow-dark);
+  --st-offline-dark:   var(--c-red-dark);
+  --st-unknown-dark:   var(--c-grey-dark);
+  /* RSVP ticket icons — the card's second axis (see RSVP_STYLES). Four
+     categories, not a scale, so the hues spread around the wheel instead of
+     walking one: green-blue, yellow-green, red-purple, red-orange. Shared
+     with the status ramp on purpose — a hue one nudge off TEAL would be two
+     hexes to maintain and no distinction anyone could use. */
+  --rsvp-none:      var(--c-lime-light);
+  --rsvp-hard:      var(--c-teal-light);
+  --rsvp-soft:      var(--c-orchid-light);
+  --rsvp-revoked:   var(--c-brick-light);
+  /* ...and the ticket's own body: the same hue's dark shade, filled INSIDE
+     the outline (never a plate behind it), so the badge carries its own
+     contrast onto any card without turning into a tile. The linework above
+     takes the -light tint so it stays bright against that body. */
+  --rsvp-none-dark:    var(--c-lime-dark);
+  --rsvp-hard-dark:    var(--c-teal-dark);
+  --rsvp-soft-dark:    var(--c-orchid-dark);
+  --rsvp-revoked-dark: var(--c-brick-dark);
 }
 
 body {
@@ -542,8 +568,8 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   border:1px dashed #cbd5e1;
 }
 .dropzone.walkin { background:#eff6ff; border-color:#93c5fd; }
-.dropzone.late { background:#fff7ed; border-color:#fdba74; }
-/* Derived "offline soft RSVPs" lane. Muted/greyed rather than tinted a new
+/* Derived soft-RSVP lane (all soft RSVPs in Unassigned, the offline ones
+   only inside a party). Muted/greyed rather than tinted a new
    hue: it is a *view* of the lane above it (see board_view.is_offline_soft),
    not a container staff move things into, and reading as slightly inert is
    exactly the message — don't count on these people. */
@@ -563,26 +589,79 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .person:active { cursor:grabbing; }
 .person-ghost { opacity:.4; }
+.person-face-wrap { position:relative; flex:none; line-height:0; }
 .person-face { border-radius:6px; image-rendering:pixelated; background:#0003;
-  flex:none; }
-/* RSVP badge (person card + legend key). Background is the raw --rsvp-* hue,
-   which spans #fffb00 to #009E73 depending on state and mode — so the glyph
-   is white with a thin black stroke, the same trick .role-tag .glyph uses to
-   stay legible on an arbitrary hue. The glyph, not the colour, is the signal
-   (W / ✓ / ~ / ✕ are unmistakable in greyscale). */
+  display:block; }
+/* History stamps on the avatar: the late-arrival hourglass and the
+   was-here-and-left `?`. Each gets its own dark disc because a Minecraft
+   face is arbitrary pixels — nothing else guarantees contrast; sized to stay
+   legible when the board is zoomed out, which is when a whole column of
+   these gets scanned at once.
+
+   At most one is drawn (gone outranks late — see macros/person.html), so it
+   simply sits dead-centre on the face. Centring settles the
+   vertical-compactness question by construction: the mark is smaller than
+   the 32px avatar, so it cannot reach past the card's content and can never
+   set a row's height. A board is read as a vertical list, and every row it
+   grows costs more than this is worth. (An earlier corner placement had to
+   be hand-tuned against the tier pill and sat 1.5px low, because its ring
+   was a box-shadow — those live outside the border box, so
+   `getBoundingClientRect` under-reports where the badge visibly ends.) */
+.face-mark {
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  display:inline-flex; align-items:center; justify-content:center;
+  width:1.35rem; height:1.35rem; border-radius:50%; pointer-events:none;
+  /* The disc is semi-transparent so the face still reads underneath — these
+     are stamps on a person, not a lid over one. No ring: the glyph is white
+     and the disc dark, which is already the strongest edge available, and an
+     outline on a 21px circle spends more of it on border than on mark. The
+     GLYPH stays fully opaque, which is why this is a translucent background
+     rather than `opacity` on the element: opacity would fade the mark along
+     with it, and the mark is the whole point. */
+  background:rgba(0,0,0,.55);
+  color:#fff;
+}
+.face-mark .ico { width:1.02rem; height:1.02rem; display:block; }
+/* RSVP ticket (person card + legend key). The wrapper carries BOTH channels
+   of one hue: `color` for the ticket's strokes (the inline SVG inherits it
+   as `currentColor`, see macros/icons.html) and the matching `-dark` shade
+   as the plate behind it.
+
+   The plate is doing real work, not decoration. Without it the same icon has
+   to survive a dark role-coloured card AND the pale legend, which needs a
+   drop-shadow keyline — and a keyline silts up exactly the gaps that make a
+   clock face read as a clock at this size. Giving the badge its own
+   background means the ticket is always bright-on-dark and the linework can
+   stay thin. */
 .rsvp-flag {
   display:inline-flex; align-items:center; justify-content:center; flex:none;
-  width:1.15rem; height:1.15rem; border-radius:6px;
-  font-size:.75rem; font-weight:800; line-height:1;
-  color:#fff; -webkit-text-stroke:.6px #000; paint-order:stroke fill;
-  box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);
-  user-select:none;
+  line-height:0; user-select:none;
 }
-/* On-card size: exactly as tall as the 32px avatar it sits beside, so a
-   dropzone's badges line up as a scannable column down the left edge. */
-.rsvp-flag-lg { width:1.5rem; height:2rem; font-size:1rem; border-radius:7px; }
+/* The dark body, clipped to the ticket by definition — it IS the ticket's
+   fill. `tk-body` is only on the silhouette paths, so the mark printed on
+   each ticket (tick / clock / exclamation) stays unfilled linework. Reaching
+   the path from CSS rather than a `fill=` attribute is not a style choice:
+   `var()` is inert inside an SVG presentation attribute. */
+.rsvp-flag .tk-body { fill:var(--tk-fill, transparent); }
+/* Landscape box (24x16 viewBox): a ticket is a wide shape, and squaring it
+   would shrink the mark inside to the point where tick-vs-clock stops
+   reading at card size. The box is the svg's own bounds now — with the fill
+   inside the outline there is no plate to size separately. */
+.rsvp-flag { width:1.8rem; height:1.5rem; }
+.rsvp-flag .ico { width:100%; height:100%; display:block; }
+/* On-card: the TICKET stands as tall as the 32px avatar beside it (the svg
+   runs a shade taller — the silhouette leaves ~1 unit of the 16 spare top
+   and bottom), so the left edge of a dropzone reads as two clean columns —
+   ticket, then face. */
+.rsvp-flag-lg { width:2.64rem; height:2.2rem; }
 .legend-rsvp { display:inline-flex; align-items:center; gap:.35rem;
   font-size:.8rem; }
+/* Divides the two keys sharing the status row — they are separate axes, and
+   without it the eye reads one long list of nine things. */
+.legend-sep {
+  width:1px; align-self:stretch; margin:.1rem .3rem;
+  background:#cbd5e1; flex:none;
+}
 .person-main { display:flex; flex-direction:column; gap:.15rem; min-width:0;
   flex:1; }
 .person-name { font-weight:700; font-size:.9rem; }
@@ -600,26 +679,61 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .status-tag .glyph { font-size:.8rem; }
 .person .pill { font-size:.68rem; }
-/* Stacked so the ✕ and the (optional) move dropdown don't fight the role
-   select for the card's narrow right-hand column. */
+/* Stacked so the (optional) move dropdown doesn't fight the role select for
+   the card's narrow right-hand column. */
 .person-actions { flex:none; display:flex; flex-direction:column; gap:.25rem;
   align-items:stretch; }
 .person-role, .person-move {
   width:auto; font-size:.74rem; padding:.2rem .35rem; border-radius:6px;
   background:rgba(255,255,255,.92); color:#111827; border:none;
 }
-/* Remove-from-board ✕ — the .party-delete affordance restyled for a
-   role-coloured (dark) card, where a red-on-white glyph would vanish. */
-.person-remove {
-  align-self:flex-end; width:1.35rem; height:1.35rem; flex:none; padding:0;
-  border:0; border-radius:6px; background:rgba(0,0,0,.28); color:#fff;
-  font-size:1rem; line-height:1; cursor:pointer;
-}
-.person-remove:hover { background:#dc2626; }
-.person-remove:focus-visible { outline:2px solid #fff; outline-offset:1px; }
 /* The status border itself (width/style/pattern come from colourblind.css,
-   which applies in both modes; colour is the inline var(--st-*)). */
-.person.status-border { border-width:3px; }
+   which applies in both modes; colour is the inline var(--st-*)), plus a
+   strip of the same hue's dark shade down the right edge.
+
+   The strip is redundant by design — it repeats what the border already
+   says. It earns its place because the border is 3px of bright hue sitting
+   directly against a role-coloured card, and at a glance down a full
+   dropzone that outline is the easiest thing on the card to lose; a solid
+   block of the same colour is not. An inset box-shadow rather than a
+   pseudo-element: `.person` already runs a stacking context for the
+   capability popovers, and one more positioned child in it is one more thing
+   to reason about for something purely decorative. */
+/* Shared by the person card and the legend key that explains it — the two
+   have to look identical or the legend stops being a key. Deliberately NOT
+   on bare `.status-border`: `chips.html`'s `status_dot` wears that class too,
+   and a 4px band with two hairlines would swallow a ~1rem dot whole. */
+.person.status-border,
+.legend-status.status-border {
+  /* Three concentric edges, outermost first: a black hairline, the thick
+     bright status band, then a hairline of the same hue's dark shade inside
+     it. The band is what you read; the two hairlines are what let you read
+     it. Bright status hues sit on bright role backgrounds and against a pale
+     dropzone, so an unbounded band bleeds into one or the other — the black
+     line separates it from the board and the dark line from the card, and
+     together they make the frame look drawn rather than emitted.
+
+     Both hairlines are box-shadow rings rather than extra elements: `.person`
+     already runs a stacking context for the capability popovers, and rings
+     follow `border-radius` for free. Non-inset draws outside the border box,
+     inset draws inside it, so one declaration does both sides.
+
+     The black ring is at the practical floor. A line cannot be thinner than
+     ONE DEVICE PIXEL: at .5px a 2x screen draws exactly that, while a 1x
+     screen has nothing finer to draw with and alpha-blends into its single
+     pixel instead — so below .5px the line stops getting thinner and just
+     fades out (0.25px is already at the vanishing point). If it ever needs
+     to look lighter rather than finer, drop the alpha at 1px instead; that
+     is the same result but predictable across every DPR. */
+  border-width:4px;
+  box-shadow:
+    inset 0 0 0 1.5px var(--stc-dark, transparent),
+    0 0 0 .5px #000;
+}
+/* CB mode drops the border entirely and draws its own patterned ring outside
+   the box (below), so these rings would just crowd it. */
+body.cb .person.status-border,
+body.cb .legend-status.status-border { box-shadow:none; }
 
 /* Label-density toggle (deps.labels_visible -> base.html body classes; one
    switch covers both tags). Default off in both modes — the role card
@@ -740,16 +854,22 @@ body.hide-statuslabel .person .status-tag { display:none; }
   .legend-wrap.pinned { position: static; top: auto; z-index: auto; }
 }
 
-.board-controls h3 { margin:.1rem 0 .4rem; font-size:.95rem; }
-.cfg-list { list-style:none; margin:.3rem 0 0; padding:0;
-  display:flex; flex-direction:column; gap:.45rem; }
+/* The switches spread over whatever height the legend beside them sets,
+   rather than stacking at the top and leaving a hole. `space-around` handles
+   both cases: it distributes when there is room going spare and collapses to
+   the gap when there is not, so this needs no media query as the legend
+   grows or shrinks. */
+.board-controls { display:flex; flex-direction:column; }
+.cfg-list { list-style:none; margin:0; padding:0;
+  display:flex; flex-direction:column; flex:1;
+  justify-content:space-around; gap:.3rem; }
 /* Each config = a "Name  [switch]" row. The whole row is the toggle (an <a>
    that round-trips a cookie + reload — same no-JS pattern as the CB link);
    the switch is a pure-CSS track + sliding knob, green when on. */
 .cfg-row {
   display:flex; align-items:center; justify-content:space-between; gap:.5rem;
   font-size:.82rem; font-weight:600; color:#374151;
-  padding:.15rem 0;
+  padding:.1rem 0;
 }
 .cfg-switch {
   flex:none; position:relative; width:2.1rem; height:1.1rem;

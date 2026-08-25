@@ -27,17 +27,23 @@ Rows are created lazily and generously — `buckets.add_walkin` ("Add Players"),
 `set_organizer`, `\rsvp set` and the auto-promoter all get-or-create by
 whatever uuid resolved — so a typo that happens to be a real Minecraft name
 becomes a ghost profile. `players.purge` is the **only** delete path, and it
-only ever destroys an empty shell: refused if the row has a `password_hash`,
-any `RoleCapability`, any `Rsvp` (revoked ones included — they're the audit
-trail), hosts a `Party`, or is an `AnniEvent.organizer`. `BoardPlacement` rows
-cascade with it deliberately (taking the ghost off the board is the point).
-Offered on the roles dashboard as "Delete profile", gated by the bulk twin
-`players.deletable_uuids()` so the button only appears on shells.
+destroys **any** profile — `BoardPlacement`, `RoleCapability` and `Rsvp` rows
+cascade with it; `Party.host` and `AnniEvent.organizer` are `SET_NULL`, so
+those survive minus a name.
 
-Getting someone off the board *without* touching their profile is the separate
-`buckets.remove_player` (the board card's ✕ / `PLAYER_REMOVE`). Note that
-neither is permanent for an online guild member: the auto-promoter
-re-materialises a placeholder + placement on the next hot-window tick.
+It used to refuse anything holding real user data. That sounded prudent and
+wasn't: the ghosts staff most need gone are exactly the ones a typo has
+already attached an RSVP to, so the button sat there greyed out on the only
+rows anyone wanted it for. What replaced the veto is a *warning* —
+`players.holdings()` (and its bulk twin `holdings_by_uuid()`, which the roles
+dashboard renders every row's confirmation from) names what a delete would
+destroy, and the dialog says it before you commit.
+
+There is no "remove from the board without touching the profile" any more:
+that is what dragging someone to Sitting out already does, and a second
+mutation path to the same end was redundant. Note that neither leaving is
+permanent for an online guild member — the auto-promoter re-materialises a
+placeholder + placement on the next hot-window tick.
 
 ## Migrations (Aerich)
 Deliberate divergence from dazebot (which has none). Workflow:

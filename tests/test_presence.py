@@ -65,18 +65,16 @@ def test_normalize_world():
     assert nw("hub2") == "HUB2"
 
 
-def test_offline_splits_on_history_not_rsvp():
-    """The offline branch keys off ``was_online``, NOT the RSVP — the RSVP is
-    its own board axis now (``RsvpState``). GONE means "was here and left"."""
-    assert presence.classify(I()) is S.OFFLINE                      # never seen
-    assert presence.classify(I(was_online=True)) is S.OFFLINE_GONE  # here, left
-    # Every RSVP flavour lands in the same status: the border no longer says
-    # anything about what someone promised.
-    for notice in (N.RSVP_HARD, N.RSVP_SOFT, None):
-        assert presence.classify(I(rsvp_notice=notice)) is S.OFFLINE
-        assert presence.classify(
-            I(rsvp_notice=notice, was_online=True)
-        ) is S.OFFLINE_GONE
+def test_offline_is_one_status_whatever_the_history_or_rsvp():
+    """The border says where someone is RIGHT NOW and nothing else. Neither
+    what they promised (``RsvpState``, its own axis) nor whether they were
+    here earlier (``board_view``'s is_gone badge, another) splits it."""
+    for was_online in (False, True):
+        for notice in (N.RSVP_HARD, N.RSVP_SOFT, None):
+            assert presence.classify(
+                I(rsvp_notice=notice, was_online=was_online)
+            ) is S.OFFLINE
+    assert not hasattr(S, "OFFLINE_GONE")   # retired, not renamed
 
 
 def test_api_disabled_offline_is_unknown_but_online_merge_confirms():
@@ -87,7 +85,8 @@ def test_api_disabled_offline_is_unknown_but_online_merge_confirms():
 
 
 def test_bar_flash_thresholds():
-    # GONE flashes immediately, whatever the countdown says.
+    # Here-and-gone flashes immediately, whatever the countdown says: they
+    # have already shown they can make it.
     assert presence.view(I(was_online=True)).flash is True
     # OFFLINE escalates on the RSVP instead — the status no longer carries it.
     assert presence.view(I(rsvp_notice=N.RSVP_HARD, seconds_to_anni=600)).flash is True
@@ -100,9 +99,15 @@ def test_bar_flash_thresholds():
     assert v.status is S.ONLINE_ELSEWHERE and v.bar_class.startswith("bar-")
 
 
-def test_offline_bar_message_still_names_the_rsvp():
-    """The status collapsed, the *copy* didn't: a hard/soft RSVP who isn't on
-    yet is still told which promise they're about to miss."""
+def test_offline_bar_message_still_names_the_rsvp_and_the_history():
+    """The status collapsed to one value; the *copy* did not. A hard/soft
+    RSVP who isn't on yet is still told which promise they're about to miss,
+    and someone who was here and left gets the sharper line — that is the
+    case the countdown can't soften."""
     assert "hard-RSVP" in presence.view(I(rsvp_notice=N.RSVP_HARD)).message
     assert "soft-RSVP" in presence.view(I(rsvp_notice=N.RSVP_SOFT)).message
     assert "not online" in presence.view(I()).message
+    assert "We saw you around" in presence.view(I(was_online=True)).message
+    # History wins over the RSVP wording — it is the more specific fact.
+    assert "We saw you around" in presence.view(
+        I(rsvp_notice=N.RSVP_HARD, was_online=True)).message

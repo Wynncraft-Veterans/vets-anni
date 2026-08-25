@@ -97,28 +97,67 @@ async def test_add_walkin_unknown_ign_is_a_friendly_reject(seeded):
 
 # --- ensure_placed + demote_on_revoke (auto-promoter + RSVP support) --------
 async def test_ensure_placed_creates_in_main_lane(seeded):
-    """A brand-new auto-place lands in Unassigned with is_late as supplied."""
+    """A brand-new auto-place lands in the main Unassigned lane."""
     from app.db.models import AnniPlayer
     event = seeded["event"]
     fresh = await AnniPlayer.create(mc_uuid="uuid-fresh", mc_username="Fresh")
 
-    inserted = await buckets.ensure_placed(event, fresh, is_late=False)
+    inserted = await buckets.ensure_placed(event, fresh)
     assert inserted is True
     placed = await BoardPlacement.get(event=event, player=fresh)
     assert placed.bucket is BucketKind.UNASSIGNED
     assert placed.is_late is False
 
 
-async def test_ensure_placed_creates_in_late_lane(seeded):
-    from app.db.models import AnniPlayer
-    event = seeded["event"]
-    latecomer = await AnniPlayer.create(mc_uuid="uuid-late", mc_username="Late")
+async def test_ensure_placed_stamps_lateness_from_the_rsvp_threshold(seeded):
+    """``ensure_placed`` decides lateness itself — the caller no longer says.
+    The threshold slides with what was promised, so at the same instant a
+    walk-in can be late while a hard RSVP is not."""
+    import time
 
-    inserted = await buckets.ensure_placed(event, latecomer, is_late=True)
-    assert inserted is True
-    placed = await BoardPlacement.get(event=event, player=latecomer)
-    assert placed.bucket is BucketKind.UNASSIGNED
-    assert placed.is_late is True
+    from app.constants import AttendanceNotice
+    from app.db.models import AnniPlayer, Rsvp
+
+    event = seeded["event"]
+    event.stamp_epoch = int(time.time()) + 30 * 60   # T-30
+    await event.save(update_fields=["stamp_epoch"])
+
+    walkin = await AnniPlayer.create(mc_uuid="uuid-late", mc_username="Late")
+    promised = await AnniPlayer.create(mc_uuid="uuid-ok", mc_username="Ok")
+    await Rsvp.create(event=event, player=promised,
+                      notice=AttendanceNotice.RSVP_HARD)
+
+    assert await buckets.ensure_placed(event, walkin, is_walkin=True) is True
+    assert await buckets.ensure_placed(event, promised) is True
+
+    # Walk-in threshold is T-50, so T-30 is late...
+    assert (await BoardPlacement.get(event=event, player=walkin)).is_late
+    # ...while the hard RSVP's is T-15, so they are still early.
+    assert not (await BoardPlacement.get(event=event, player=promised)).is_late
+
+
+async def test_a_move_never_clears_the_late_flag(seeded):
+    """Lateness is a fact about arrival, so dragging a latecomer into a party
+    must not launder it away. (It used to be a lane, and every move supplied
+    it — a REST move defaulting it to False would silently wipe the mark.)"""
+    import time
+
+    from app.db.models import AnniPlayer
+
+    event = seeded["event"]
+    event.stamp_epoch = int(time.time()) + 5 * 60   # T-5: late for anyone
+    await event.save(update_fields=["stamp_epoch"])
+    p = await AnniPlayer.create(mc_uuid="uuid-tardy2", mc_username="Tardy")
+    await buckets.ensure_placed(event, p, is_walkin=True)
+    assert (await BoardPlacement.get(event=event, player=p)).is_late
+
+    party = await buckets.create_party(event)
+    assert (await buckets.move(event, p.mc_uuid, party_id=str(party.id))).ok
+    assert (await BoardPlacement.get(event=event, player=p)).is_late
+
+    assert (await buckets.move(
+        event, p.mc_uuid, bucket=BucketKind.UNASSIGNED)).ok
+    assert (await BoardPlacement.get(event=event, player=p)).is_late
 
 
 async def test_ensure_placed_is_idempotent_no_reshuffle(seeded):
@@ -128,14 +167,14 @@ async def test_ensure_placed_is_idempotent_no_reshuffle(seeded):
     event = seeded["event"]
     p = await AnniPlayer.create(mc_uuid="uuid-shuffled", mc_username="Shuf")
 
-    assert await buckets.ensure_placed(event, p, is_late=False) is True
+    assert await buckets.ensure_placed(event, p) is True
     # Staff (or another path) moves them to a party slot.
     party = await buckets.create_party(event)
     assert (await buckets.move(event, p.mc_uuid, party_id=str(party.id))).ok
 
-    # A subsequent ensure_placed during the LATE window MUST NOT yank them
-    # out of their party — the auto-promoter is idempotent on placed users.
-    assert await buckets.ensure_placed(event, p, is_late=True) is False
+    # A subsequent ensure_placed MUST NOT yank them out of their party —
+    # the auto-promoter is idempotent on already-placed users.
+    assert await buckets.ensure_placed(event, p, is_walkin=True) is False
     placed = await BoardPlacement.get(event=event, player=p)
     assert placed.party_id == party.id
     assert placed.bucket is None
@@ -143,26 +182,26 @@ async def test_ensure_placed_is_idempotent_no_reshuffle(seeded):
     assert await BoardPlacement.filter(event=event, player=p).count() == 1
 
 
-async def test_ensure_placed_late_lane_sort_index_tails(seeded):
-    """is_late lane order: each new auto-place lands at the tail of its lane."""
+async def test_ensure_placed_walkin_lane_sort_index_tails(seeded):
+    """Lane order: each new auto-place lands at the tail of its own lane."""
     from app.db.models import AnniPlayer
     event = seeded["event"]
     a = await AnniPlayer.create(mc_uuid="uuid-a", mc_username="A")
     b = await AnniPlayer.create(mc_uuid="uuid-b", mc_username="B")
 
-    await buckets.ensure_placed(event, a, is_late=True)
-    await buckets.ensure_placed(event, b, is_late=True)
+    await buckets.ensure_placed(event, a, is_walkin=True)
+    await buckets.ensure_placed(event, b, is_walkin=True)
     pa = await BoardPlacement.get(event=event, player=a)
     pb = await BoardPlacement.get(event=event, player=b)
     assert pa.sort_index != pb.sort_index  # distinct tail slots
-    assert pa.is_late and pb.is_late
+    assert pa.is_walkin and pb.is_walkin
 
 
 async def test_demote_on_revoke_moves_unassigned_to_wontassign(seeded):
     from app.db.models import AnniPlayer
     event = seeded["event"]
     p = await AnniPlayer.create(mc_uuid="uuid-rev", mc_username="Rev")
-    await buckets.ensure_placed(event, p, is_late=False)
+    await buckets.ensure_placed(event, p)
 
     demoted = await buckets.demote_on_revoke(event, p)
     assert demoted is True
@@ -171,17 +210,28 @@ async def test_demote_on_revoke_moves_unassigned_to_wontassign(seeded):
     assert placed.party_id is None
 
 
-async def test_demote_on_revoke_noop_when_in_party(seeded):
-    """Staff intent wins: if they've already placed the user in a party,
-    a revoke MUST NOT yank them out (the Retracted pill on the card is the
-    only visible signal)."""
+async def test_demote_on_revoke_pulls_them_out_of_a_party(seeded):
+    """A retraction frees the slot. This is the case that matters: someone
+    sitting in a party who pulls out is exactly when an organiser needs the
+    seat back, and leaving the card in place made it easy to miss."""
     event = seeded["event"]
     wen = seeded["players"]["Wenweia"]  # seeded into party 1
+    assert (await BoardPlacement.get(event=event, player=wen)).party_id
 
-    demoted = await buckets.demote_on_revoke(event, wen)
-    assert demoted is False
+    assert await buckets.demote_on_revoke(event, wen) is True
     placed = await BoardPlacement.get(event=event, player=wen)
-    assert placed.party_id is not None  # unchanged
+    assert placed.bucket is BucketKind.WONTASSIGN
+    assert placed.party_id is None
+
+
+async def test_demote_on_revoke_noop_when_already_sitting_out(seeded):
+    """Idempotent — a second revoke of the same person changes nothing."""
+    event = seeded["event"]
+    thin = seeded["players"]["ThinKing"]  # seeded into WONTASSIGN
+
+    assert await buckets.demote_on_revoke(event, thin) is False
+    placed = await BoardPlacement.get(event=event, player=thin)
+    assert placed.bucket is BucketKind.WONTASSIGN
 
 
 async def test_demote_on_revoke_noop_when_no_placement(seeded):
@@ -249,54 +299,3 @@ async def test_set_organizer_claim_and_release(seeded):
     assert (await buckets.set_organizer(event, None)).ok
     await event.refresh_from_db()
     assert event.organizer_id is None
-
-
-# --- remove_player (the inverse of add_walkin) ------------------------------
-
-
-async def test_remove_player_deletes_only_the_placement(seeded):
-    """The card goes; the person — and their RSVP — stays."""
-    from app.db.models import AnniPlayer, Rsvp
-
-    event = seeded["event"]
-    para = seeded["players"]["Paradrex"]  # Unassigned main, has a SOFT RSVP
-    n0 = await BoardPlacement.filter(event=event).count()
-
-    r = await buckets.remove_player(event, para.mc_uuid)
-
-    assert r.ok and r.player_uuid == para.mc_uuid
-    assert await BoardPlacement.filter(event=event).count() == n0 - 1
-    assert not await BoardPlacement.filter(event=event, player=para).exists()
-    # Profile + RSVP untouched — "off tonight's board" isn't "isn't a person".
-    assert await AnniPlayer.filter(mc_uuid=para.mc_uuid).exists()
-    assert await Rsvp.filter(event=event, player=para).exists()
-
-
-async def test_remove_player_rejects_when_not_on_the_board(seeded):
-    """A stale card / double-click says so instead of reporting a no-op ok."""
-    event = seeded["event"]
-    holidaze = seeded["players"]["Holidaze"]  # organiser, deliberately unplaced
-
-    r = await buckets.remove_player(event, holidaze.mc_uuid)
-    assert not r.ok and "isn't on the board" in r.reason
-
-    r = await buckets.remove_player(event, "no-such-uuid")
-    assert not r.ok and "isn't on the board" in r.reason
-
-
-async def test_remove_player_refuses_a_party_host(seeded):
-    """Party.host is a *player* FK — removing them would leave a host who
-    isn't on the board. Same posture as delete_party on a non-empty party."""
-    event = seeded["event"]
-    naz = seeded["players"]["Nazzae"]  # hosts party 2, placed in party 1
-
-    r = await buckets.remove_player(event, naz.mc_uuid)
-
-    assert not r.ok and "hosting Party 2" in r.reason
-    assert await BoardPlacement.filter(event=event, player=naz).exists()
-
-    # Hand the party to someone else and the removal goes through.
-    party2 = await Party.get(event=event, ordinal=2)
-    assert (await buckets.set_party(
-        event, str(party2.id), host_uuid=seeded["players"]["foo"].mc_uuid)).ok
-    assert (await buckets.remove_player(event, naz.mc_uuid)).ok

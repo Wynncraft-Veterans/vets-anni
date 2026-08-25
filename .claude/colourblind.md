@@ -26,20 +26,31 @@ and the dashboards are colour-dense.
 ## Colour is never the only signal
 Every role/status/RSVP chip emitted by the shared macros
 (`templates/macros/*`) carries, in addition to colour:
-- a short **glyph** (`RoleStyle.glyph` / `StatusStyle.glyph` /
-  `RsvpStyle.glyph`, e.g. `PRIM`, `●`, `✓`),
+- a short **glyph** (`RoleStyle.glyph` / `StatusStyle.glyph`, e.g. `PRIM`,
+  `●`) — or, for the RSVP badge, an icon **shape** (`RsvpStyle.icon`),
 - an accessible **label** (`aria-label`, e.g. "A RSVP'd user not here yet."),
 - for statuses, a **border pattern** (`StatusStyle.pattern`) via
   `data-pattern` → `colourblind.css`. ONE uniform-width family, most→least
-  "present" (PARTY→GONE): `double`→`solid`→`dash`→`dash-dot`→`dot`;
-  `dash-dot-dot` = unknown. (A sixth step, `dash-dash-dot`, existed while the
-  offline branch was split hard-RSVP vs soft-RSVP; the RSVP badge owns that
-  distinction now.)
-- for the RSVP badge, **no pattern** — a ~1rem square cannot carry a border
-  rhythm. Its four glyphs (`W` walk-in / `✓` hard / `~` soft / `✕` revoked)
-  are the non-colour channel, and `test_colourblind.py` asserts they are
-  mutually distinct *and* disjoint from the status glyph set, so no mark on a
-  person card ever means two things.
+  "present": `double`→`solid`→`dash`→`dash-dot`; `dash-dot-dot` = unknown.
+  (Two steps have retired as their distinctions moved to channels of their
+  own: `dash-dash-dot` when the offline branch stopped being split
+  hard-RSVP vs soft-RSVP, and `dot` when "was here and left" became an avatar
+  stamp rather than a status.)
+- for the RSVP badge, **no pattern** — there is no border to carry a rhythm.
+  All four states are tickets (`templates/macros/icons.html`), so the
+  non-colour channel is three things at once: what is printed on the ticket
+  (exclamation = walk-in, tick = hard, clock = soft, nothing = revoked),
+  whether the outline is solid or dashed, and whether the silhouette is whole
+  or torn. That is a finer distinction than four unrelated shapes would be,
+  which is the cost of the family reading as one set; the dashed outline and
+  the tear are carrying real weight for it, since outline style and
+  silhouette both survive greyscale even when the interior mark is small.
+  `test_colourblind.py` asserts every state has a distinct shape *and* that
+  the macro actually draws it — a missing branch would render an empty
+  `<svg>`, which fails silently rather than loudly. The icon takes its hue
+  from the wrapper via `currentColor`; the only literals it may contain are
+  the two achromatic keylines (black inside the line, white outside), and a
+  test enforces that too.
 - for assigned roles, a **card-background texture** keyed off the `data-role`
   attribute on `.person` (already in the DOM at all times). Six visually
   distinct, faint shape rhythms — PRIMARY `/` 45° stripes, SECONDARY `\` 135°
@@ -116,12 +127,22 @@ above apply to each separately:
 
 | Channel | Where | Vocabulary | Non-colour signal |
 |---|---|---|---|
-| Presence | border around the whole card | `PresenceStatus` (6) | `data-pattern` + glyph + `aria-label` |
-| RSVP | badge left of the face | `RsvpState` (4) | glyph + `title` + `aria-label` |
+| Presence | border around the whole card | `PresenceStatus` (5) | `data-pattern` + glyph + `aria-label` |
+| History | one stamp centred on the avatar | gone (`?`) else late (hourglass) | distinct glyph + `title` + `aria-label` |
+| RSVP | ticket left of the face | `RsvpState` (4) | printed mark + outline style + silhouette + `title` + `aria-label` |
 
 They were one channel until the status border was reduced to presence alone;
 keeping them separate is what lets an organiser read "online, but only ever
 soft-RSVP'd" at a glance. The board legend renders a key for each — the RSVP
-row shows its glyph in **both** modes (unlike the status row, which drops the
-glyph when `cb` is off and lets colour carry it), because the glyph is the
+row shows its icon in **both** modes (unlike the status row, which drops the
+glyph when `cb` is off and lets colour carry it), because the shape is the
 badge's only non-colour channel.
+
+Roles and statuses now share the neon palette *deliberately* — each status
+takes the hue of the role it evokes, as a mnemonic (see `domain_rules.md`).
+That is safe because they never share a channel: a role is a background or a
+glyph swatch, a status is the border. RSVP tickets keep the mid-tone set,
+being objects on the card rather than colourings of it. Under CB everything
+collides more, since there are only nine CVD-safe hues for every assignment.
+The invariant that actually matters, and is tested in both palettes, is that
+the five status hues never collide with each other.

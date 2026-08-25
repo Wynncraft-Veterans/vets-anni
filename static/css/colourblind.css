@@ -22,18 +22,22 @@
    enforces it). */
 
 body.cb {
+  /* Neon family (roles + RSVP icons) -> Okabe-Ito. */
   --c-red:     #D55E00;  /* vermillion */
-  --c-orange:  #E69F00;  /* orange */
   --c-yellow:  #F0E442;  /* yellow */
   --c-green:   #009E73;  /* bluish green */
   --c-blue:    #0072B2;  /* blue */
-  --c-cyan:    #000000;  /* black (Okabe-Ito) — sky-blue was too near blue */
+  --c-cyan:    #000000;  /* black (Okabe-Ito); every other entry is spoken for */
   --c-magenta: #CC79A7;  /* reddish purple */
-  /* Same reddish-purple as magenta on purpose: magenta is only ever a role
-     BACKGROUND and pink only ever a status BORDER, so the two never need
-     telling apart, and the alternative (sky-blue #56B4E9) collides with
-     --c-blue, which the status ramp now uses for ONLINE_PARTY. */
-  --c-pink:    #CC79A7;
+  /* Mid-tone family (the RSVP tickets) -> Okabe-Ito. Each repeats a hue the
+     neon family also maps to; safe, because a ticket is a plated object on
+     the card while roles/statuses are its background and its border. What
+     has to hold is that the FIVE status hues are mutually distinct under
+     CVD — sky-blue-free black, bluish green, yellow, vermillion, grey. */
+  --c-teal:    #56B4E9;  /* sky blue */
+  --c-lime:    #F0E442;  /* yellow */
+  --c-brick:   #D55E00;  /* vermillion */
+  --c-orchid:  #CC79A7;  /* reddish purple */
   --c-grey:    #999999;
 
   /* Re-resolve the role / status aliases against the swapped --c-* (see the
@@ -47,16 +51,32 @@ body.cb {
   --role-tank:       var(--c-blue);
   --role-fill:       var(--c-cyan);
   --role-unassigned: var(--c-grey);
-  --st-party:     var(--c-blue);
+  --st-party:     var(--c-cyan);
   --st-world:     var(--c-green);
-  --st-elsewhere: var(--c-orange);
+  --st-elsewhere: var(--c-yellow);
   --st-offline:   var(--c-red);
-  --st-gone:      var(--c-pink);
   --st-unknown:   var(--c-grey);
-  --rsvp-none:    var(--c-grey);
-  --rsvp-hard:    var(--c-green);
-  --rsvp-soft:    var(--c-yellow);
-  --rsvp-revoked: var(--c-red);
+  /* Right-edge spills — darkened Okabe-Ito, same hue family as the border
+     above (same trick as --role-*-dark). PARTY's is a near-black, which is
+     correct: its border hue IS Okabe-Ito black under cb. */
+  --st-party-dark:     #101010;
+  --st-world-dark:     #00543d;
+  --st-elsewhere-dark: #6b6300;
+  --st-offline-dark:   #7a3600;
+  --st-unknown-dark:   #4d4d4d;
+  /* Ticket linework — light tints of the Okabe-Ito hues below, bright enough
+     to hold against the ticket's own dark body. */
+  --rsvp-none:    #f7f0a3;
+  --rsvp-hard:    #b3ddf5;
+  --rsvp-soft:    #ebbed3;
+  --rsvp-revoked: #f5b98f;
+  /* Ticket bodies — darkened Okabe-Ito, same hue family as the linework
+     above and dark enough to keep it legible (same trick as --role-*-dark).
+     A fill inside the outline, never a plate behind it. */
+  --rsvp-none-dark:    #6b6300;
+  --rsvp-hard-dark:    #0f5b80;
+  --rsvp-soft-dark:    #6b3a55;
+  --rsvp-revoked-dark: #7a3600;
 
   /* Role-chip BODIES adopt CVD-safe hues here too (the user dashboard's only
      palette element is the role chip, so cb must visibly change it). These
@@ -154,10 +174,11 @@ body.cb .cap-letter { display: inline !important; }
 .status-border { border-width: 3px; border-style: solid; }
 
 /* CB ON: the non-colour pattern channel becomes load-bearing (the spec's
-   hard rule). ONE uniform 4px family, most→least "present" (PARTY→GONE):
-   double → solid → dash → dash-dot → dot; dash-dot-dot = UNKNOWN. (A sixth
-   step, dash-dash-dot, existed while OFFLINE was split hard-vs-soft RSVP;
-   the RSVP badge owns that distinction now, so the ramp is one shorter.)
+   hard rule). ONE uniform 4px family, most→least "present":
+   double → solid → dash → dash-dot; dash-dot-dot = UNKNOWN. (Two steps have
+   retired as their distinctions moved to their own channels: dash-dash-dot
+   when OFFLINE stopped being split hard-vs-soft RSVP, and dot when
+   "was here and left" became a badge rather than a status.)
    The colour is ALWAYS the verbatim `--stc` Okabe-Ito hue — only
    solid/double/dashed/dotted are native border-styles (they render
    border-color exactly); the composite dash-dot variants are a
@@ -189,7 +210,6 @@ body.cb .person.status-border::after { z-index: -1; }
 body.cb .status-border[data-pattern="solid"]::after  { border-style: solid; }
 body.cb .status-border[data-pattern="double"]::after { border-style: double; }
 body.cb .status-border[data-pattern="dash"]::after    { border-style: dashed; }
-body.cb .status-border[data-pattern="dot"]::after     { border-style: dotted; }
 /* Composites: native border-color is the solid fallback; border-image draws
    the dash/dot rhythm in the SAME verbatim colour (var(--stc)). */
 body.cb .status-border[data-pattern="dash-dot"]::after {

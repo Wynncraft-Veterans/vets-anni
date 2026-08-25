@@ -167,12 +167,10 @@
 
   /* ---- dropdown-move (opt-in alt to drag-drop) -------------------------- */
   /* Wired from inline onchange on .person-move <select>. Value format:
-     "party:<id>"  or  "bucket:<name>:<is_late01>:<is_walkin01>" — parse and
-     POST through the same /staff/board/move REST twin the drag-drop fallback
-     uses, so it funnels through board_hub (single-instance UPSERT + WS
-     broadcast). The walkin segment is optional for backward compat: a
-     dropdown that only emits "bucket:<name>:<late01>" still parses (walkin
-     defaults to false). */
+     "party:<id>"  or  "bucket:<name>:<is_walkin01>" — parse and POST through
+     the same /staff/board/move REST twin the drag-drop fallback uses, so it
+     funnels through board_hub (single-instance UPSERT + WS broadcast). A
+     missing walkin segment reads as false. */
   window.__moveViaSelect = function (sel) {
     var val = sel.value;
     if (!val) return;
@@ -184,8 +182,7 @@
     } else if (val.indexOf("bucket:") === 0) {
       var parts = val.slice(7).split(":");
       values.bucket = parts[0];
-      values.is_late = parts[1] === "1" ? "true" : "false";
-      values.is_walkin = parts[2] === "1" ? "true" : "false";
+      values.is_walkin = parts[1] === "1" ? "true" : "false";
     } else {
       return;
     }
@@ -203,7 +200,6 @@
     }
     return {
       bucket: zone.dataset.bucket,
-      is_late: zone.dataset.late === "1",
       is_walkin: zone.dataset.walkin === "1",
     };
   }
@@ -234,7 +230,6 @@
             player_uuid: uuid,
             party_id: target.party_id || "",
             bucket: target.bucket || "",
-            is_late: target.is_late ? "true" : "false",
             is_walkin: target.is_walkin ? "true" : "false",
             sort_index: index,
           },
@@ -259,11 +254,11 @@
           /* Sortable picks up mouse-downs on any descendant of `.person` and
              treats them as the start of a drag; this filter excludes the
              interactive controls (capability dots + their popovers, the role
-             <select>, the remove ✕) so a click on a dot is a real click, not
-             a drag-start that swallows the event. `preventOnFilter:false`
+             <select>, the move <select>) so a click on a dot is a real click,
+             not a drag-start that swallows the event. `preventOnFilter:false`
              lets the native click still fire. */
           filter: ".cap-dot, .cap-dot-wrap, .cap-popover, .person-role, " +
-                  ".person-move, .person-remove",
+                  ".person-move",
           preventOnFilter: false,
           /* Touch-only long-press: on mobile the page is taller than the
              viewport, and an instant-drag would hijack every scroll attempt

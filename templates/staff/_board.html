@@ -5,6 +5,7 @@
    (board_view.snapshot) and the SSR board can never drift from the live one.
    `with context` so the person() macro sees `assignable_roles`. #}
 {% from "macros/person.html" import person with context %}
+{% from "macros/icons.html" import rsvp_icon %}
 <div id="board" class="board"
      {% if has_event %}data-phase="{{ snapshot.event.phase }}"
      data-frozen="{{ '1' if snapshot.event.frozen else '0' }}"{% endif %}>
@@ -46,28 +47,37 @@
         <div class="legend-row">
           {% for status, s in STATUS_STYLES.items() %}
             {% set sc = status_chip(status) %}
+            {# Same three-layer edge as a person card (see anni.css): the
+               legend is only a key if it looks like the thing it explains. #}
             <span class="status-border legend-status" data-pattern="{{ sc.pattern }}"
-                  style="--stc: var({{ sc.css_var }}); border-color: var({{ sc.css_var }})">
+                  title="{{ sc.description }}"
+                  style="--stc: var({{ sc.css_var }});
+                         --stc-dark: var({{ sc.css_var_dark }});
+                         border-color: var({{ sc.css_var }})">
               {# Glyph is the CB non-colour channel; with cb off the colour
                  carries it, so drop the leading symbol — just the label. #}
               {% if cb %}<span class="glyph">{{ sc.glyph }}</span>{% endif %}
               {{ sc.label }}
             </span>
           {% endfor %}
-        </div>
-      </div>
-      {# The RSVP key. Its own block because the badge is a second axis, not a
-         variation of the border: a card can be any status × any RSVP. The
-         glyph shows in BOTH modes here (unlike the status row above) — it is
-         the badge's only non-colour channel, so the legend has to name it. #}
-      <div class="legend-block">
-        <div class="legend-row">
+          {# The RSVP key shares this row but stays a distinct GROUP, hence
+             the rule between them: it is a second axis, not more of the same
+             vocabulary — a card can be any status × any RSVP. Short status
+             labels freed the width to sit them together; the two only read
+             as separate keys if something says so.
+
+             The icon shows in BOTH modes here (unlike the status chips,
+             which drop their glyph when colour is doing the work) — the
+             shape is the badge's only non-colour channel, so the legend has
+             to name it. #}
+          <span class="legend-sep" aria-hidden="true"></span>
           {% for state, s in RSVP_STYLES.items() %}
             {% set rv = rsvp_chip(state) %}
             <span class="legend-rsvp">
               <span class="rsvp-flag" data-rsvp="{{ rv.state }}"
-                    style="background-color: var({{ rv.css_var }})"
-                    aria-hidden="true">{{ rv.glyph }}</span>
+                    style="color: var({{ rv.css_var }});
+                           --tk-fill: var({{ rv.css_var_dark }})"
+                    aria-hidden="true">{{ rsvp_icon(rv.icon) }}</span>
               {{ rv.label }}
             </span>
           {% endfor %}
@@ -75,8 +85,11 @@
       </div>
     </section>
 
-    <section class="card board-controls">
-      <h3>Configs</h3>
+    {# No visible heading: three labelled switches explain themselves, and the
+       heading was the single thing making this card taller than the legend
+       beside it — which then set the height of the whole bar. `aria-label`
+       keeps the region named for anyone navigating by landmark. #}
+    <section class="card board-controls" aria-label="Board display options">
       <ul class="cfg-list">
         <li>
           <a class="cfg-row" role="switch"
@@ -252,35 +265,33 @@
         {% set u = snap.buckets.unassigned %}
         <div class="bucket">
           <h3>{{ u.label }}
-            <span class="muted">({{ u.on_time | length + u.offline_soft | length + u.walkin | length + u.late | length }})</span></h3>
+            <span class="muted">({{ u.on_time | length + u.soft | length + u.walkin | length }})</span></h3>
           <div class="dropzone" data-bucket="unassigned"
                aria-label="Unassigned (on time)">
             {% for m in u.on_time %}{{ person(m) }}{% endfor %}
             {% if not u.on_time %}<p class="muted dz-empty">No one waiting.</p>{% endif %}
           </div>
-          {# Derived lane — soft RSVPs who aren't online (board_view
-             .is_offline_soft), carved out of the main lane above. Always
-             rendered here (unlike the party one) because Unassigned's lanes
-             are a fixed, labelled set staff read top-to-bottom. Its dropzone
-             targets the plain main lane, so dragging a card out of it is the
-             same move as dragging it to the zone above. #}
-          <h4 class="late-head">Offline soft RSVPs</h4>
+          {# Derived lane — EVERY soft RSVP in the queue, online or not
+             (board_view.is_soft), carved out of the main lane above. Wider
+             than the party lane of the same shape on purpose: Unassigned is
+             a queue an organiser is placing from, so they want every maybe
+             together; a party slot is already allocated, so there only the
+             ones who haven't shown up matter. Always rendered (unlike the
+             party one) because Unassigned's lanes are a fixed, labelled set
+             staff read top-to-bottom. Its dropzone targets the plain main
+             lane, so dragging a card out of it is the same move as dragging
+             it to the zone above. #}
+          <h4 class="late-head">Soft RSVP sub-bucket</h4>
           <div class="dropzone offsoft" data-bucket="unassigned"
-               aria-label="Unassigned (offline soft RSVPs)">
-            {% for m in u.offline_soft %}{{ person(m) }}{% endfor %}
-            {% if not u.offline_soft %}<p class="muted dz-empty">No offline soft RSVPs.</p>{% endif %}
+               aria-label="Unassigned (soft RSVPs)">
+            {% for m in u.soft %}{{ person(m) }}{% endfor %}
+            {% if not u.soft %}<p class="muted dz-empty">No soft RSVPs.</p>{% endif %}
           </div>
           <h4 class="late-head">Walk-in sub-bucket</h4>
           <div class="dropzone walkin" data-bucket="unassigned" data-walkin="1"
                aria-label="Unassigned (walk-ins, non-RSVP early arrivals)">
             {% for m in u.walkin %}{{ person(m) }}{% endfor %}
             {% if not u.walkin %}<p class="muted dz-empty">No walk-ins yet.</p>{% endif %}
-          </div>
-          <h4 class="late-head">Late sub-bucket</h4>
-          <div class="dropzone late" data-bucket="unassigned" data-late="1"
-               aria-label="Unassigned (joined late)">
-            {% for m in u.late %}{{ person(m) }}{% endfor %}
-            {% if not u.late %}<p class="muted dz-empty">No late players.</p>{% endif %}
           </div>
         </div>
 

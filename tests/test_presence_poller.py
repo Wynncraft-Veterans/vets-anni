@@ -34,17 +34,20 @@ async def test_offline_board_is_plain_offline_and_hides_api_disabled(seeded):
     assert got[p["Metrafish"].mc_uuid] is S.UNKNOWN
 
 
-async def test_seeing_someone_online_then_offline_makes_them_gone(seeded):
-    """The poller is where GONE's history comes from: one tick online writes
-    ``seen_online_uuids``, and the next tick with them offline reads it back."""
+async def test_the_poller_records_who_has_been_online(seeded):
+    """``seen_online_uuids`` is the poller's one piece of *history*, and the
+    only thing that can answer "were they here earlier?" — the classifier is
+    pure and sees one instant. The board renders it as the `?` stamp; the
+    status itself stays plain OFFLINE either way."""
     wen = seeded["players"]["Wenweia"].mc_uuid
     state = AppState(online_by_uuid={wen: _online(wen)})
 
-    assert (await presence_poller._compute(state))[wen] is not S.OFFLINE_GONE
+    await presence_poller._compute(state)
     assert wen in state.seen_online_uuids
 
     state.online_by_uuid = {}  # they log off
-    assert (await presence_poller._compute(state))[wen] is S.OFFLINE_GONE
+    assert (await presence_poller._compute(state))[wen] is S.OFFLINE
+    assert wen in state.seen_online_uuids          # add-only; survives
 
 
 async def test_online_merge_drives_world_states(seeded):

@@ -166,14 +166,6 @@ class BoardHub:
                 event, str(d.get("ign", "")), state
             )
 
-        if intent.type == P.PLAYER_REMOVE:
-            # Take a card off the board. Placement-only — the profile (and
-            # their RSVP/capabilities) survives; deleting a mistaken add's
-            # *profile* is the roles dashboard's guarded purge.
-            return await buckets.remove_player(
-                event, str(d.get("player_uuid", ""))
-            )
-
         if intent.type == P.MOVE:
             target = d.get("target") or {}
             return await buckets.move(
@@ -182,7 +174,6 @@ class BoardHub:
                 bucket=_parse_bucket(target.get("bucket")),
                 party_id=target.get("party_id"),
                 sort_index=int(target.get("sort_index", 0) or 0),
-                is_late=target.get("is_late"),
                 is_walkin=target.get("is_walkin"),
             )
 

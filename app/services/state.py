@@ -92,10 +92,10 @@ class AppState:
     presence_by_uuid: dict[str, str] = field(default_factory=dict)
     presence_fetched_at: float = 0.0
 
-    #: mc_uuids we have seen ONLINE at least once during the active anni. This
-    #: is what separates ``OFFLINE_GONE`` ("was here, left") from plain
-    #: ``OFFLINE`` ("never showed") — the presence machine has no history of
-    #: its own, so the poller accumulates it here and feeds it back in as
+    #: mc_uuids we have seen ONLINE at least once during the active anni —
+    #: the only record of "was here, left", since the presence machine is pure
+    #: and sees one instant. The board reads it as the `?` avatar stamp
+    #: (``web/board_view``'s ``is_gone``) and the user dashboard as
     #: ``PresenceInputs.was_online``. Add-only within an event; the grace-wipe
     #: clears it alongside ``presence_by_uuid`` so the next anni starts clean.
     seen_online_uuids: set[str] = field(default_factory=set)

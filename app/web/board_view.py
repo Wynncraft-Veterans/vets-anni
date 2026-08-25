@@ -108,30 +108,38 @@ def _capability_dots(caps) -> list[dict]:
     return dots
 
 
-#: Presence statuses that count as "not here" for the offline-soft lane.
+#: The one status that counts as "not here" for the offline-soft lane.
 #: UNKNOWN is excluded on purpose — unconfirmable is not the same as absent,
 #: and parking someone in the "don't count on them" lane on a *guess* is
 #: exactly the fabrication the spec forbids.
-_OFFLINE_STATUSES: frozenset[str] = frozenset(
-    {PresenceStatus.OFFLINE.value, PresenceStatus.OFFLINE_GONE.value}
-)
+_OFFLINE_STATUSES: frozenset[str] = frozenset({PresenceStatus.OFFLINE.value})
+
+
+def is_soft(person: dict) -> bool:
+    """Unassigned's "Soft RSVP" sub-bucket predicate — soft RSVP, online or
+    not. Unassigned is a *queue*: an organiser placing people wants every
+    maybe in one place to reason about, not just the ones who happen to be
+    offline this second.
+    """
+    return person["rsvp_state"] == RsvpState.SOFT.value
 
 
 def is_offline_soft(person: dict) -> bool:
-    """The "offline soft RSVPs" sub-bucket predicate — soft RSVP **and**
-    currently offline.
+    """A **party's** "Offline soft RSVPs" sub-bucket predicate — soft RSVP
+    **and** currently offline. Narrower than :func:`is_soft` on purpose: a
+    party slot is already allocated, so what an organiser needs flagged is
+    the subset who said "maybe" and have not turned up.
 
-    Purely *derived*: there is no stored lane flag for it (unlike walk-in /
-    late, which record how someone arrived). It has to be, because the whole
-    point is that it tracks live presence — a soft RSVP logging on has to
-    leave the lane on the next presence tick without anyone dragging them,
-    and party members have no lane flags at all.
+    Purely *derived*: there is no stored lane flag for it (unlike walk-in,
+    which records how someone arrived). It has to be, because the whole
+    point is that it tracks live presence — a soft RSVP logging on is
+    promoted back into the party proper on the next presence tick with
+    nobody dragging them, and party members have no lane flags at all.
 
     The practical consequence for drag-and-drop: the lane's dropzone targets
-    the *same* container as the lane above it (the party, or the main
-    Unassigned lane), so dropping a card in or out of it is a no-op that
-    re-derives on the next render. That is intended — it's a view of a
-    container, not a container.
+    the *same* container as the lane above it, so dropping a card in or out
+    of it is a no-op that re-derives on the next render. That is intended —
+    it's a view of a container, not a container.
     """
     return (
         person["rsvp_state"] == RsvpState.SOFT.value
@@ -149,17 +157,27 @@ def _person(
     row: dict,
     presence_by_uuid: dict[str, str],
     rsvp_states: dict[str, RsvpState],
+    seen_online: set[str],
 ) -> dict:
     """One person-object card. Carries the colour-independent channels (glyph,
     label, border pattern, the name, regions text) so it reads with no colour
     at all — the spec's colourblind hard rule, via the shared chip builders.
 
     ``rsvp_state``/``rsvp_chip`` are the card's second, independent axis (the
-    badge left of the avatar): the status border says *where they are*, the
-    badge says *what they promised*. Both follow the player wherever their
-    placement currently sits (Unassigned-LATE, wontassign, or a party).
-    ``rsvp_revoked`` is kept as the plain boolean the "Retracted" text pill
-    reads. ``is_placeholder`` propagates the auto-promoter's "stub card" flag
+    ticket left of the avatar): the status border says *where they are*, the
+    ticket says *what they promised* — including a retraction, which the torn
+    ticket carries on its own (there is no separate "Retracted" pill any
+    more).
+
+    Two badges stamp the avatar with facts the border deliberately does not
+    carry, because both are *history* rather than presence and would
+    otherwise have to overwrite it: ``is_late`` (they turned up after their
+    RSVP's threshold — stored on the placement) and ``is_gone`` (they were
+    online earlier tonight and are not now — derived here from the live
+    status plus ``AppState.seen_online_uuids``). Either can co-occur with any
+    status and with each other.
+
+    ``is_placeholder`` propagates the auto-promoter's "stub card" flag
     straight from ``AnniPlayer.is_placeholder``.
     """
     try:
@@ -168,6 +186,9 @@ def _person(
         status = PresenceStatus.UNKNOWN
     rsvp_state = rsvp_states.get(row["uuid"], RsvpState.NONE)
     return {
+        "is_gone": (
+            status is PresenceStatus.OFFLINE and row["uuid"] in seen_online
+        ),
         "uuid": row["uuid"],
         "name": row["mc_username"],
         "wynn_username": row["wynn_username"],
@@ -185,7 +206,6 @@ def _person(
         "is_placeholder": row.get("is_placeholder", False),
         "rsvp_state": rsvp_state.value,
         "rsvp_chip": rsvp_chip(rsvp_state),
-        "rsvp_revoked": rsvp_state is RsvpState.REVOKED,
         "sort_index": row["sort_index"],
         "capability_dots": _capability_dots(row.get("capabilities") or []),
     }
@@ -204,6 +224,10 @@ async def snapshot(event, state: AppState) -> dict:
     # The RSVP axis for every player with a row (revoked included — that IS a
     # state). Built once per snapshot so every _person() call is O(1).
     rsvp_states = await rsvp_domain.states_by_uuid(event)
+    # "Was here earlier tonight" — the poller's add-only history, cleared by
+    # the grace-wipe. Read once per snapshot; a copy so a poller tick landing
+    # mid-render can't change the answer between two cards.
+    seen_online = set(state.seen_online_uuids)
     by_party: dict[str, list[dict]] = {}
     bucket_members: dict[str, list[dict]] = {
         BucketKind.UNASSIGNED.value: [],
@@ -211,7 +235,7 @@ async def snapshot(event, state: AppState) -> dict:
         BucketKind.WONTASSIGN.value: [],
     }
     for row in rows:
-        person = _person(row, pres, rsvp_states)
+        person = _person(row, pres, rsvp_states, seen_online)
         if row["party_id"]:
             by_party.setdefault(row["party_id"], []).append(person)
         elif row["bucket"] in bucket_members:
@@ -281,34 +305,27 @@ async def snapshot(event, state: AppState) -> dict:
             "monitoring_label": hot_window.MONITORING_LABEL[monitoring],
         },
         "parties": parties,
-        # UNASSIGNED has four sub-buckets, rendered in this order:
-        #   on_time      — RSVP'd main lane
-        #   offline_soft — DERIVED: soft RSVP + offline, carved out of the
-        #                  main lane only (see ``is_offline_soft``). Walk-ins
-        #                  by definition never RSVP'd, and LATE is a stronger
-        #                  provenance marker worth keeping intact, so neither
-        #                  of those lanes feeds it.
-        #   walkin       — auto-detected non-RSVP arrivals, T-70..T-60
-        #   late         — anything placed after T-60 (LATE wins if both flags
-        #                  are set)
+        # UNASSIGNED has three sub-buckets, rendered in this order:
+        #   on_time — the main queue
+        #   soft    — DERIVED: every soft RSVP, online or not (``is_soft``)
+        #   walkin  — STORED: arrivals who never declared (``is_walkin``)
+        #
+        # There is no LATE lane. Lateness slid from "everyone placed after
+        # T-60" to a per-person threshold that depends on what they promised,
+        # which is not a partition of the queue any more — it is a fact about
+        # one card, and it renders as the hourglass on the avatar.
         "buckets": {
             BucketKind.UNASSIGNED.value: {
                 "label": BUCKET_LABEL[BucketKind.UNASSIGNED],
                 "on_time": [
                     m for m in unassigned
-                    if not m["is_late"] and not m["is_walkin"]
-                    and not is_offline_soft(m)
+                    if not m["is_walkin"] and not is_soft(m)
                 ],
-                "offline_soft": [
-                    m for m in unassigned
-                    if not m["is_late"] and not m["is_walkin"]
-                    and is_offline_soft(m)
-                ],
+                "soft": [m for m in unassigned if is_soft(m)],
                 "walkin": [
                     m for m in unassigned
-                    if not m["is_late"] and m["is_walkin"]
+                    if m["is_walkin"] and not is_soft(m)
                 ],
-                "late": [m for m in unassigned if m["is_late"]],
             },
             BucketKind.VOLUNTEERS.value: {
                 "label": BUCKET_LABEL[BucketKind.VOLUNTEERS],

@@ -14,14 +14,18 @@ process start: every non-revoked Rsvp for the active event is fed through
 ``ensure_placed``. That covers RSVPs accepted while the process was down (or
 those that pre-date this feature) without a manual backfill script.
 
-**Three Unassigned sub-buckets**:
+**Two stored Unassigned lanes**:
 
-* **main** — RSVP'd users (always; boot-heal sweep and any RSVP'd person
-  the auto-promoter catches online). Lane is decided at insert time, so a
+* **main** — RSVP'd users (boot-heal sweep, and any RSVP'd person the
+  auto-promoter catches online). Lane is decided at insert time, so a
   walk-in who later RSVPs stays in walk-in until staff moves them.
-* **walk-in** — non-RSVP'd online players caught between T-70 and T-60.
-* **LATE** — anything placed after T-60 that wasn't already RSVP'd; the
-  LATE lane continues to fill all the way through grace.
+* **walk-in** — online players with no RSVP at all. Keyed off the RSVP,
+  not the clock: the lane means "never declared".
+
+(A third, *soft RSVP*, is derived per render in ``web/board_view`` and has
+no flag here. There is no LATE lane: lateness is a per-person badge whose
+threshold slides with the RSVP — see ``constants.LATE_ARRIVAL_SECONDS`` —
+and ``buckets.ensure_placed`` stamps it at insert.)
 
 Online UUIDs without an ``AnniPlayer`` row (e.g. a guild member who has
 never opened the dashboard) get a *placeholder* row — empty stats, an
@@ -72,28 +76,27 @@ async def _tick(state: AppState, settings: Settings) -> None:
     if not hot:
         return
 
-    late = hot_window.is_late_bucket(event)
     inserted_any = False
 
     # Cache the active-RSVP UUID set once per tick; the auto-add loop below
-    # uses it to route non-RSVP'd online users into the walk-in / LATE
-    # sub-buckets while RSVP'd users always land in the main lane.
+    # uses it to route non-RSVP'd online users into the walk-in sub-bucket
+    # while RSVP'd users land in the main lane. Whether any given arrival is
+    # LATE is decided inside ``ensure_placed`` (it slides with their RSVP);
+    # this loop only picks the lane.
     rsvped_uuids: set[str] = set(
         await Rsvp.filter(event=event, revoked_at=None)
         .values_list("player_id", flat=True)
     )
 
     # --- (1) boot heal: outstanding RSVPs on first hot tick after start.
-    # RSVP'd users always land in the main lane (never walk-in, never LATE).
+    # RSVP'd users always land in the main lane (never walk-in).
     if not _swept:
         rsvps = (
             await Rsvp.filter(event=event, revoked_at=None)
             .select_related("player")
         )
         for r in rsvps:
-            if await buckets.ensure_placed(
-                event, r.player, is_late=False, is_walkin=False
-            ):
+            if await buckets.ensure_placed(event, r.player, is_walkin=False):
                 inserted_any = True
         _swept = True
         logger.info(
@@ -115,22 +118,16 @@ async def _tick(state: AppState, settings: Settings) -> None:
         )
         # NEVER re-flip an existing player to placeholder — the flag only
         # ever flows True → False.
-        has_rsvp = uuid in rsvped_uuids
-        if has_rsvp:
-            # RSVP'd users always go to the main lane, even after T-60.
-            is_late, is_walkin = False, False
-        else:
-            # Non-RSVP'd: walk-in sub-bucket before T-60, LATE after.
-            is_late, is_walkin = late, not late
-        if await buckets.ensure_placed(
-            event, player, is_late=is_late, is_walkin=is_walkin
-        ):
+        # The walk-in lane means "never declared", so it is keyed off the
+        # RSVP alone — not the clock.
+        is_walkin = uuid not in rsvped_uuids
+        if await buckets.ensure_placed(event, player, is_walkin=is_walkin):
             inserted_any = True
 
     if not inserted_any:
         logger.debug(
-            "auto-promoter tick: %d online (%d RSVP'd), no new placements (late=%s)",
-            len(online_uuids), len(rsvped_uuids & online_uuids), late,
+            "auto-promoter tick: %d online (%d RSVP'd), no new placements",
+            len(online_uuids), len(rsvped_uuids & online_uuids),
         )
         return
 
@@ -142,8 +139,8 @@ async def _tick(state: AppState, settings: Settings) -> None:
     hub = get_board_hub()
     await hub.broadcast_snapshot(event, state)
     logger.info(
-        "auto-promoter broadcast snapshot (late=%s, %d ws clients)",
-        late, hub.client_count,
+        "auto-promoter broadcast snapshot (%d ws clients)",
+        hub.client_count,
     )
 
 

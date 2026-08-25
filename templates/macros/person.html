@@ -2,20 +2,33 @@
 
    Colour is NEVER the only signal (spec hard rule, enforced via the shared
    chip builders, see .claude/colourblind.md):
-   * the STATUS is a coloured *border around the whole object* AND a
-     non-colour `data-pattern` (online vs offline reads from the border alone)
-     AND a glyph + aria-label;
-   * the RSVP is the badge left of the face — its own axis, deliberately NOT
+   * the STATUS is a thick coloured *border around the whole object*, edged
+     by a black hairline outside and a hairline of its own dark shade inside,
+     AND a non-colour `data-pattern` (online vs offline reads from the border
+     alone) AND a glyph + aria-label. The hairlines say nothing the border
+     doesn't — they are there because a bright band sits between a bright
+     role background and a pale dropzone, and bleeds into both without them;
+   * the RSVP is the icon left of the face — its own axis, deliberately NOT
      folded into the border: where someone is and what they promised are two
-     independent facts an organiser reads together. Glyph (W/✓/~/✕) + title +
-     aria-label carry it; colour only reinforces;
+     independent facts an organiser reads together. The icon *shape*
+     (person/tick/half-ring/cross) + title + aria-label carry it; colour only
+     reinforces;
    * the assigned ROLE is the card background (legible -dark shade, white
      text) plus the raw-hue glyph swatch + label;
-   * tier / LATE / regions are plain text pills (no colour dependence).
+   * a HISTORY stamp sits over the avatar — a `?` for "was online earlier,
+     is not now", else an hourglass for a late arrival. Each is its own axis
+     (any RSVP state and any status can carry either), but only the more
+     urgent one is drawn;
+   * tier / regions are plain text pills (no colour dependence).
+
+   The old LATE and Retracted text pills are gone: the hourglass and the torn
+   ticket say the same things in less space, and each is already carrying a
+   title + aria-label.
    Every colour comes from a `var(--st-*)` / `var(--role-*)` custom property,
    so the per-user `cb` cookie swap recolours it with zero markup change. #}
 
 {% from "macros/pills.html" import level, weapon, success %}
+{% from "macros/icons.html" import rsvp_icon, late_icon, gone_icon %}
 {% macro person(p) %}
   {# No `title=` on the root: the browser fires the nearest ancestor's title
      for any descendant under the pointer, so a title here pops up on top of
@@ -26,20 +39,49 @@
        data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
        draggable="true"
        style="--stc: var({{ p.status_chip.css_var }});
+              --stc-dark: var({{ p.status_chip.css_var_dark }});
               border-color: var({{ p.status_chip.css_var }});
               background-color: var({{ p.role_chip.css_var_dark }})"
        aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}, {{ p.rsvp_chip.label }}">
-    {# RSVP badge — first thing on the card, left of the face. Sized to the
-       32px avatar so the lane of badges reads as a column when you scan a
-       dropzone. `role="img"` + aria-label (not a bare title) so it is
-       announced; `draggable=false` keeps it from starting its own drag. #}
+    {# RSVP ticket — first thing on the card, left of the face and the same
+       height as it, so the lane reads as two clean columns when you scan a
+       dropzone. The ticket's own body is filled with the hue's dark shade —
+       inside the outline, not a box behind it — which is what lets the
+       linework stay thin enough for the mark ON the ticket to read.
+       `role="img"` + aria-label (not a bare title) so it is announced;
+       `draggable=false` keeps it from starting its own drag. #}
     <span class="rsvp-flag rsvp-flag-lg" data-rsvp="{{ p.rsvp_chip.state }}"
-          style="background-color: var({{ p.rsvp_chip.css_var }})"
+          style="color: var({{ p.rsvp_chip.css_var }});
+                 --tk-fill: var({{ p.rsvp_chip.css_var_dark }})"
           role="img" draggable="false"
           title="{{ p.rsvp_chip.label }}"
-          aria-label="RSVP: {{ p.rsvp_chip.label }}">{{ p.rsvp_chip.glyph }}</span>
-    <img class="person-face" src="{{ p.avatar }}" alt="" width="32" height="32"
-         loading="lazy" onerror="this.remove()">
+          aria-label="RSVP: {{ p.rsvp_chip.label }}">{{ rsvp_icon(p.rsvp_chip.icon) }}</span>
+    {# The avatar, stamped with whichever HISTORY marks apply. Both are axes
+       of their own — orthogonal to the ticket, to the status border, and to
+       each other, so any combination can land on one card — which is why
+       they are stamps rather than more pills in the already-crowded tag row.
+       Overlaying the face is deliberate: it reads as "this person, late" at
+       a glance down a dropzone.
+
+       At most ONE shows: gone outranks late. Both facts stay in the view
+       model — they are independent — but "they are not here" is the one an
+       organiser has to act on right now, where "they were late getting here"
+       is already water under the bridge. The hourglass reappears by itself
+       when they log back on, since `is_gone` is derived from live presence
+       and simply stops being true. #}
+    <span class="person-face-wrap">
+      <img class="person-face" src="{{ p.avatar }}" alt="" width="32" height="32"
+           loading="lazy" onerror="this.remove()">
+      {% if p.is_gone %}
+        <span class="face-mark gone-mark" role="img" draggable="false"
+              title="Was online earlier — not online now"
+              aria-label="Was online earlier, not online now">{{ gone_icon() }}</span>
+      {% elif p.is_late %}
+        <span class="face-mark late-mark" role="img" draggable="false"
+              title="Arrived late"
+              aria-label="Arrived late">{{ late_icon() }}</span>
+      {% endif %}
+    </span>
     <div class="person-main">
       <span class="person-name">
         {{ p.name }}
@@ -116,12 +158,6 @@
           <span class="pill pill-warn"
                 title="Has not yet registered on anni.wynnvets.org">Unregistered</span>
         {% endif %}
-        {% if p.is_late %}
-          <span class="pill pill-danger" title="Joined late">LATE</span>
-        {% endif %}
-        {% if p.rsvp_revoked %}
-          <span class="pill pill-danger" title="RSVP retracted">Retracted</span>
-        {% endif %}
         {% if not p.is_placeholder %}
           {% for r in p.regions %}
             <span class="pill pill-region" title="{{ r.label }}">{{ r.glyph }} {{ r.code }}</span>
@@ -151,18 +187,6 @@
       {# Opt-in destination dropdown — alternative to drag-drop. Off by default
          (cookie cfg_dropdown_assign). Fires window.__moveViaSelect, defined in
          board.js, which parses the value and POSTs the move via HTMX. #}
-      {# Take the card off the board (placement only — the profile survives;
-         a mistaken add is deleted outright from Staff → Roles). Hidden during
-         grace, like the party delete: the hub would REJECT it anyway. #}
-      {% if not (snapshot and snapshot.event.frozen) %}
-        <button class="person-remove" type="button" draggable="false"
-                hx-post="/staff/board/player-remove"
-                hx-vals='{"player_uuid": "{{ p.uuid }}"}'
-                hx-target="#board" hx-swap="outerHTML"
-                hx-confirm="Take {{ p.name }} off the board? Their profile is kept — if they were added by mistake, delete the profile from the Roles dashboard."
-                aria-label="Remove {{ p.name }} from the board"
-                title="Remove from the board (keeps their profile)">×</button>
-      {% endif %}
       {% if dropdown_assign and snapshot %}
         <select class="person-move" aria-label="Move {{ p.name }}"
                 data-uuid="{{ p.uuid }}"
@@ -173,10 +197,11 @@
               <option value="party:{{ party.id }}">Party {{ party.ordinal }}{% if party.host %} (host: {{ party.host.name }}){% endif %}</option>
             {% endfor %}
           </optgroup>
+          {# Value is "bucket:<name>:<is_walkin01>" — see __moveViaSelect. #}
           <optgroup label="Buckets">
             <option value="bucket:unassigned:0">Unassigned</option>
-            <option value="bucket:unassigned:1">Unassigned (Late)</option>
-            <option value="bucket:wontassign:0">Won't assign</option>
+            <option value="bucket:unassigned:1">Unassigned (walk-in)</option>
+            <option value="bucket:wontassign:0">Sitting out</option>
             <option value="bucket:volunteers:0">Volunteers</option>
           </optgroup>
         </select>

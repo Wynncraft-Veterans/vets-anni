@@ -23,9 +23,11 @@ from dataclasses import dataclass
 from tortoise.transactions import in_transaction
 
 from app.constants import ASSIGNABLE_ROLES, BucketKind, PartyResult, Role
+from app.constants import RsvpState
 from app.constants import MAX_PARTY_STAGE, MIN_PARTY_STAGE, ROLE_SORT_PRIORITY
 from app.db.models import AnniEvent, AnniPlayer, BoardPlacement, Party
 from app.domain import identity, membership
+from app.domain import rsvp as rsvp_domain
 from app.domain.identity import MojangResolver, mojang_username_to_uuid
 from app.domain.presence import normalize_world
 from app.services import hot_window
@@ -64,21 +66,26 @@ async def _container_siblings(
     *,
     bucket: BucketKind | None,
     party: Party | None,
-    is_late: bool,
     is_walkin: bool,
     exclude_player: AnniPlayer | None = None,
 ) -> list[BoardPlacement]:
     """All placements in the destination container, ordered by current
-    ``sort_index``. UNASSIGNED has three lanes (main / walkin / late) that
-    render as distinct dropzones, so the filter narrows to the specific
-    lane; VOLUNTEERS/WONTASSIGN/party targets ignore the lane flags."""
+    ``sort_index``.
+
+    UNASSIGNED has one *stored* lane split left — walk-in vs not — so the
+    filter narrows to that; VOLUNTEERS/WONTASSIGN/party targets ignore it.
+    The soft-RSVP lane is derived per render (``web/board_view``) and so is
+    deliberately NOT a filter here: it is a view of the main lane, and
+    numbering it separately would make one card's sort_index mean two things
+    depending on who is online.
+    """
     query = BoardPlacement.filter(event=event)
     if party is not None:
         query = query.filter(party=party)
     else:
         query = query.filter(bucket=bucket, party=None)
         if bucket == BucketKind.UNASSIGNED:
-            query = query.filter(is_late=is_late, is_walkin=is_walkin)
+            query = query.filter(is_walkin=is_walkin)
     if exclude_player is not None:
         query = query.exclude(player=exclude_player)
     return await query.order_by("sort_index")
@@ -89,7 +96,6 @@ async def _role_priority_slot(
     *,
     bucket: BucketKind | None,
     party: Party | None,
-    is_late: bool,
     is_walkin: bool,
     incoming_role: Role | None,
 ) -> int:
@@ -104,8 +110,7 @@ async def _role_priority_slot(
     with ``incoming_role=None``; drag-triggered ``move()`` passes an
     explicit position from the client instead."""
     existing = await _container_siblings(
-        event, bucket=bucket, party=party,
-        is_late=is_late, is_walkin=is_walkin,
+        event, bucket=bucket, party=party, is_walkin=is_walkin,
     )
     incoming = _role_priority(incoming_role)
     for i, p in enumerate(existing):
@@ -121,8 +126,8 @@ async def _upsert(
     bucket: BucketKind | None,
     party: Party | None,
     sort_index: int,
-    is_late: bool | None,
     is_walkin: bool | None,
+    is_late: bool | None = None,
 ) -> BoardPlacement:
     """The single-instance UPSERT + destination-container renumber.
 
@@ -150,6 +155,10 @@ async def _upsert(
             placement = BoardPlacement(event=event, player=player)
         placement.bucket = bucket
         placement.party = party
+        # ``is_late`` is a fact about ARRIVAL, not about where the card
+        # currently sits, so only the insert paths pass it. Every move leaves
+        # it alone — dragging a latecomer into a party must not launder away
+        # the hourglass.
         if is_late is not None:
             placement.is_late = is_late
         elif placement.id is None:
@@ -161,8 +170,7 @@ async def _upsert(
 
         siblings = await _container_siblings(
             event, bucket=bucket, party=party,
-            is_late=placement.is_late, is_walkin=placement.is_walkin,
-            exclude_player=player,
+            is_walkin=placement.is_walkin, exclude_player=player,
         )
         pos = max(0, min(sort_index, len(siblings)))
         ordered = siblings[:pos] + [placement] + siblings[pos:]
@@ -186,7 +194,6 @@ async def move(
     bucket: BucketKind | None = None,
     party_id: str | None = None,
     sort_index: int = 0,
-    is_late: bool | None = None,
     is_walkin: bool | None = None,
 ) -> OpResult:
     """Move a *board* player to a bucket or a party slot (UPSERT).
@@ -195,6 +202,10 @@ async def move(
     organiser can see); adding a brand-new person is :func:`add_walkin`. An
     unknown player / party, or an ambiguous target, is ``REJECTED`` with a
     reason rather than guessed at.
+
+    Deliberately has no ``is_late``: lateness is set once on arrival and a
+    move must not touch it. It used to be a lane, and a REST move defaulting
+    it to False would have quietly cleared the hourglass on every drag.
     """
     player = await AnniPlayer.filter(mc_uuid=player_uuid).first()
     if player is None:
@@ -211,8 +222,7 @@ async def move(
                         player_uuid)
 
     await _upsert(event, player, bucket=bucket, party=party,
-                  sort_index=sort_index, is_late=is_late,
-                  is_walkin=is_walkin)
+                  sort_index=sort_index, is_walkin=is_walkin)
     logger.debug("move %s -> %s", player.mc_username,
                  f"party {party.ordinal}" if party else bucket)
     return OpResult(True, player_uuid=player_uuid)
@@ -246,7 +256,6 @@ async def ensure_placed(
     event: AnniEvent,
     player: AnniPlayer,
     *,
-    is_late: bool,
     is_walkin: bool = False,
 ) -> bool:
     """Idempotent auto-place: if ``(event, player)`` has no placement,
@@ -254,16 +263,17 @@ async def ensure_placed(
     leave the existing row alone and return ``False``.
 
     Single-instance invariant: this is the shared "land them on the board"
-    path for both the RSVP cog and the 1hr-early auto-promoter. The lane
-    flags (``is_late``, ``is_walkin``) choose the sub-bucket at *insert
-    time only* — already-placed players are never reshuffled between lanes
-    by a subsequent tick; staff intent (or the original auto-place) wins.
+    path for both the RSVP cog and the 1hr-early auto-promoter.
+    ``is_walkin`` picks the lane at *insert time only* — already-placed
+    players are never reshuffled between lanes by a subsequent tick; staff
+    intent (or the original auto-place) wins.
 
-    Caller contract: ``is_late`` and ``is_walkin`` are mutually exclusive in
-    practice — the auto-promoter routes non-RSVP'd arrivals to walk-in
-    before T-60 and to LATE after T-60, while RSVP'd arrivals always land
-    in the main lane (both False). The view layer treats ``is_late`` as
-    winning if both somehow ended up True.
+    **Lateness is decided here, not by the caller.** Whether an arrival is
+    late depends on what they had promised (T-15 for a hard RSVP, T-35 soft,
+    T-50 walk-in — :data:`app.constants.LATE_ARRIVAL_SECONDS`), so the rule
+    needs the RSVP state, and every caller reaching for it independently is
+    how the three of them would drift apart. Callers used to pass
+    ``is_late`` and got it subtly wrong in exactly that way.
 
     ``sort_index`` is derived from role-priority: an auto-placed card has
     no assigned role yet (``None`` → tail of the role-sorted lane), so it
@@ -273,9 +283,12 @@ async def ensure_placed(
     existing = await BoardPlacement.filter(event=event, player=player).first()
     if existing is not None:
         return False
+    late = hot_window.is_late_arrival(
+        event, (await rsvp_domain.state_for(player, event)).value
+    )
     slot = await _role_priority_slot(
         event, bucket=BucketKind.UNASSIGNED, party=None,
-        is_late=is_late, is_walkin=is_walkin, incoming_role=None,
+        is_walkin=is_walkin, incoming_role=None,
     )
     await _upsert(
         event,
@@ -283,16 +296,13 @@ async def ensure_placed(
         bucket=BucketKind.UNASSIGNED,
         party=None,
         sort_index=slot,
-        is_late=is_late,
         is_walkin=is_walkin,
+        is_late=late,
     )
-    if is_late:
-        lane = "LATE"
-    elif is_walkin:
-        lane = "walk-in"
-    else:
-        lane = "main"
-    logger.info("auto-place: %s -> Unassigned (%s)", player.mc_username, lane)
+    logger.info(
+        "auto-place: %s -> Unassigned (%s%s)", player.mc_username,
+        "walk-in" if is_walkin else "main", ", LATE" if late else "",
+    )
     return True
 
 
@@ -320,8 +330,7 @@ async def promote_from_wontassign(
         return False
     slot = await _role_priority_slot(
         event, bucket=BucketKind.UNASSIGNED, party=None,
-        is_late=False, is_walkin=False,
-        incoming_role=placement.assigned_role,
+        is_walkin=False, incoming_role=placement.assigned_role,
     )
     await _upsert(
         event,
@@ -329,7 +338,6 @@ async def promote_from_wontassign(
         bucket=BucketKind.UNASSIGNED,
         party=None,
         sort_index=slot,
-        is_late=False,
         is_walkin=False,
     )
     logger.info(
@@ -339,20 +347,31 @@ async def promote_from_wontassign(
 
 
 async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
-    """If the player's placement is in the UNASSIGNED bucket (either lane),
-    move it to WONTASSIGN and return ``True``. Any other placement (party,
-    WONTASSIGN, VOLUNTEERS) or no placement at all is a no-op (False) — staff
-    intent wins, and the "Retracted" pill (driven by ``Rsvp.revoked_at`` in
-    the view layer) surfaces the retraction regardless of where the card
-    physically sits.
+    """Retracting an RSVP moves the card to WONTASSIGN ("Sitting out") from
+    **wherever it currently sits** — a party included. Returns ``True`` if it
+    moved; already-in-WONTASSIGN or not-on-the-board is a no-op (``False``).
+
+    This used to only demote out of UNASSIGNED, on the reasoning that staff
+    intent should win over a user action. That was backwards for the case
+    that matters: someone in a *party* retracting is exactly when an
+    organiser most needs the slot freed, and leaving the card in place made
+    a retraction easy to miss. The torn ticket on the card marks the
+    retraction wherever it ends up; this makes sure it also stops occupying
+    one of the ten.
+
+    Re-RSVPing undoes it — :func:`promote_from_wontassign` pulls them back
+    into the main Unassigned lane — so the move is never a dead end.
     """
     placement = await BoardPlacement.filter(event=event, player=player).first()
-    if placement is None or placement.bucket is not BucketKind.UNASSIGNED:
+    if placement is None or placement.bucket is BucketKind.WONTASSIGN:
         return False
+    was = (
+        f"party {placement.party_id}" if placement.party_id
+        else str(placement.bucket)
+    )
     slot = await _role_priority_slot(
         event, bucket=BucketKind.WONTASSIGN, party=None,
-        is_late=False, is_walkin=False,
-        incoming_role=placement.assigned_role,
+        is_walkin=False, incoming_role=placement.assigned_role,
     )
     await _upsert(
         event,
@@ -360,10 +379,11 @@ async def demote_on_revoke(event: AnniEvent, player: AnniPlayer) -> bool:
         bucket=BucketKind.WONTASSIGN,
         party=None,
         sort_index=slot,
-        is_late=False,
         is_walkin=False,
     )
-    logger.info("rsvp revoke demote: %s -> Wont-assign", player.mc_username)
+    logger.info(
+        "rsvp revoke demote: %s (%s) -> Sitting out", player.mc_username, was
+    )
     return True
 
 
@@ -439,68 +459,24 @@ async def add_walkin(
         logger.debug("walk-in %s already on board — no-op", player.mc_username)
         return OpResult(True, player_uuid=player.mc_uuid)
 
-    # A staff "add by IGN" is the manual walk-in path — mirror the auto-
-    # promoter's lane logic: walk-in sub-bucket before T-60, LATE after.
-    late = hot_window.is_late_bucket(event)
-    walkin = not late
+    # A staff "add by IGN" lands in the walk-in lane unless the person
+    # actually has an RSVP (staff sometimes add someone the auto-promoter
+    # has not caught yet) — the walk-in lane means "never declared", so an
+    # RSVP'd add belongs in the main lane with everyone else.
+    state = await rsvp_domain.state_for(player, event)
+    walkin = state is RsvpState.NONE
+    late = hot_window.is_late_arrival(event, state.value)
     slot = await _role_priority_slot(
         event, bucket=BucketKind.UNASSIGNED, party=None,
-        is_late=late, is_walkin=walkin, incoming_role=None,
+        is_walkin=walkin, incoming_role=None,
     )
     await _upsert(event, player, bucket=BucketKind.UNASSIGNED, party=None,
-                  sort_index=slot, is_late=late, is_walkin=walkin)
+                  sort_index=slot, is_walkin=walkin, is_late=late)
     logger.info(
-        "walk-in added: %s -> Unassigned (%s)",
-        player.mc_username, "LATE" if late else "walk-in",
+        "walk-in added: %s -> Unassigned (%s%s)", player.mc_username,
+        "walk-in" if walkin else "main", ", LATE" if late else "",
     )
     return OpResult(True, player_uuid=player.mc_uuid)
-
-
-async def remove_player(event: AnniEvent, player_uuid: str) -> OpResult:
-    """Take one person off the board — the inverse of :func:`add_walkin`.
-
-    Deletes the ``(event, player)`` :class:`BoardPlacement` and nothing else:
-    the :class:`AnniPlayer` row, their RSVP and their capabilities all
-    survive, because "shouldn't be on tonight's board" is not "isn't a
-    person". Deleting the *profile* of a mistaken add is a separate,
-    guarded operation (:mod:`app.domain.players`).
-
-    Refuses while the player hosts a party, mirroring :func:`delete_party`'s
-    refusal to delete a non-empty one: ``Party.host`` is a player FK, not a
-    placement FK, so removing them would leave a host who isn't on the board
-    (rendering as "— none —" in the host select while the collapsed party
-    head still names them). Staff change the host first; we never silently
-    rewrite a party as a side effect of a different action.
-
-    Not idempotent-friendly by design — removing someone who isn't placed is
-    a friendly reject, so a double-click on a stale card says so rather than
-    reporting success for a no-op.
-
-    Note for the caller: during the hot window the auto-promoter re-adds
-    anyone it sees online in the merge cache (``services/auto_promoter``), so
-    removing an online guild member is temporary by nature.
-    """
-    placement = await (
-        BoardPlacement.filter(event=event, player__mc_uuid=player_uuid)
-        .select_related("player")
-        .first()
-    )
-    if placement is None:
-        return OpResult(False, "That player isn't on the board.", player_uuid)
-
-    hosting = await Party.filter(event=event, host__mc_uuid=player_uuid).first()
-    if hosting is not None:
-        return OpResult(
-            False,
-            f"They're hosting Party {hosting.ordinal} — set that party's "
-            f"host to someone else first.",
-            player_uuid,
-        )
-
-    name = placement.player.mc_username
-    await placement.delete()
-    logger.info("removed from board: %s", name)
-    return OpResult(True, player_uuid=player_uuid)
 
 
 # --- parties ---------------------------------------------------------------

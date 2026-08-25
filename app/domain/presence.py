@@ -15,8 +15,7 @@ Status mapping (authoritative: ``.claude/domain_rules.md``):
 * online, on the party's world, in party        -> ``ONLINE_PARTY``.
 * online, on the party's world, not in party    -> ``ONLINE_WORLD``.
 * online, wrong/unknown world                   -> ``ONLINE_ELSEWHERE``.
-* offline, seen online earlier this anni         -> ``OFFLINE_GONE``.
-* offline, never seen this anni                  -> ``OFFLINE``.
+* offline (whether or not we saw them earlier)   -> ``OFFLINE``.
 
 **The RSVP is no longer part of the status.** It used to split the offline
 branch into ``OFFLINE_HARD``/``OFFLINE_SOFT``; the board now renders RSVP as
@@ -24,15 +23,21 @@ its own badge (``constants.RsvpState``) so the border answers one question
 only — where are they. What the notice still drives here is the *user
 dashboard bar*: how urgently we nag someone who isn't online yet.
 
-``was_online`` is the "was here ≤ T-60m then left" signal ``OFFLINE_GONE``
-always wanted (and previously faked by "offline with no RSVP"). The callers
-feed it from ``AppState.seen_online_uuids`` — the set the presence poller
-accumulates for the active event and the grace-wipe clears.
+``was_online`` is the "was here earlier tonight" signal, fed from
+``AppState.seen_online_uuids`` — the set the presence poller accumulates for
+the active event and the grace-wipe clears. It is no longer a *status*: an
+absent player is ``OFFLINE`` whether or not they were here, and the history
+is a badge on the board card instead (``web/board_view``'s ``is_gone``).
+Folding the two together meant an organiser could not see "not here" and
+"and they were, ten minutes ago" at the same time — the second overwrote the
+first. What ``was_online`` still decides here is the user-dashboard bar: how
+we word the nudge, and whether it flashes.
 
 The user dashboard shows a status *bar* whose colour/flash escalates with the
-countdown. Bar rules (``.claude/domain_rules.md``): GONE flashes immediately;
-OFFLINE is red and flashes from T-20m with a hard RSVP, T-45m with a soft one
-(never for someone who never RSVP'd — they never said they were coming);
+countdown. Bar rules (``.claude/domain_rules.md``): OFFLINE is red, and
+flashes immediately for someone who was here and left, else from T-20m with a
+hard RSVP and T-45m with a soft one (never for someone who never RSVP'd —
+they never said they were coming);
 ELSEWHERE/WORLD green→yellow once the world/party is announced; PARTY green;
 UNKNOWN yellow.
 """
@@ -113,9 +118,6 @@ def classify(i: PresenceInputs) -> PresenceStatus:
     # Offline. API-disabled + can't confirm online == genuinely unknown.
     if i.api_disabled:
         return PresenceStatus.UNKNOWN
-    # "Gone" is specifically *left after being here* — not merely absent.
-    if i.was_online:
-        return PresenceStatus.OFFLINE_GONE
     return PresenceStatus.OFFLINE
 
 
@@ -123,10 +125,13 @@ def _flash(
     status: PresenceStatus,
     seconds_to_anni: int | None,
     rsvp_notice: AttendanceNotice | None,
+    was_online: bool,
 ) -> bool:
-    if status == PresenceStatus.OFFLINE_GONE:
-        return True  # subtly flashing immediately
-    if seconds_to_anni is None or status != PresenceStatus.OFFLINE:
+    if status != PresenceStatus.OFFLINE:
+        return False
+    if was_online:
+        return True  # here and gone: flash immediately, whatever the clock
+    if seconds_to_anni is None:
         return False
     # Absent-and-never-seen: how loudly we nag is the RSVP's job now that the
     # status no longer encodes it. No RSVP at all => no nag; they never said
@@ -141,13 +146,15 @@ def _flash(
 def view(i: PresenceInputs) -> PresenceView:
     """Status + bar class/message/flash for the user dashboard."""
     status = classify(i)
-    flash = _flash(status, i.seconds_to_anni, i.rsvp_notice)
+    flash = _flash(status, i.seconds_to_anni, i.rsvp_notice, i.was_online)
 
-    if status == PresenceStatus.OFFLINE_GONE:
-        return PresenceView(status, "bar-danger",
-                            "We saw you around but you're not online now — "
-                            "log back on before the anni.", flash)
     if status == PresenceStatus.OFFLINE:
+        if i.was_online:
+            # Being here and leaving is the one the countdown can't soften:
+            # they have already shown they can make it.
+            return PresenceView(status, "bar-danger",
+                                "We saw you around but you're not online now "
+                                "— log back on before the anni.", flash)
         if i.rsvp_notice == AttendanceNotice.RSVP_HARD:
             return PresenceView(status, "bar-danger",
                                 "You hard-RSVP'd but aren't online yet.", flash)
