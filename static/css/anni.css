@@ -671,15 +671,32 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .legend-pips { display:inline-flex; align-items:center; gap:.75rem; font-weight:600; }
 .legend-pip { display:inline-flex; align-items:center; gap:.35rem; font-weight:400; }
 .legend-pips .cap-dot { cursor:default; }
+/* A card is AT MOST THREE LINES: line 1 is the name + capability bar,
+   lines 2–3 the tags with the role dropdown pinned bottom-right beside them.
+   Each part holds its line rather than wrapping out of it — the name
+   ellipsises before the bar can drop to a line of its own, and the tags
+   clamp at two rows. (Before this, a long name or a cb bar pushed the card
+   to four lines, and the dropdown floated mid-height on the right.) */
 .person-main { display:flex; flex-direction:column; gap:.15rem; min-width:0;
   flex:1; }
-.person-name { font-weight:700; font-size:.9rem; }
+.person-name { font-weight:700; font-size:.9rem;
+  display:flex; align-items:center; min-width:0; }
+.person-name-text { min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; }
 .person-name .muted { color:#e5e7eb; opacity:.8; font-weight:400; }
+.person-bottom { display:flex; align-items:flex-end; gap:.5rem; min-width:0; }
+/* Two rows of pills at most: rows are pinned to a known height (explicit
+   line-height, so the pill box doesn't depend on the font's own metrics)
+   and anything past the second row is clipped. Clipping loses a pill in the
+   rare card with many regions; a fourth line on every such card was the
+   thing to avoid. */
 .person-tags { display:flex; flex-wrap:wrap; gap:.3rem; align-items:center;
-  font-size:.72rem; }
+  font-size:.72rem; line-height:1.2; flex:1; min-width:0;
+  max-height:calc(2 * 1.25rem + .3rem); overflow:hidden; }
 .person .pill { font-size:.68rem; }
-/* Stacked so the (optional) move dropdown doesn't fight the role select for
-   the card's narrow right-hand column. */
+/* Bottom-right of the card, beside the tags. Stacked so the (optional) move
+   dropdown doesn't fight the role select for width; stacked, the pair spans
+   lines 2–3 and the card still stays within three lines. */
 .person-actions { flex:none; display:flex; flex-direction:column; gap:.25rem;
   align-items:stretch; }
 .person-role, .person-move {
@@ -742,11 +759,10 @@ body.cb .legend-status.status-border { box-shadow:none; }
   /* No gap: each shape carries its own side margin (below) so the *visible*
      space between pips is even whatever mix of shapes sits side by side. */
   display:inline-flex; align-items:center; gap:0;
-  margin-left:.4rem; vertical-align:middle;
-  /* Nudge up: `vertical-align:middle` aligns the dot's vertical centre to
-     the parent's lowercase x-height (not the cap-height), which reads ~3px
-     low next to a bold capitalised name. */
-  transform:translateY(-3px);
+  margin-left:.4rem;
+  /* Never shrinks or wraps: the name beside it gives way instead. The row
+     is a flex line centred on the name, so no vertical nudge is needed. */
+  flex:none;
 }
 /* Every card emits the row; an empty one only has a job under cb (where it
    is drawn as a blank bar — colourblind.css), so here it takes no space. */
@@ -860,9 +876,10 @@ body.cb .legend-status.status-border { box-shadow:none; }
 }
 
 /* Stacking-order fix.
-   (1) `.cap-dots` has a `transform` (the upward nudge), so it forms its own
-       stacking context; the popover's z-index then only competes WITHIN
-       that context.
+   (1) A popover's z-index only competes within the card's own stacking
+       context, never against the next card. (`.cap-dots` used to add a
+       third layer via a `transform` nudge; the name row is a flex line now
+       and the nudge is gone.)
    (2) A card's own positioned children (the avatar stamps) would otherwise
        escape UP to the nearest ancestor stacking context (effectively body)
        — where they can paint over a hovered card's popover that overhangs
