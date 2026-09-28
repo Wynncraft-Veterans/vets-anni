@@ -595,6 +595,44 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 .person:active { cursor:grabbing; }
 .person-ghost { opacity:.4; }
+/* Identity group — RSVP ticket + avatar, side by side (same spacing as the
+   card's own gap). With the destination dropdown on (.has-move) it becomes
+   a two-row grid: the pair on top, the dropdown squeezed full-width
+   underneath, within the card's existing height rather than adding to it.
+   The budget is the text column's ~47px: ticket + face come down from
+   2.2rem/32px to 1.85rem (same 1.2:1 ticket ratio) and the dropdown is
+   pinned to .95rem, which with the row gap lands just under it. Measured —
+   card heights are identical with the dropdown on and off. */
+.person-id { display:flex; align-items:center; gap:.6rem; flex:none; }
+.person-id.has-move {
+  display:grid; grid-template-columns:auto auto; column-gap:.6rem;
+  row-gap:.1rem; align-items:center; align-content:space-between;
+}
+.person-id.has-move .rsvp-flag-lg { width:2.22rem; height:1.85rem; }
+.person-id.has-move .person-face { width:1.85rem; height:1.85rem; }
+/* `width:0; min-width:100%`: the select fills the pair's width without its
+   own label width counting toward the grid's — otherwise it widens the
+   group and squeezes the tag pills beside it.
+   The closed control is tiny, so its type is chosen for tiny: Tahoma Bold,
+   hand-hinted for small screen sizes, crispest at 1x of those compared
+   (system UI, Verdana — too wide to fit — and Atkinson Hyperlegible, which
+   blurs this small without hinting). Its placeholder is "Move to…" because
+   "— move to —" didn't fit in any face. */
+.person-id.has-move .person-move {
+  grid-column:1 / -1; width:0; min-width:100%; height:.95rem;
+  font-family:Tahoma, "DejaVu Sans Condensed", "Segoe UI", sans-serif;
+  font-size:.62rem; font-weight:700; line-height:1;
+  padding:0 .15rem; border-radius:4px;
+}
+/* ...but the list it opens is not tiny: options and group labels go back to
+   normal page type. (Chromium's drawn popup — Windows, Linux — honours
+   per-option font styles; a fully native popup, as on macOS, may not.) */
+.person-id.has-move .person-move optgroup,
+.person-id.has-move .person-move option {
+  font-family:system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:.85rem;
+}
+.person-id.has-move .person-move option { font-weight:400; }
 .person-face-wrap { position:relative; flex:none; line-height:0; }
 .person-face { border-radius:6px; image-rendering:pixelated; background:#0003;
   display:block; }
@@ -694,9 +732,9 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   font-size:.72rem; line-height:1.2; flex:1; min-width:0;
   max-height:calc(2 * 1.25rem + .3rem); overflow:hidden; }
 .person .pill { font-size:.68rem; }
-/* Bottom-right of the card, beside the tags. Stacked so the (optional) move
-   dropdown doesn't fight the role select for width; stacked, the pair spans
-   lines 2–3 and the card still stays within three lines. */
+/* Bottom-right of the card, beside the tags: the role dropdown alone. (The
+   optional move dropdown used to stack under it here, making every card a
+   line taller; it now sits under the ticket + avatar — .person-id.) */
 .person-actions { flex:none; display:flex; flex-direction:column; gap:.25rem;
   align-items:stretch; }
 .person-role, .person-move {

@@ -199,6 +199,27 @@ async def test_accessibility_menu_toggle_hides_the_bar(as_staff, seeded):
     assert "cbf-codes" in _body_classes(body)
 
 
+async def test_move_dropdown_sits_under_ticket_and_avatar(as_staff, seeded):
+    """Dropdown move puts each card's destination select under its ticket +
+    avatar (.person-id.has-move), not stacked under the role dropdown —
+    stacked, it made every card a line taller. Off, there is no select."""
+    import re
+
+    body = (await as_staff.get("/staff/board")).text
+    assert "has-move" not in body and 'class="person-move"' not in body
+
+    as_staff.cookies.set("cfg_dropdown_assign", "1")
+    body = (await as_staff.get("/staff/board")).text
+    cards = body.count('class="person status-border"')
+    assert cards and body.count('class="person-id has-move"') == cards
+    assert body.count('class="person-move"') == cards
+    for ident in re.findall(r'class="person-id has-move">(.*?)<div class="person-main">',
+                            body, re.S):
+        assert 'class="person-move"' in ident
+    for actions in re.findall(r'class="person-actions">(.*?)</div>', body, re.S):
+        assert "person-move" not in actions and "person-role" in actions
+
+
 async def test_legend_is_three_groups_that_can_flow(as_staff, seeded):
     """Structured, the legend is three rows — role keys / reliability +
     statuses / RSVPs — in that order; the two flow-only rules sit between
