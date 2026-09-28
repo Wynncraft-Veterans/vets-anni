@@ -4,11 +4,12 @@
    glyphs, textures) carry meaning so colour is never load-bearing. Satisfies the spec's hard
    "usable colourblind variant" requirement.
 
-   FEATURE CLASSES. cb is a bundle of four independent features, and each
+   FEATURE CLASSES. cb is a bundle of five independent features, and each
    one's rules are scoped under its own body class as well as `.cb`:
    `cbf-palette` (Okabe-Ito hues), `cbf-textures` (role card textures),
-   `cbf-codes` (text capability pips + their legend keys) and `cbf-lamps`
-   (status traffic light instead of the border). base.html adds a class per
+   `cbf-codes` (text capability pips + their legend keys), `cbf-lamps`
+   (status traffic light instead of the border) and `cbf-nameplate` (a
+   backdrop behind the name). base.html adds a class per
    live feature (deps.cb_features: all default on, each switchable from the
    board's Accessibility menu), so a feature switched off simply falls back
    to the regular-mode styling underneath. Rules that belong to no single
@@ -287,6 +288,25 @@ body.cb.cbf-codes .cap-dot[data-reliability="moderate"] .cap-letter {
 }
 body.cb.cbf-codes .cap-dot[data-reliability="high"] .cap-letter {
   text-decoration-line: underline overline;
+}
+
+/* Name backdrop: a semi-transparent dark grey plate behind the name, so it
+   reads the same on every card whatever the role colour and texture behind
+   it. Semi-transparent where the capability bar is solid black — the card's
+   role still shows through the name, and the two stay distinct.
+   Its line-height is the bar's height (the bar is .72rem type at
+   line-height 1 plus .42em + .34em padding = 1.76 × .72rem), so the two
+   sit on the name row as equals. */
+body.cb.cbf-nameplate .person-name-text {
+  background: rgba(34,34,34,.62); border-radius: 3px;
+  padding: 0 .5rem; line-height: calc(.72rem * 1.76);
+}
+/* With the text bar on too, plate and bar join into one strip: no gap,
+   square corners where they meet, stretched to the same height. */
+body.cb.cbf-nameplate.cbf-codes .person-name { align-items: stretch; }
+body.cb.cbf-nameplate.cbf-codes .person-name-text { border-radius: 3px 0 0 3px; }
+body.cb.cbf-nameplate.cbf-codes .person-name .cap-dots {
+  margin-left: 0; border-radius: 0 3px 3px 0;
 }
 
 /* Status border — default mode only: a single SOLID coloured outline.

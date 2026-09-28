@@ -176,6 +176,7 @@ CB_FEATURES: dict[str, str] = {
     "palette": "Okabe-Ito colours",
     "codes": "Text role pips",
     "textures": "Role card textures",
+    "nameplate": "Name backdrop",
 }
 
 
