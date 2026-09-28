@@ -3,11 +3,12 @@
    (spec). The form swaps `form_target` on success (default `#capacity` —
    the user dashboard's role-capacity fragment); the surrounding page clears
    this mount on that swap. Staff edits pass `form_action`/`form_target`/
-   `weapon_search_url` to point at the /staff/roles/... surface and swap the
-   single roles-dashboard row instead. #}
+   `weapon_search_url`/`build_check_url` to point at the /staff/roles/...
+   surface and swap the single roles-dashboard row instead. #}
 {% set _form_action = form_action or ("/me/capability/" ~ cap.id if mode == "edit" else "/me/capability") %}
 {% set _form_target = form_target or "#capacity" %}
 {% set _weapon_search_url = weapon_search_url or "/me/capability/weapons" %}
+{% set _build_check_url = build_check_url or "/me/capability/check" %}
 <div class="modal-overlay" role="dialog" aria-modal="true"
      aria-labelledby="modal-h">
   <div class="modal">
@@ -106,9 +107,15 @@
         Please indicate weapons that you already have built.<br>
         Comma separated, max {{ max_weapons }}.
       </p>
+      {# Re-judged on open and as they type; the verdict lands in
+         #build-warning above Save. Advisory only — saving still works. #}
       <input type="text" id="weapons" name="weapons"
              placeholder="e.g. Labyrinth, Revolution"
-             value="{{ cap.weapons if cap }}">
+             value="{{ cap.weapons if cap }}"
+             {% if role %}hx-get="{{ _build_check_url }}"
+             hx-vals='{"role": "{{ role.value }}"}'
+             hx-trigger="load, input changed delay:300ms"
+             hx-target="#build-warning" hx-swap="innerHTML"{% endif %}>
       <input type="search" class="weapon-search"
              placeholder="🔍 Search Wynn's list of weapons…"
              name="q" hx-get="{{ _weapon_search_url }}"
@@ -120,6 +127,8 @@
         <p class="muted">Successful annihilations in this role:
           <strong>{{ cap.success_count }}</strong> (set automatically — not editable).</p>
       {% endif %}
+
+      <div id="build-warning"></div>
 
       <div class="modal-actions">
         <button type="submit">{{ "Add capability" if mode == "new" else "Save changes" }}</button>

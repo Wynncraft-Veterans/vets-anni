@@ -279,6 +279,13 @@ class Settings(BaseSettings):
     wapi_player_ttl_seconds: int = 120
     wapi_player_fetch_cap_per_tick: int = 5
 
+    # How long a player's highest class level stays cached for the capability
+    # modal's build check (``identity.max_class_level``). Same PLAYER bucket
+    # (``?fullResult`` is still one request); levels move slowly, so one call
+    # per player per half hour — and only when they open the modal — keeps it
+    # a rounding error beside the pollers above.
+    class_level_ttl_seconds: int = 1800
+
     # Grace window (hours) for staff to record per-party results before wipe.
     grace_hours: int = 2
 

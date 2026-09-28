@@ -46,8 +46,14 @@ want the (stable) UUID, not the canonical current name.
 `RateLimit-*` headers, back off on 429 (port of dazebot's Requestor). We spend
 the token only on: `/v3/guild/Returners` online, `/v3/item/search/{q}` (weapons
 catalog, ITEMS bucket, 1 h cache), `/v3/player/{uuid}` for outside-guild board
-members' online status (above), and the slow api-disabled `/v3/player/{uuid}`
-probe. Heavy reads come from api.wynnvets.org instead.
+members' online status (above), the slow api-disabled `/v3/player/{uuid}`
+probe, and `/v3/player/{uuid}?fullResult` for the capability modal's
+class-level check (`identity.max_class_level`). That last one is still one
+PLAYER-bucket request (50 / 60 s, verified 2026-09-28), fired only for DPS
+roles when a modal has weapons in it, and cached per player — hits *and*
+misses — for `class_level_ttl_seconds` (30 min). Heavy reads come from
+api.wynnvets.org instead. (api.wynnpool.com's `/player/{name}` is a
+passthrough of the same fullResult payload, so it adds nothing here.)
 
 The single `/v3/guild/Returners` response `online_merge` already fetches is
 *also* parsed for the **full staff roster** (every member whose rank is in

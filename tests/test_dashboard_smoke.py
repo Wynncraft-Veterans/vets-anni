@@ -65,6 +65,31 @@ async def test_capability_modal_quotes_guidance_and_links(as_user):
     assert "build_quality" not in r.text and "Reliability" not in r.text
 
 
+async def test_build_check_warns_without_naming_the_reason(as_user, monkeypatch):
+    """The modal's weapons field re-judges itself via /me/capability/check.
+    Healer needs no class levels, so no WAPI stub is involved."""
+    from main import app
+
+    state = app.state.appstate
+    monkeypatch.setattr(state, "weapons_by_name", {"lament": "wand", "idol": "spear"})
+    monkeypatch.setattr(state, "mythic_weapon_names", frozenset({"lament", "idol"}))
+
+    r = await as_user.get("/me/capability/check",
+                          params={"role": "healer", "weapons": "Lament, Idol"})
+    assert r.status_code == 200
+    assert "Just to double check, are you sure?" in r.text
+    assert "bar-danger" in r.text
+    assert "mythic" not in r.text.lower() and "healer" not in r.text.lower()
+
+    r = await as_user.get("/me/capability/check",
+                          params={"role": "healer", "weapons": "Lament"})
+    assert r.status_code == 200 and "double check" not in r.text
+
+    r = await as_user.get("/me/capability/new")
+    assert 'hx-get="/me/capability/check"' in r.text
+    assert 'id="build-warning"' in r.text
+
+
 async def test_player_dashboard_never_shows_reliability(as_user):
     r = await as_user.get("/me")
     assert r.status_code == 200

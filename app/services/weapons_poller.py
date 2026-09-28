@@ -30,27 +30,33 @@ from app.settings import Settings
 logger = logging.getLogger("anni.weapons")
 
 
-def _harvest(payload: object) -> dict[str, str]:
-    """``payload`` is the v3 search array -> ``{name_lower: subType}``.
+def _harvest(payload: object) -> tuple[dict[str, str], frozenset[str]]:
+    """``payload`` is the v3 search array -> ``({name_lower: subType}, mythics)``.
 
     Maps both ``displayName`` and ``internalName`` so a user can type either
     (they usually type the display name, e.g. "Idol"). Non-weapons / unknown
-    subtypes are skipped defensively.
+    subtypes are skipped defensively. ``mythics`` is the subset of those names
+    whose ``tier`` is mythic — a masterwork shares its display name with the
+    base mythic ("Masterwork Lament" displays as "Lament"), so both land there.
     """
     catalog: dict[str, str] = {}
+    mythics: set[str] = set()
     if not isinstance(payload, list):
-        return catalog
+        return catalog, frozenset()
     for item in payload:
         if not isinstance(item, dict) or item.get("type") != "weapon":
             continue
         subtype = str(item.get("subType", "")).lower()
         if subtype not in WEAPON_SUBTYPES:
             continue
+        is_mythic = str(item.get("tier", "")).lower() == "mythic"
         for key in ("displayName", "internalName"):
             name = item.get(key)
             if isinstance(name, str) and name.strip():
                 catalog[name.strip().lower()] = subtype
-    return catalog
+                if is_mythic:
+                    mythics.add(name.strip().lower())
+    return catalog, frozenset(mythics)
 
 
 async def _tick(state: AppState, settings: Settings) -> None:
@@ -62,13 +68,14 @@ async def _tick(state: AppState, settings: Settings) -> None:
         logger.info("weapons: catalog fetch skipped (%s) — keeping last-good", exc)
         return
 
-    catalog = _harvest(payload)
+    catalog, mythics = _harvest(payload)
     if catalog:
         state.weapons_by_name = catalog
+        state.mythic_weapon_names = mythics
         state.touch("weapons_fetched_at")
         logger.info(
-            "weapons catalog rebuilt: %d names across %d subtypes",
-            len(catalog), len(set(catalog.values())),
+            "weapons catalog rebuilt: %d names across %d subtypes (%d mythic)",
+            len(catalog), len(set(catalog.values())), len(mythics),
         )
     else:
         logger.warning("weapons catalog empty this tick — keeping last-good")

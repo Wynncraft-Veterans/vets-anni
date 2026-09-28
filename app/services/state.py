@@ -89,7 +89,17 @@ class AppState:
     #: lowercased weapon name -> subtype (bow/spear/wand/dagger/relik). The
     #: validated catalog the add-capability UI autocompletes against.
     weapons_by_name: dict[str, str] = field(default_factory=dict)
+    #: lowercased names of the mythic weapons in that catalog (display AND
+    #: internal names, so "masterwork lament" is here too). Replaced together
+    #: with ``weapons_by_name``, from the same payload.
+    mythic_weapon_names: frozenset[str] = frozenset()
     weapons_fetched_at: float = 0.0
+
+    # --- identity.max_class_level (on demand) -------------------------------
+    #: mc_uuid -> (fetched_at, highest combat level or None if hidden/failed).
+    #: Filled lazily by the capability modal's build check, one WAPI
+    #: ``?fullResult`` call per player per ``class_level_ttl_seconds``.
+    class_level_by_uuid: dict[str, tuple[float, int | None]] = field(default_factory=dict)
 
     # --- presence_poller (Phase 2) ------------------------------------------
     #: mc_uuid -> PresenceStatus.value, for the active event's board members

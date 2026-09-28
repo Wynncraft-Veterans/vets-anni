@@ -30,7 +30,7 @@ from app.domain import reliability
 from app.domain.roles import guidance
 from app.web import auth
 from app.web.deps import render
-from app.web.routers.capability import _parse_conf, _write_weapons
+from app.web.routers.capability import _parse_conf, _write_weapons, build_warning
 from app.web.routers.roles_dash import _row_response as roles_row_response
 from app.web.ws.board_hub import maybe_broadcast_for
 
@@ -86,6 +86,7 @@ def _render_modal(
         form_action=f"/staff/roles/capability/{cap.id}",
         form_target=f"#roles-row-{cap.player.mc_uuid}",
         weapon_search_url="/staff/roles/capability/weapons",
+        build_check_url=f"/staff/roles/capability/{cap.id}/check",
         modal_error=modal_error,
     )
 
@@ -192,6 +193,17 @@ async def staff_delete_capability(request: Request, cap_id: str):
     )
     await maybe_broadcast_for(player_uuid)
     return await _row_response(request, player_uuid)
+
+
+@router.get("/staff/roles/capability/{cap_id}/check", include_in_schema=False)
+async def staff_build_check(request: Request, cap_id: str, weapons: str = ""):
+    """The unusual-build warning, judged against the capability's OWNER."""
+    if not auth.is_staff(request):
+        return RedirectResponse("/staff", status_code=303)
+    cap = await RoleCapability.filter(id=cap_id).prefetch_related("player").first()
+    if cap is None:
+        return HTMLResponse("")
+    return await build_warning(request, cap.role, weapons, cap.player.mc_uuid)
 
 
 @router.get("/staff/roles/capability/weapons", include_in_schema=False)

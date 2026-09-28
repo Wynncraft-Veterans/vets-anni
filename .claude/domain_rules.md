@@ -93,6 +93,29 @@ A capability holds **multiple weapons** (e.g. a primary-capable user on both
 primary and a separate 3 for secondary is fine. Modelled as N
 `RoleCapabilityWeapon` rows under one `(player, role)` `RoleCapability`.
 
+**Unusual-build warning** (`capability.is_unusual_build`) — advisory, never
+blocks a save, and deliberately never says *which* rule tripped. The modal's
+weapons field re-asks `GET /me/capability/check` (staff:
+`/staff/roles/capability/{id}/check`, judged against the capability's
+*owner*) on open and as it changes; a red `UNUSUAL_BUILD_WARNING` bar lands
+above Save when any listed weapon is unusual for the role:
+
+| Role | Unusual when |
+|------|--------------|
+| Primary | not mythic **or** no class above 120 |
+| Secondary | not mythic **and** no class above 110 |
+| Tertiary | not mythic **and** no class above 100 |
+| Healer | not Absolution / Lament / Monster / Halcyon (or a masterwork of one) |
+| Tank | not Guardian (or its masterwork) |
+
+Tables live in `constants.ROLE_WEAPONS` / `ROLE_CLASS_LEVELS`. Levels are
+**combat** levels (cap 121 as of 2026-09). A masterwork is WAPI internalName
+`Masterwork <base>` with displayName `<base>`, so both names are in the
+catalog and in `state.mythic_weapon_names` (the weapons poller reads `tier`
+from the same crawl — no extra call). It errs toward silence: a weapon the
+catalog doesn't know, an empty mythic set, or unknown levels (hidden
+characters / WAPI down → `None`, never "low") can't trip their half of a rule.
+
 ## Reliability (`domain/reliability.py`)
 How far staff can count on a player in one role. **Derived, never
 declared, and staff-only** — it replaced the self-assessed "build quality"

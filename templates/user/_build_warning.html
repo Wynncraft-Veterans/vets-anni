@@ -1,0 +1,7 @@
+{# The capability modal's #build-warning slot (GET .../check swaps it in as
+   the weapons change). Empty unless the build is unusual for the role; the
+   headline is bolded like the Fill warning in _capacity.html. #}
+{% if warning %}
+  {% set _w = warning.split('\n', 1) %}
+  <p class="bar bar-danger preline" role="alert"><strong>{{ _w[0] }}</strong>{{ '\n' ~ _w[1] }}</p>
+{% endif %}

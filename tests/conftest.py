@@ -38,7 +38,7 @@ def _offline(monkeypatch):
     from app.domain import identity
     from app.services import mojang
 
-    async def _no_profile(_uuid):
+    async def _no_profile(_uuid, **_kw):
         return None
 
     async def _no_mojang(_ign):

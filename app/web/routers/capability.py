@@ -5,6 +5,9 @@ wynnvets.org gameplay/builds anchors (spec). Weapons are validated against
 the cached WAPI catalog at write time (``app.domain.capability``); an empty
 catalog degrades to "accepted, unverified" rather than blocking the edit.
 
+The modal also asks ``/me/capability/check`` as the weapons field changes,
+for the advisory "unusual build" warning (``cap_domain.is_unusual_build``).
+
 Every mutation returns the refreshed Role-Capacity fragment so HTMX swaps it
 in place (no full reload). ``success_count`` is never user-editable — it is
 incremented only by the Phase-2 grace-wipe for WIN parties.
@@ -18,9 +21,14 @@ import re
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
-from app.constants import MAX_WEAPONS_PER_CAPABILITY, ConfidenceLevel
+from app.constants import (
+    MAX_WEAPONS_PER_CAPABILITY,
+    ROLE_CLASS_LEVELS,
+    ConfidenceLevel,
+    Role,
+)
 from app.db.models import RoleCapability, RoleCapabilityWeapon
-from app.domain import capability as cap_domain
+from app.domain import capability as cap_domain, identity
 from app.domain.roles import capability_roles, guidance, parse as parse_role
 from app.web import auth
 from app.web.deps import render
@@ -230,6 +238,43 @@ async def delete_capability(request: Request, cap_id: str):
     if deleted:
         await maybe_broadcast_for(player.mc_uuid)
     return await _capacity_fragment(request, player)
+
+
+async def build_warning(
+    request: Request, role: Role | None, raw: str, uuid: str
+) -> HTMLResponse:
+    """The modal's warning slot: the "unusual build" bar, or nothing.
+
+    Shared with the staff modal (whose ``uuid`` is the capability's owner, not
+    the staff member). Class levels cost a WAPI call on a cache miss, so only
+    the DPS roles — the ones whose rule reads them — ask.
+    """
+    state = _state(request)
+    names = _split_weapons(raw)
+    unusual = False
+    if role is not None and names:
+        max_level = (
+            await identity.max_class_level(uuid, state)
+            if role in ROLE_CLASS_LEVELS else None
+        )
+        unusual = cap_domain.is_unusual_build(
+            role, names,
+            catalog=state.weapons_by_name,
+            mythics=state.mythic_weapon_names,
+            max_level=max_level,
+        )
+    return render(
+        request, "user/_build_warning.html",
+        warning=cap_domain.UNUSUAL_BUILD_WARNING if unusual else None,
+    )
+
+
+@router.get("/me/capability/check", include_in_schema=False)
+async def build_check(request: Request, role: str = "", weapons: str = ""):
+    player = await _require_user(request)
+    if player is None:
+        return auth.auth_redirect(request)
+    return await build_warning(request, parse_role(role), weapons, player.mc_uuid)
 
 
 @router.get("/me/capability/weapons", include_in_schema=False)

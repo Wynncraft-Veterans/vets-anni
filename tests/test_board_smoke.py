@@ -469,6 +469,18 @@ async def test_staff_modal_offers_the_reliability_override(as_staff, seeded):
     assert 'value="auto"' not in body  # nothing to clear yet
 
 
+async def test_staff_modal_checks_the_build_on_the_staff_surface(as_staff, seeded):
+    """The shared modal must not fall back to /me/capability/check here — a
+    staff session isn't a user session, and the owner's levels are the ones
+    that matter."""
+    cap = await _paradrex_cap(seeded)
+    body = (await as_staff.get(f"/staff/roles/capability/{cap.id}/edit")).text
+    assert f'hx-get="/staff/roles/capability/{cap.id}/check"' in body
+    r = await as_staff.get(f"/staff/roles/capability/{cap.id}/check",
+                           params={"weapons": ""})
+    assert r.status_code == 200 and "double check" not in r.text
+
+
 async def test_staff_restart_rebases_and_clear_undoes_it(as_staff, seeded):
     cap = await _paradrex_cap(seeded)  # moderate confidence, 1 win -> Low
 

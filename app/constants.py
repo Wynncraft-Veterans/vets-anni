@@ -778,6 +778,23 @@ WEAPON_SUBTYPES: tuple[str, ...] = ("bow", "spear", "wand", "dagger", "relik")
 #: per-role: 3 for primary AND a separate 3 for secondary is fine.
 MAX_WEAPONS_PER_CAPABILITY = 3
 
+#: The capability modal's "unusual build" nudge (``capability.is_unusual_build``)
+#: — advisory only, it never blocks a save. Healer and tank builds are expected
+#: to run one of these weapons (lower-cased base names; a masterwork of one
+#: counts too).
+ROLE_WEAPONS: dict[Role, frozenset[str]] = {
+    Role.HEALER: frozenset({"absolution", "lament", "monster", "halcyon"}),
+    Role.TANK: frozenset({"guardian"}),
+}
+#: DPS roles instead expect a mythic and a class ABOVE this combat level (the
+#: cap is 121). Primary wants both; secondary/tertiary are unusual only when
+#: they have neither.
+ROLE_CLASS_LEVELS: dict[Role, int] = {
+    Role.PRIMARY: 120,
+    Role.SECONDARY: 110,
+    Role.TERTIARY: 100,
+}
+
 #: Epoch-0 sentinel: a WAPI ``lastJoin`` at/just-after the unix epoch means the
 #: player has disabled their Wynncraft API (never appears online). Same
 #: convention as dazebot's ``is_last_online_unknown`` (<= epoch + 1 day).

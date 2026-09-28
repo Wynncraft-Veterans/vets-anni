@@ -19,6 +19,7 @@ differ the UI shows ``wynn|mc`` (rename desync, dazebot's convention).
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from app.constants import API_DISABLED_LAST_ONLINE_MAX
 from app.db.models import AnniPlayer
 from app.services.state import AppState
 from app.services.wapi import PRIO_HIGH, WapiError, get_wapi
+from app.settings import get_settings
 
 logger = logging.getLogger("anni.identity")
 
@@ -142,16 +144,51 @@ def _parse_last_join(value: object) -> datetime:
         return EPOCH
 
 
-async def _fetch_wapi_profile(uuid: str) -> dict | None:
-    """WAPI ``/v3/player/{uuid}`` (high priority — interactive). ``None`` on failure."""
+async def _fetch_wapi_profile(uuid: str, *, full: bool = False) -> dict | None:
+    """WAPI ``/v3/player/{uuid}`` (high priority — interactive). ``None`` on failure.
+
+    ``full`` adds ``?fullResult`` — the only way to get ``characters``. Same
+    PLAYER bucket, still one request.
+    """
+    path = f"player/{uuid}?fullResult" if full else f"player/{uuid}"
     try:
-        return await get_wapi().get_json(f"player/{uuid}", priority=PRIO_HIGH)
+        return await get_wapi().get_json(path, priority=PRIO_HIGH)
     except WapiError as exc:
         logger.info("WAPI player lookup failed for %s (%s)", uuid, exc)
         return None
     except Exception:  # noqa: BLE001
         logger.warning("WAPI player lookup errored for %s", uuid, exc_info=True)
         return None
+
+
+def _highest_level(profile: dict | None) -> int | None:
+    """Highest combat ``level`` across the profile's characters. ``None`` when
+    there are none to read — hidden character data, or a failed fetch."""
+    characters = (profile or {}).get("characters")
+    if not isinstance(characters, dict):
+        return None
+    levels = [
+        c["level"] for c in characters.values()
+        if isinstance(c, dict) and isinstance(c.get("level"), int)
+    ]
+    return max(levels, default=None)
+
+
+async def max_class_level(uuid: str, state: AppState) -> int | None:
+    """The player's highest combat level, cached per ``class_level_ttl_seconds``.
+
+    ``None`` means *unknown*, never "low" — callers must not treat it as a
+    failed level check. A miss is cached too, so a hidden profile costs one
+    call per TTL rather than one per keystroke.
+    """
+    now = time.time()
+    cached = state.class_level_by_uuid.get(uuid)
+    if cached and now - cached[0] < get_settings().class_level_ttl_seconds:
+        return cached[1]
+    level = _highest_level(await _fetch_wapi_profile(uuid, full=True))
+    state.class_level_by_uuid[uuid] = (now, level)
+    logger.debug("class level for %s: %s", uuid, level)
+    return level
 
 
 async def resolve_identity(
