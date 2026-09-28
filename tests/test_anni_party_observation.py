@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.state import AppState
+from app.constants import PresenceStatus
+from app.services import presence_poller
+from app.services.state import AppState, OnlinePlayer
 from app.settings import get_settings
 
 
@@ -132,6 +134,63 @@ async def test_observer_fallback_when_username_drops(client, seeded):
     # Member name dropped (no roster hit), observer-uuid backfill kicks in.
     assert state.party_leader_by_uuid[new_uuid] == holidaze.mc_uuid
 
+
+
+async def test_outsiders_resolve_via_the_board(client, seeded):
+    """The roster is Returners only. An ally/community member — and a host
+    outside the guild — resolve from the active board's own names instead,
+    so they can reach ONLINE_PARTY without running vetsmod themselves."""
+    p = seeded["players"]
+    wen, holidaze = p["Wenweia"], p["Holidaze"]  # party 1 member / host
+    state = _state_with_roster(
+        {n: pl for n, pl in p.items() if n not in ("Wenweia", "Holidaze")}
+    )
+    _wire_state(client._transport.app, state)
+
+    res = await client.post(
+        "/api/internal/anni-party-observation",
+        headers={"X-Introspect-Secret": SECRET},
+        json={
+            "observer_mc_uuid": p["Nazzae"].mc_uuid,
+            # Holidaze hosts party 1 but has no board placement of their own.
+            "party_member_usernames": ["wenweia", "Holidaze"],
+            "leader_username": "Holidaze",
+            "world": "AS5",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["dropped"] == 0
+    assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
+
+    # End to end: on party 1's world and confirmed in it -> ONLINE_PARTY.
+    state.online_by_uuid = {
+        wen.mc_uuid: OnlinePlayer(uuid=wen.mc_uuid, username="Wenweia",
+                                  tier="outside", server="AS5"),
+    }
+    got = await presence_poller._compute(state)
+    assert got[wen.mc_uuid] is PresenceStatus.ONLINE_PARTY
+
+
+async def test_board_resolves_a_stale_wynn_name(client, seeded):
+    """``wynn_username`` is keyed too — the name Wynncraft still shows after a
+    rename that no alias covers."""
+    p = seeded["players"]
+    pasta = p["_akaPasta"]
+    state = _state_with_roster({n: pl for n, pl in p.items() if n != "_akaPasta"})
+    _wire_state(client._transport.app, state)
+
+    res = await client.post(
+        "/api/internal/anni-party-observation",
+        headers={"X-Introspect-Secret": SECRET},
+        json={
+            "observer_mc_uuid": p["Holidaze"].mc_uuid,
+            "party_member_usernames": [pasta.wynn_username],
+            "leader_username": "Holidaze",
+            "world": "AS5",
+        },
+    )
+    assert res.status_code == 200
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == p["Holidaze"].mc_uuid
 
 async def test_secret_required(client, seeded):
     res = await client.post(

@@ -117,7 +117,9 @@ exposed only on the verify-network internal endpoints in
   `observer_mc_uuid` is stamped by temp-server from the authenticated
   session (never trusted from the frame body). Names are resolved here
   via [`AppState.resolve_uuid`](../app/services/state.py) (roster cache
-  → legacy alias fallback) and written into
+  → legacy alias fallback), then the active board's own names — board
+  members + party hosts, `mc_username` and `wynn_username` — since the
+  roster is Returners only and outsiders would otherwise drop; written into
   `state.party_leader_by_uuid` for the presence classifier's
   `ONLINE_PARTY` upgrade. Unresolvable leader = no-op (`{resolved: 0}`);
   unresolvable members are dropped individually; the observer's session

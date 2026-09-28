@@ -49,7 +49,9 @@ party, it forwards `{party_member_usernames, leader_username, world}` via
 temp-server's `anni_party_observation` inbound handler — which stamps the
 authenticated session's MC UUID as `observer_mc_uuid` and forwards here.
 The endpoint resolves the names via [`AppState.resolve_uuid`](../app/services/state.py)
-(cached roster → legacy-name alias fallback), drops unresolvable names,
+(cached roster → legacy-name alias fallback), then the active board's own
+names (board members + party hosts — the roster is Returners only, so an
+ally or community member in the party resolves here), drops unresolvable names,
 and writes `{member_uuid: leader_uuid}` pairs into
 `state.party_leader_by_uuid`. The observer's session UUID is always written
 even if their username didn't resolve (a brand-new member whose roster row

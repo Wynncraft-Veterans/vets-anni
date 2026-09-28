@@ -42,8 +42,9 @@ S7:
   ``observer_mc_uuid`` is stamped by temporary-server from the
   authenticated session (never trusted from the frame body). Names are
   resolved here via :meth:`AppState.resolve_uuid` (roster scan → legacy
-  alias fallback) and written into ``state.party_leader_by_uuid`` for the
-  presence classifier's ``ONLINE_PARTY`` upgrade.
+  alias fallback), then the active board's own names (so players outside
+  the guild resolve too), and written into ``state.party_leader_by_uuid``
+  for the presence classifier's ``ONLINE_PARTY`` upgrade.
 
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
@@ -58,7 +59,7 @@ import time
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.db.lifecycle import get_active_event
-from app.db.models import AnniPlayer, BoardPlacement
+from app.db.models import AnniPlayer, BoardPlacement, Party
 from app.domain.rsvp_by_uuid import UuidRsvpError, execute_uuid_rsvp
 from app.domain.snapshot import (
     assemble_snapshot,
@@ -88,6 +89,33 @@ def _check_secret(x_introspect_secret: str | None) -> None:
 
 def _state(request: Request) -> AppState:
     return request.app.state.appstate
+
+
+async def _board_names() -> dict[str, str]:
+    """Lowercased name -> mc_uuid for the active event's board members and
+    party hosts (a host needn't be placed on the board). Both the current
+    ``mc_username`` and the possibly-stale ``wynn_username`` are keyed, the
+    current name written last so it wins if someone else's stale name
+    collides with it. ``{}`` with no active event."""
+    event = await get_active_event()
+    if event is None:
+        return {}
+    rows = [
+        *await BoardPlacement.filter(event=event).values_list(
+            "player__mc_uuid", "player__mc_username", "player__wynn_username"
+        ),
+        *await Party.filter(event=event, host_id__isnull=False).values_list(
+            "host__mc_uuid", "host__mc_username", "host__wynn_username"
+        ),
+    ]
+    out: dict[str, str] = {}
+    for uuid, _mc, wynn in rows:
+        if wynn:
+            out[wynn.strip().lower()] = uuid
+    for uuid, mc, _wynn in rows:
+        if mc:
+            out[mc.strip().lower()] = uuid
+    return out
 
 
 @router.get("/anni-eligibility")
@@ -338,7 +366,10 @@ async def anni_party_observation(
 
     Resolution: ``leader_username`` and each member name go through
     :meth:`AppState.resolve_uuid` (cached roster, then legacy-name
-    aliases). Unresolvable names are dropped; an unresolvable leader
+    aliases), then :func:`_board_names` — the roster is Returners only, so
+    without the board fallback an ally or community member in the party
+    was dropped and could never reach ``ONLINE_PARTY`` unless they ran
+    vetsmod themselves. Unresolvable names are dropped; an unresolvable leader
     short-circuits the whole observation (no anchor for the
     ``ONLINE_PARTY`` upgrade). The observer's session UUID is the
     authoritative fallback for the observer's own entry — even if their
@@ -390,10 +421,12 @@ async def anni_party_observation(
         deduped.append(norm)
 
     state = _state(request)
+    board = await _board_names()
 
-    leader_uuid: str | None = (
-        state.resolve_uuid(leader_username) if leader_username else None
-    )
+    def resolve(name: str) -> str | None:
+        return state.resolve_uuid(name) or board.get(name.strip().lower())
+
+    leader_uuid: str | None = resolve(leader_username) if leader_username else None
     if not leader_uuid:
         # No anchor → corroboration can't fire; treat as a clean no-op so
         # the caller still sees an OK ack.
@@ -402,7 +435,7 @@ async def anni_party_observation(
     resolved: dict[str, str] = {}
     dropped = 0
     for name in deduped:
-        uuid = state.resolve_uuid(name)
+        uuid = resolve(name)
         if uuid:
             resolved[uuid] = leader_uuid
         else:
