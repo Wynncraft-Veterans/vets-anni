@@ -860,8 +860,12 @@ body.hide-statuslabel .person .status-tag { display:none; }
   text-align:left;
 }
 .cap-popover-title { display:block; font-size:.85rem; margin-bottom:.3rem; }
+/* One per line, not a wrapping row: wrapped, whether the wins pill fit
+   beside Reliability depended on the word ("Low" vs "Moderate"), so cards
+   of the same popover laid out differently. */
 .cap-popover-meta {
-  display:flex; flex-wrap:wrap; gap:.3rem; margin-bottom:.3rem;
+  display:flex; flex-direction:column; align-items:flex-start;
+  gap:.3rem; margin-bottom:.3rem;
 }
 .cap-popover-weapons { display:flex; flex-wrap:wrap; gap:.25rem; }
 .cap-popover .muted { color:#6b7280; font-size:.75rem; }
