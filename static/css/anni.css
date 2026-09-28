@@ -315,12 +315,10 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   -webkit-text-stroke:.6px #000; paint-order:stroke fill; text-shadow:none;
   padding:.1rem .4rem; border-radius:6px;
 }
-.status-dot {
-  display:inline-flex; align-items:center; justify-content:center;
-  width:1.5rem; height:1.5rem; border-radius:50%; vertical-align:middle;
-  background:rgba(255,255,255,.7);
-}
-.status-dot .glyph { font-size:.8rem; font-weight:700; color:#111827; }
+/* Status traffic light (chips.html `status_lamps`): the cb variant's status
+   channel, drawn by colourblind.css. Always in the DOM; the coloured border
+   carries status outside cb, so here it takes no space. */
+.status-lamps { display:none; }
 
 /* Role-capacity list */
 .cap-list { list-style:none; margin:.5rem 0 0; padding:0; }
@@ -586,8 +584,8 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .dz-empty { margin:.35rem .25rem; font-size:.8rem; }
 
 /* The person object. Background = assigned-role -dark shade (white text is
-   legible on every role), border = status colour + a non-colour pattern
-   (from colourblind.css, applied in BOTH modes) + glyph + aria-label, so the
+   legible on every role), border = status colour; under cb the border gives
+   way to a traffic light (colourblind.css). Plus glyph + aria-label, so the
    card reads with no colour at all (spec hard rule). */
 .person {
   display:flex; align-items:center; gap:.6rem;
@@ -698,8 +696,8 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   width:auto; font-size:.74rem; padding:.2rem .35rem; border-radius:6px;
   background:rgba(255,255,255,.92); color:#111827; border:none;
 }
-/* The status border itself (width/style/pattern come from colourblind.css,
-   which applies in both modes; colour is the inline var(--st-*)), plus a
+/* The status border itself (base width/style from colourblind.css; colour
+   is the inline var(--st-*); cb removes it for the traffic light), plus a
    strip of the same hue's dark shade down the right edge.
 
    The strip is redundant by design — it repeats what the border already
@@ -711,9 +709,7 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
    capability popovers, and one more positioned child in it is one more thing
    to reason about for something purely decorative. */
 /* Shared by the person card and the legend key that explains it — the two
-   have to look identical or the legend stops being a key. Deliberately NOT
-   on bare `.status-border`: `chips.html`'s `status_dot` wears that class too,
-   and a 4px band with two hairlines would swallow a ~1rem dot whole. */
+   have to look identical or the legend stops being a key. */
 .person.status-border,
 .legend-status.status-border {
   /* Three concentric edges, outermost first: a black hairline, the thick
@@ -741,8 +737,8 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
     inset 0 0 0 1.5px var(--stc-dark, transparent),
     0 0 0 .5px #000;
 }
-/* CB mode drops the border entirely and draws its own patterned ring outside
-   the box (below), so these rings would just crowd it. */
+/* CB mode drops the border entirely (status is the traffic light there),
+   so the rings that frame it go too. */
 body.cb .person.status-border,
 body.cb .legend-status.status-border { box-shadow:none; }
 
@@ -884,13 +880,13 @@ body.hide-statuslabel .person .status-tag { display:none; }
    (1) `.cap-dots` has a `transform` (the upward nudge), so it forms its own
        stacking context; the popover's z-index then only competes WITHIN
        that context.
-   (2) Under CB, every .person has a ::after ring (`inset:-4px`) that paints
-       4px outside the card. With .person at `z-auto` it does NOT establish
-       a stacking context, so the ring escapes UP to the nearest ancestor
-       stacking context (effectively body) — where it can paint over a
-       hovered card's popover that overhangs into the next card's area.
+   (2) A card's own positioned children (the avatar stamps) would otherwise
+       escape UP to the nearest ancestor stacking context (effectively body)
+       — where they can paint over a hovered card's popover that overhangs
+       into the next card's area. (Under cb this once bit via a patterned
+       status ring drawn outside each card; the ring is gone, the rule stays.)
    Fix in two parts: `isolation: isolate` makes every .person its own
-   stacking context so its ring stays contained; then bump the hovered/open
+   stacking context so its children stay contained; then bump the hovered/open
    card above its siblings so the popover overhangs cleanly. 18 sits above
    sibling .person (auto) but below the navbar (20), so the popover never
    overlays page chrome. */

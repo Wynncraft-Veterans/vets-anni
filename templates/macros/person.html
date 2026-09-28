@@ -2,12 +2,14 @@
 
    Colour is NEVER the only signal (spec hard rule, enforced via the shared
    chip builders, see .claude/colourblind.md):
-   * the STATUS is a thick coloured *border around the whole object*, edged
-     by a black hairline outside and a hairline of its own dark shade inside,
-     AND a non-colour `data-pattern` (online vs offline reads from the border
-     alone) AND a glyph + aria-label. The hairlines say nothing the border
-     doesn't — they are there because a bright band sits between a bright
-     role background and a pale dropzone, and bleeds into both without them;
+   * the STATUS is, in default mode, a thick coloured *border around the
+     whole object*, edged by a black hairline outside and a hairline of its
+     own dark shade inside (a bright band sits between a bright role
+     background and a pale dropzone, and bleeds into both without them).
+     Under cb the border goes and a three-lamp TRAFFIC LIGHT down the card's
+     left edge carries it instead (`status_lamps`, chips.html) — a border
+     pattern was tried first and was too confusing. Plus the root's
+     aria-label in both modes;
    * the RSVP is the icon left of the face — its own axis, deliberately NOT
      folded into the border: where someone is and what they promised are two
      independent facts an organiser reads together. The icon *shape*
@@ -29,13 +31,15 @@
 
 {% from "macros/pills.html" import level, weapon, success, cap_tri %}
 {% from "macros/icons.html" import rsvp_icon, late_icon, gone_icon %}
+{% from "macros/chips.html" import status_lamps %}
 {% macro person(p) %}
   {# No `title=` on the root: the browser fires the nearest ancestor's title
      for any descendant under the pointer, so a title here pops up on top of
      the capability-dot popover whenever you hover a dot. The same name +
-     status is in `aria-label` for screen readers; the visible card +
-     border colour/pattern + opt-in Status Labels carry it visually. #}
-  <div class="person status-border" data-pattern="{{ p.status_chip.pattern }}"
+     status is in `aria-label` for screen readers; the visible card + border
+     colour (or, under cb, the traffic light) + opt-in Status Labels carry
+     it visually. #}
+  <div class="person status-border"
        data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
        draggable="true"
        style="--stc: var({{ p.status_chip.css_var }});
@@ -43,7 +47,11 @@
               border-color: var({{ p.status_chip.css_var }});
               background-color: var({{ p.role_chip.css_var_dark }})"
        aria-label="{{ p.name }} — role {{ p.role_chip.label }}, status {{ p.status_chip.label }}, {{ p.rsvp_chip.label }}">
-    {# RSVP ticket — first thing on the card, left of the face and the same
+    {# Status traffic light, hard against the card's left edge — cb only
+       (hidden otherwise; the border carries status there). First, so the
+       lamps line up in one column down a dropzone. #}
+    {{ status_lamps(p.status_chip) }}
+    {# RSVP ticket — left of the face and the same
        height as it, so the lane reads as two clean columns when you scan a
        dropzone. The ticket's own body is filled with the hue's dark shade —
        inside the outline, not a box behind it — which is what lets the

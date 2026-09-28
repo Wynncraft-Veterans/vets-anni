@@ -1,8 +1,8 @@
 """Chip-context builders — colour is *never* the only signal.
 
 Templates render role backgrounds and status borders through these so every
-chip carries its glyph + accessible label (+ a border pattern for statuses)
-regardless of the ``cb`` cookie. The cookie only swaps the seven ``--c-*``
+chip carries its glyph + accessible label (+ traffic-light lamps for
+statuses) regardless of the ``cb`` cookie. The cookie only swaps the seven ``--c-*``
 hues in CSS (see ``static/css/colourblind.css``); the non-colour channels
 emitted here are identical in both modes, which is exactly what the spec's
 "usable colourblind variant" hard-requirement needs.
@@ -63,7 +63,7 @@ class StatusChip(TypedDict):
     glyph: str
     label: str         # short name ("In Party")
     description: str   # the full sentence, for a hover title
-    pattern: str   # data-pattern -> non-colour online/offline encoding
+    lamps: str     # "100" … top→bottom, 1 = lit — the cb traffic light
 
 
 class RsvpChip(TypedDict):
@@ -95,7 +95,7 @@ def role_chip(role: Role | None) -> RoleChip:
 
 
 def status_chip(status: PresenceStatus) -> StatusChip:
-    """Border chip for a presence status — colour + glyph + label + pattern.
+    """Border chip for a presence status — colour + glyph + label + lamps.
 
     Two channels of the one hue, same split as :func:`role_chip`: the bright
     shade is the card's outline and the dark one is a hairline just inside
@@ -111,15 +111,14 @@ def status_chip(status: PresenceStatus) -> StatusChip:
         glyph=s.glyph,
         label=s.label,
         description=s.description,
-        pattern=s.pattern,
+        lamps=s.lamps,
     )
 
 
 def rsvp_chip(state: RsvpState) -> RsvpChip:
     """Badge for the RSVP axis — colour + glyph + label.
 
-    Deliberately has no ``pattern``: there is no border to draw a rhythm on.
-    Its four ticket *shapes* are the non-colour channel instead — what is
+    Its four ticket *shapes* are the non-colour channel — what is
     printed on each ticket, whether the outline is solid or dotted, and
     whether the silhouette is whole or torn.
 

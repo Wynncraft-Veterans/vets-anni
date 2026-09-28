@@ -2,13 +2,13 @@
 
    The single place the "colour is NEVER the only signal" rule is enforced
    (spec hard requirement): every chip carries a glyph + aria-label, and
-   status chips additionally a data-pattern, so the meaning survives any CVD
+   statuses additionally a traffic light, so the meaning survives any CVD
    type or pure greyscale. Colour comes from a CSS custom property
    (`chip.css_var`), so the per-user `cb` cookie swap in colourblind.css
    recolours every chip with zero template changes.
 
    Inputs are the dicts from app.domain.colourblind (role_chip/status_chip):
-   {css_var, glyph, label[, pattern]}. #}
+   {css_var, glyph, label[, lamps]}. #}
 
 {% macro role_bg(chip, text=None) %}
   {# Body = legible dark shade (white text reads on every role); the glyph
@@ -21,14 +21,19 @@
   </span>
 {% endmacro %}
 
-{% macro status_dot(chip) %}
-  {# Inline status indicator for the user dashboard (the staff border is
-     Phase 2). Still emits glyph + label + data-pattern so it reads with no
-     colour at all. #}
-  <span class="status-border status-dot" data-pattern="{{ chip.pattern }}"
-        role="img" aria-label="{{ chip.label }}" title="{{ chip.label }}"
-        style="border-color: var({{ chip.css_var }})">
-    <span class="glyph">{{ chip.glyph }}</span>
+{% macro status_lamps(chip) %}
+  {# The colourblind variant's status: a three-lamp traffic light, white =
+     lit, black = dark, top→bottom from `chip.lamps` ("100" = top lit). It
+     replaces the status border under body.cb (colourblind.css); default
+     mode hides it and keeps the coloured border. Always emitted, so the
+     channel is in the DOM in both modes. `title` is safe here — this is a
+     leaf, so it can't pop over a descendant's popover the way a title on
+     the card root would. #}
+  <span class="status-lamps" role="img" aria-label="Status: {{ chip.label }}"
+        title="{{ chip.label }}" draggable="false">
+    {%- for lamp in chip.lamps -%}
+      <i{% if lamp == "1" %} class="lit"{% endif %}></i>
+    {%- endfor -%}
   </span>
 {% endmacro %}
 

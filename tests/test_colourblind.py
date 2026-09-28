@@ -1,7 +1,7 @@
 """Colourblind variant is a HARD spec requirement — assert it structurally.
 
 Three layers: (1) every chip carries non-colour signal in ``constants``;
-(2) the domain chip-builders surface glyph/label/pattern; (3) the CSS truly
+(2) the domain chip-builders surface glyph/label/lamps; (3) the CSS truly
 swaps all seven base hues under ``body.cb``. If any regresses, colour becomes
 load-bearing and the spec is violated.
 """
@@ -61,19 +61,24 @@ def test_every_role_has_a_distinct_two_letter_code():
     assert len(set(codes)) == len(codes), f"roles share a code: {codes}"
 
 
-def test_every_status_has_glyph_label_and_border_pattern():
+def test_every_status_has_glyph_label_and_traffic_light():
+    """Under cb, status is a three-lamp traffic light (top→bottom, 1 = lit)
+    and nothing else — no border, no hue — so every status needs its own
+    lamp pattern. The lit lamp climbs with presence; none lit is offline;
+    top + bottom (a shape no single step makes) is unknown."""
     for status in PresenceStatus:
         s = STATUS_STYLES[status]
-        assert s.glyph and s.label and s.pattern, status
-    # One uniform family, most→least "present", all distinct.
-    seq = [
-        STATUS_STYLES[s].pattern for s in (
-            PresenceStatus.ONLINE_PARTY, PresenceStatus.ONLINE_WORLD,
-            PresenceStatus.ONLINE_ELSEWHERE, PresenceStatus.OFFLINE)
-    ]
-    assert seq == ["double", "solid", "dash", "dash-dot"]
-    assert STATUS_STYLES[PresenceStatus.UNKNOWN].pattern == "dash-dot-dot"
-    assert len(set(seq + ["dash-dot-dot"])) == 5  # every pattern distinct
+        assert s.glyph and s.label, status
+        assert len(s.lamps) == 3 and set(s.lamps) <= {"0", "1"}, status
+    lamps = {s: STATUS_STYLES[s].lamps for s in PresenceStatus}
+    assert lamps == {
+        PresenceStatus.ONLINE_PARTY: "100",
+        PresenceStatus.ONLINE_WORLD: "010",
+        PresenceStatus.ONLINE_ELSEWHERE: "001",
+        PresenceStatus.OFFLINE: "000",
+        PresenceStatus.UNKNOWN: "101",
+    }
+    assert len(set(lamps.values())) == len(PresenceStatus)
     # Glyphs are the other non-colour channel and must be distinct too.
     assert len({STATUS_STYLES[s].glyph for s in PresenceStatus}) == len(
         PresenceStatus)
@@ -115,14 +120,14 @@ def test_palette_actually_changes_under_cb():
         assert style.cb != style.color, f"{colour} CB hue must differ"
 
 
-def test_the_status_ramp_stays_mutually_distinct_in_both_modes():
+def test_the_status_ramp_stays_mutually_distinct():
     """Role and status hues are allowed to collide (background vs border, and
     every chip carries a glyph anyway). What is NOT allowed is two *statuses*
     sharing a hue — the border is the same channel in the same place, so a
-    collision there is a genuine ambiguity. Holds in both palettes."""
-    for attr in ("color", "cb"):
-        hues = [getattr(STATUS_STYLES[s], attr) for s in PresenceStatus]
-        assert len(set(hues)) == len(hues), f"status hues collide in {attr}"
+    collision there is a genuine ambiguity. Default palette only: under cb
+    there is no status border to colour (the traffic light carries it)."""
+    hues = [STATUS_STYLES[s].color for s in PresenceStatus]
+    assert len(set(hues)) == len(hues), "status hues collide"
 
 
 def test_domain_chip_builders_emit_non_colour_signal():
@@ -131,7 +136,7 @@ def test_domain_chip_builders_emit_non_colour_signal():
     unassigned = role_chip(None)
     assert unassigned["css_var"] == "--role-unassigned"
     unknown = status_chip(PresenceStatus.UNKNOWN)
-    assert unknown["pattern"] == "dash-dot-dot"
+    assert unknown["lamps"] == "101"
     assert unknown["css_var"] == "--st-unknown"
 
 
@@ -147,14 +152,10 @@ def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
     cb_block = cbc[cbc.index("body.cb"):]
     for h in hues:
         assert h in cb_block, f"{h} not swapped under body.cb"
-    # Every status pattern in use has a body.cb rule (the channel exists from
-    # start) — and no dead rules for patterns nothing renders any more.
-    patterns = {STATUS_STYLES[s].pattern for s in PresenceStatus}
-    for pat in patterns:
-        assert f'body.cb .status-border[data-pattern="{pat}"]' in cbc
-    # ...and no dead rules for patterns that retired with their statuses.
-    for pat in ("dash-dash-dot", "dot"):
-        assert f'data-pattern="{pat}"]' not in cbc, f"dead {pat} rule"
+    # Status under cb is the traffic light: the lamps are drawn (and lit)
+    # there, and the retired border-pattern ring has left no rules behind.
+    assert "body.cb .status-lamps" in cbc and "i.lit" in cbc
+    assert not re.search(r"\[data-pattern=", cbc), "dead border-pattern rule"
 
     # Borders are VERBATIM Okabe-Ito under cb: the body.cb --c-* hex are
     # exactly STYLES[*].cb (single source of truth) ...

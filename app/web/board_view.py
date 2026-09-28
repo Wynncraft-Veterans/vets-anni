@@ -153,7 +153,7 @@ def _person(
     seen_online: set[str],
 ) -> dict:
     """One person-object card. Carries the colour-independent channels (glyph,
-    label, border pattern, the name, regions text) so it reads with no colour
+    label, status lamps, the name, regions text) so it reads with no colour
     at all — the spec's colourblind hard rule, via the shared chip builders.
 
     ``rsvp_state``/``rsvp_chip`` are the card's second, independent axis (the

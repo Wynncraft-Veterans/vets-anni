@@ -1,7 +1,7 @@
 /* Colourblind variant. Activated by <body class="cb">. The shared base
    hues swap to the canonical Okabe-Ito CVD-safe set (mirrors STYLES[].cb in
-   app/constants.py); shape/pattern channels (data-pattern + glyphs) carry
-   meaning so colour is never load-bearing. Satisfies the spec's hard
+   app/constants.py); non-colour channels (traffic-light lamps, text codes,
+   glyphs, textures) carry meaning so colour is never load-bearing. Satisfies the spec's hard
    "usable colourblind variant" requirement.
 
    NOTE: never write a glob asterisk immediately followed by a slash inside
@@ -110,7 +110,7 @@ body.cb {
    the person cards. A faint shape rhythm per role restores identifiability
    for that population. data-role is already on every .person at all times
    (see templates/macros/person.html); only CB activates the rule, matching
-   how data-pattern works for statuses. ONLY background-image is set here so
+   how the status lamps work. ONLY background-image is set here so
    the inline `background-color: var(--role-*-dark)` underneath is untouched
    (and white text legibility, ≥ ~4.7:1, is preserved — the overlay alpha is
    < 10%). Unassigned cards stay flat — no texture maps to "no role".
@@ -246,69 +246,43 @@ body.cb .cap-dot[data-reliability="high"] .cap-letter {
   text-decoration-line: underline overline;
 }
 
-/* Status border. CB OFF (default world state): a single SOLID coloured
-   outline — colour is reliable for non-CVD users, so the dash/dot/double
-   noise is dropped entirely. The `data-pattern` attribute is STILL emitted
-   in the DOM at all times (the macros never stop) so the channel "exists
-   from the start"; only CB activates it. */
+/* Status border — default mode only: a single SOLID coloured outline.
+   Colour is reliable for non-CVD users, and it is the whole signal there. */
 .status-border { border-width: 3px; border-style: solid; }
 
-/* CB ON: the non-colour pattern channel becomes load-bearing (the spec's
-   hard rule). ONE uniform 4px family, most→least "present":
-   double → solid → dash → dash-dot; dash-dot-dot = UNKNOWN. (Two steps have
-   retired as their distinctions moved to their own channels: dash-dash-dot
-   when OFFLINE stopped being split hard-vs-soft RSVP, and dot when
-   "was here and left" became a badge rather than a status.)
-   The colour is ALWAYS the verbatim `--stc` Okabe-Ito hue — only
-   solid/double/dashed/dotted are native border-styles (they render
-   border-color exactly); the composite dash-dot variants are a
-   `repeating-linear-gradient` border-image fed by `var(--stc)`, so the line
-   is still the exact hue (NO groove/ridge — those 3-D shade the colour).
-
-   In CB-on the ring is drawn OUTSIDE the box (a ::after offset out by the
-   ring width) instead of an inner border — it no longer eats into the card
-   and reads as a halo. CB-off keeps the plain inner border (rule above,
-   untouched: every ring rule here is scoped to body.cb + ::after). The ring
-   is non-interactive (pointer-events:none) so drag/clicks pass through. */
-body.cb .status-border { border: 0; position: relative; }
-body.cb .status-border::after {
-  content: ""; position: absolute; inset: -4px;
-  border: 4px solid var(--stc, currentColor);
-  border-image: none; border-radius: inherit; pointer-events: none;
+/* CB: no border. Status is a three-lamp TRAFFIC LIGHT down the card's left
+   edge instead (`status_lamps` in macros/chips.html; which lamps are lit is
+   `StatusStyle.lamps`) — lit white, dark black, the same two inks as the
+   capability bar. The lit lamp climbs with presence: bottom = online
+   elsewhere, middle = on the party's world, top = in the party; none lit =
+   offline, top + bottom = unknown. Position is the channel, so it holds in
+   greyscale and under every CVD type, and needs no hue at all.
+   It replaced a border PATTERN (double → solid → dash → dash-dot, and
+   dash-dot-dot for unknown, drawn as a ring outside the card): five line
+   rhythms around a busy card were too confusing to tell apart at a glance.
+   The lamps are always in the DOM; anni.css hides them outside cb. */
+body.cb .status-border { border: 0; }
+/* The gap is wider than it looks like it needs to be: each lamp's hairline
+   sits 1px outside it, so the visible space between rings is the gap
+   minus 2px. At .2rem the column is also exactly the ticket's 2.2rem. */
+body.cb .status-lamps {
+  display: inline-flex; flex-direction: column; gap: .2rem; flex: none;
 }
-/* Inside the .person stacking context (isolation: isolate, in anni.css), the
-   ::after is a positioned z-auto descendant — which outranks an in-flow
-   inline descendant like the .cap-dots stacking context. Result: the card's
-   own ring paints OVER the popover where they overlap (the bottom edge of
-   the card, where the popover starts). Pushing the ring to z:-1 puts it
-   below all in-flow content within the same .person while leaving its
-   spatial layout (inset:-4px, the outer halo) untouched — nothing else
-   spatially overlaps the ring, so it stays fully visible. Scoped to
-   `.person` so the legend's status-border (no popover, no isolation) keeps
-   its default stacking. */
-body.cb .person.status-border::after { z-index: -1; }
-body.cb .status-border[data-pattern="solid"]::after  { border-style: solid; }
-body.cb .status-border[data-pattern="double"]::after { border-style: double; }
-body.cb .status-border[data-pattern="dash"]::after    { border-style: dashed; }
-/* Composites: native border-color is the solid fallback; border-image draws
-   the dash/dot rhythm in the SAME verbatim colour (var(--stc)). */
-body.cb .status-border[data-pattern="dash-dot"]::after {
-  border-style: solid;
-  border-image: repeating-linear-gradient(90deg,
-    var(--stc) 0 12px, transparent 12px 17px,
-    var(--stc) 17px 20px, transparent 20px 25px) 4;
+/* Each lamp gets a light grey hairline so a DARK lamp still has an edge on
+   a black card (FILL is black under cb) — without it an offline card there
+   would show no light at all. A box-shadow ring rather than a border, so
+   the lamp keeps its size and the column its alignment. */
+body.cb .status-lamps > i {
+  width: .6rem; height: .6rem; border-radius: 50%; background: #000;
+  box-shadow: 0 0 0 1px #bdbdbd;
 }
-body.cb .status-border[data-pattern="dash-dot-dot"]::after {
-  border-style: solid;
-  border-image: repeating-linear-gradient(90deg,
-    var(--stc) 0 12px, transparent 12px 17px,
-    var(--stc) 17px 20px, transparent 20px 25px,
-    var(--stc) 25px 28px, transparent 28px 33px) 4;
+body.cb .status-lamps > i.lit { background: #fff; }
+/* The legend key: smaller lamps, on a card-dark plate — the legend card is
+   near-white, which would swallow a lit (white) lamp. Extra vertical padding
+   so the lamp column (and its hairlines) sits inside the plate with room to
+   spare instead of grazing its top and bottom edges. */
+body.cb .legend-status {
+  background: #4d4d4d; color: #fff; padding: .3rem .55rem .3rem .45rem;
 }
-
-/* The CB-on ring overhangs each box by the 4px ring width, so two adjacent
-   rings span 8px — more than the default .45rem dropzone gap, and they bleed
-   together. Widen the gaps in CB only (CB-off has an inner border, no
-   overhang, so it keeps the tighter default spacing). */
-body.cb .dropzone  { gap: .95rem; }
-body.cb .legend-row { gap: 1rem; }
+body.cb .legend-status .status-lamps { gap: .2rem; }
+body.cb .legend-status .status-lamps > i { width: .4rem; height: .4rem; }

@@ -1,7 +1,7 @@
 """Staff/board render + REST-twin smoke (the Phase-2 web surface).
 
 Mirrors test_dashboard_smoke: catches Jinja/context regressions and the
-colourblind hard-rule (glyph + aria-label + data-pattern present regardless of
+colourblind hard-rule (glyph + aria-label + status lamps present regardless of
 ``cb``) before they reach a browser, and proves the no-JS / socket-dropped
 REST twins mutate through the same single-instance path. WS *socket* behaviour
 is covered against the hub directly in test_ws (the project's test transport,
@@ -114,11 +114,11 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     # missing-row regression in the seed surfaces as a failing assertion,
     # not a silently empty dropzone).
     assert "Faulischlumpf" in body and "Salted" in body
-    # Colour is NEVER the only signal: glyph + aria-label + status pattern.
-    assert "data-pattern=" in body
+    # Colour is NEVER the only signal: glyph + aria-label + status lamps.
+    assert 'class="status-lamps"' in body
     assert "aria-label=" in body
     assert "PRIM" in body                # a role glyph
-    # Legend renders the status-border key (glyph+label+pattern) but the
+    # Legend renders the status key (border colour; cb: lamps) but the
     # "Roles"/"Status borders" headers + the prose subheader were removed.
     assert "legend-status" in body
     assert "<h3>Roles</h3>" not in body
@@ -272,21 +272,34 @@ async def test_add_modal_is_staff_gated(client, seeded):
     assert r.status_code == 303 and r.headers["location"] == "/staff"
 
 
-async def test_status_border_patterns_are_cb_only(client):
-    """CB off => a single solid coloured outline; the dash/dot/double
-    patterns are scoped under body.cb (and data-pattern is still always in
-    the DOM, asserted elsewhere). Guards tweak: 'solid outline when cb off'."""
-    r = await client.get("/static/css/colourblind.css")
-    assert r.status_code == 200
-    css = r.text
-    # The base rule is a plain solid border (cb-off default).
-    assert ".status-border { border-width: 3px; border-style: solid; }" in css
-    # Every pattern selector is cb-scoped — none appears unscoped.
-    assert "body.cb .status-border[data-pattern=" in css
-    for line in css.splitlines():
-        s = line.strip()
-        if s.startswith(".status-border[data-pattern="):
-            raise AssertionError(f"unscoped pattern rule leaks with cb off: {s}")
+async def test_status_traffic_light_replaces_the_border_under_cb_only(
+    as_staff, seeded
+):
+    """CB off => a solid coloured border and the lamps hidden; CB on => no
+    border and the lamps shown. The lamps are in the DOM either way, one
+    set per card, lit to match that card's status."""
+    import re
+
+    from app.constants import STATUS_STYLES
+
+    cbc = (await as_staff.get("/static/css/colourblind.css")).text
+    anni = (await as_staff.get("/static/css/anni.css")).text
+    assert ".status-border { border-width: 3px; border-style: solid; }" in cbc
+    assert "body.cb .status-border { border: 0; }" in cbc
+    assert ".status-lamps { display:none; }" in anni
+    assert "body.cb .status-lamps {" in cbc
+
+    body = (await as_staff.get("/staff/board")).text
+    cards = body.count('class="person status-border"')
+    lamp_sets = re.findall(
+        r'<span class="status-lamps"[^>]*aria-label="Status: ([^"]+)"[^>]*>(.*?)</span>',
+        body, re.S)
+    assert cards and len(lamp_sets) == cards
+    by_label = {s.label: s.lamps for s in STATUS_STYLES.values()}
+    for label, inner in lamp_sets:
+        lit = "".join("1" if 'class="lit"' in i else "0"
+                      for i in re.findall(r"<i[^>]*>", inner))
+        assert lit == by_label[label], (label, lit)
 
 
 async def test_party_collapse_is_per_user_cookie_and_survives_refresh(

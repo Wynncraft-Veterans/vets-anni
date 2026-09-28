@@ -6,8 +6,8 @@ colourblind-safe), the attendance-priority table, and the role guidance text.
 
 Pure data only — no DB, FastAPI, or discord imports — so the domain layer and
 tests can use it freely. Colours are NEVER the only signal: every role/status
-also carries a short glyph + label + (for statuses) a border pattern so the
-colourblind variant is fully usable (spec hard requirement).
+also carries a short glyph + label + (for statuses) a traffic-light lamp
+pattern so the colourblind variant is fully usable (spec hard requirement).
 
 Sources:
 * Role/status colours — see .claude/spec.md ([^5]/[^6]) + concept-art legend.
@@ -141,7 +141,7 @@ class PresenceStatus(StrEnum):
       they were, ten minutes ago" at once.
 
     So the border answers exactly one question — where are they right now.
-    Declared most→least "present" (the legend and the CB pattern ramp both
+    Declared most→least "present" (the legend and the CB traffic light both
     read this order).
     """
 
@@ -416,7 +416,8 @@ STYLES: dict[PaletteColor, Style] = {
 # status also uses; statuses share the role hues outright, on purpose. Nothing
 # has to be told apart across those channels — a role is a background or a
 # glyph swatch, a status is a border, an RSVP ticket is an object on the card
-# — and every chip carries a glyph/pattern/label anyway (colourblind.md).
+# — and every chip carries a glyph/label (+ lamps for statuses) anyway
+# (colourblind.md).
 # What matters is that the five STATUS hues are mutually distinct under CVD,
 # and they are (black / bluish-green / yellow / vermillion / grey).
 
@@ -438,9 +439,10 @@ class RoleStyle:
 
 @dataclass(frozen=True)
 class StatusStyle:
-    """A person's *status border* chip. Same four shared colour channels as
-    RoleStyle, plus ``pattern`` — a non-colour channel — and ``glyph`` +
-    ``label`` for the colourblind variant and screen readers.
+    """A person's *status* chip. Same four shared colour channels as
+    RoleStyle (the border colour, default mode), plus ``lamps`` — the
+    colourblind variant's channel — and ``glyph`` + ``label`` for the opt-in
+    text tag and screen readers.
 
     ``label`` is a SHORT name ("In Party"), because it is read in two places
     that both want brevity: the legend, which is scanned rather than read,
@@ -449,21 +451,21 @@ class StatusStyle:
     it. ``description`` keeps the sentence, as the legend chip's hover title,
     so the explanation is still one hover away.
 
-    ``pattern`` is the non-colour channel (CB-only — with cb off the border
-    is a plain solid coloured outline). One uniform-width family, most→least
-    "present": ``double`` (in party) → ``solid`` (world) → ``dash``
-    (elsewhere) → ``dash-dot`` (offline); ``dash-dot-dot`` = UNKNOWN
-    (unconfirmable). All render the border-colour **verbatim** (no
-    groove/ridge 3-D shading) so under ``body.cb`` the line is the exact
-    Okabe-Ito hue. Rendered by static/css/colourblind.css
-    ``.status-border[data-pattern=…]`` (composites via a ``var(--stc)``
-    border-image)."""
+    ``lamps`` is a three-lamp traffic light down the card's left edge, one
+    character per lamp top→bottom, ``1`` = lit (white) and ``0`` = dark.
+    CB-only: under ``body.cb`` it REPLACES the status border, which it
+    replaced because a border pattern (double/solid/dash/dash-dot/…) proved
+    too confusing to read. The lit lamp climbs with presence — bottom =
+    online elsewhere, middle = on the party's world, top = in the party —
+    so position alone reads as "how close are they"; none lit is offline,
+    and top + bottom (a shape no single step makes) is unknown.
+    Rendered by ``status_lamps`` in templates/macros/chips.html."""
 
     color: str
     light: str
     dark: str
     cb: str
-    pattern: str
+    lamps: str        # "100" … top→bottom, 1 = lit — the cb traffic light
     glyph: str
     label: str        # short name — the legend key, and every aria-label
     description: str  # the full sentence — the legend chip's hover title
@@ -474,10 +476,10 @@ def _role(s: Style, glyph: str, code: str, label: str) -> RoleStyle:
 
 
 def _status(
-    s: Style, pattern: str, glyph: str, label: str, description: str
+    s: Style, lamps: str, glyph: str, label: str, description: str
 ) -> StatusStyle:
     return StatusStyle(
-        s.color, s.light, s.dark, s.cb, pattern, glyph, label, description)
+        s.color, s.light, s.dark, s.cb, lamps, glyph, label, description)
 
 
 # Role → shared colour (spec.md [^5]). Roles draw from the same ``STYLES``
@@ -532,19 +534,19 @@ ROLE_SORT_PRIORITY: dict[Role | None, int] = {
 # the five that describe the present. It is a badge on the avatar instead.
 STATUS_STYLES: dict[PresenceStatus, StatusStyle] = {
     PresenceStatus.ONLINE_PARTY: _status(
-        STYLES[PaletteColor.CYAN], "double", "●", "In Party",
+        STYLES[PaletteColor.CYAN], "100", "●", "In Party",
         "An online user who has joined their party."),
     PresenceStatus.ONLINE_WORLD: _status(
-        STYLES[PaletteColor.GREEN], "solid", "◐", "In World",
+        STYLES[PaletteColor.GREEN], "010", "◐", "In World",
         "An on-world online user who has not joined their party yet."),
     PresenceStatus.ONLINE_ELSEWHERE: _status(
-        STYLES[PaletteColor.YELLOW], "dash", "→", "Online",
+        STYLES[PaletteColor.YELLOW], "001", "→", "Online",
         "An online user not on their party's world."),
     PresenceStatus.OFFLINE: _status(
-        STYLES[PaletteColor.RED], "dash-dot", "○", "Offline",
+        STYLES[PaletteColor.RED], "000", "○", "Offline",
         "A user who is not online right now."),
     PresenceStatus.UNKNOWN: _status(
-        STYLES[PaletteColor.GREY], "dash-dot-dot", "?", "Unknown",
+        STYLES[PaletteColor.GREY], "101", "?", "Unknown",
         "Their Wynncraft API is disabled and we cannot confirm either way."),
 }
 

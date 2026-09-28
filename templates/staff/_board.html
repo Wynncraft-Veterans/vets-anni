@@ -7,6 +7,7 @@
 {% from "macros/person.html" import person with context %}
 {% from "macros/icons.html" import rsvp_icon %}
 {% from "macros/pills.html" import cap_tri %}
+{% from "macros/chips.html" import status_lamps %}
 <div id="board" class="board"
      {% if has_event %}data-phase="{{ snapshot.event.phase }}"
      data-frozen="{{ '1' if snapshot.event.frozen else '0' }}"{% endif %}>
@@ -28,7 +29,8 @@
 
     {# Legend (85%) + Configs (15%), side by side, above the parties/players
        columns. Legend = colour is NEVER the only signal: the role-colour key
-       + the status border/pattern key. Optionally pinned under the navbar
+       + the status key (border colour, or under cb the traffic light).
+       Optionally pinned under the navbar
        while scrolling (a per-user config, default on). #}
     <div class="legend-wrap{{ ' pinned' if pin_legend }}">
     <section class="card legend">
@@ -87,15 +89,16 @@
           {% for status, s in STATUS_STYLES.items() %}
             {% set sc = status_chip(status) %}
             {# Same three-layer edge as a person card (see anni.css): the
-               legend is only a key if it looks like the thing it explains. #}
-            <span class="status-border legend-status" data-pattern="{{ sc.pattern }}"
+               legend is only a key if it looks like the thing it explains.
+               Under cb the card's border gives way to its traffic light, so
+               the key does too — the chip goes card-dark (colourblind.css)
+               so both lit and dark lamps show against it. #}
+            <span class="status-border legend-status"
                   title="{{ sc.description }}"
                   style="--stc: var({{ sc.css_var }});
                          --stc-dark: var({{ sc.css_var_dark }});
                          border-color: var({{ sc.css_var }})">
-              {# Glyph is the CB non-colour channel; with cb off the colour
-                 carries it, so drop the leading symbol — just the label. #}
-              {% if cb %}<span class="glyph">{{ sc.glyph }}</span>{% endif %}
+              {% if cb %}{{ status_lamps(sc) }}{% endif %}
               {{ sc.label }}
             </span>
           {% endfor %}
@@ -106,7 +109,7 @@
              as separate keys if something says so.
 
              The icon shows in BOTH modes here (unlike the status chips,
-             which drop their glyph when colour is doing the work) — the
+             which show their traffic light only under cb) — the
              shape is the badge's only non-colour channel, so the legend has
              to name it. #}
           <span class="legend-sep" aria-hidden="true"></span>

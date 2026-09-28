@@ -47,7 +47,7 @@ def asset(path: str) -> str:
     return f"/static/{rel}?v={v}"
 
 #: Jinja environment. Templates use the glassmorphism reference CSS; colour is
-#: never the only signal (macros emit glyph + label + pattern too).
+#: never the only signal (macros emit glyph + label + status lamps too).
 env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"]),
@@ -62,7 +62,7 @@ env.globals.update(
     RSVP_STYLES=RSVP_STYLES,
     UNASSIGNED_STYLE=UNASSIGNED_STYLE,
     # Chip builders so the board legend renders the *same* colour-var + glyph
-    # + pattern channels the macros do (one source — no inline var maps).
+    # + lamps channels the macros do (one source — no inline var maps).
     role_chip=role_chip,
     status_chip=status_chip,
     rsvp_chip=rsvp_chip,
