@@ -16,6 +16,7 @@ Sources:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -683,6 +684,9 @@ ATTENDANCE_TABLE: tuple[AttendanceRule, ...] = (
 # ---------------------------------------------------------------------------
 # Role guidance (quoted/condensed from the docs; shown in the add-capability UI)
 # ---------------------------------------------------------------------------
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+
+
 @dataclass(frozen=True)
 class RoleGuidance:
     title: str
@@ -696,12 +700,21 @@ class RoleGuidance:
     threshold: str = ""
 
     @property
-    def requirement_parts(self) -> tuple[str, str, str]:
-        """``requirements`` split around ``threshold`` as ``(before,
-        threshold, after)``; ``(requirements, "", "")`` if it isn't in there."""
-        if self.threshold and self.threshold in self.requirements:
-            return self.requirements.partition(self.threshold)
-        return self.requirements, "", ""
+    def requirement_parts(self) -> tuple[str, str, str, str]:
+        """``requirements`` as ``(before, threshold, after, detail)``: the
+        sentence carrying ``threshold`` split around it, then the prose after
+        that sentence (the UI puts it on its own line). ``(requirements, "",
+        "", "")`` if ``threshold`` isn't in there."""
+        if not (self.threshold and self.threshold in self.requirements):
+            return self.requirements, "", "", ""
+        before, threshold, _ = self.requirements.partition(self.threshold)
+        start = len(before) + len(threshold)
+        # Search from the threshold's last char so "None!" ends its own
+        # sentence; a terminator mid-token ("1.5k") isn't followed by space.
+        m = _SENTENCE_END.search(self.requirements, start - 1)
+        end = m.end() if m else len(self.requirements)
+        return (before, threshold, self.requirements[start:end],
+                self.requirements[end:].lstrip())
 
 
 ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
@@ -724,8 +737,8 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
     Role.TERTIARY: RoleGuidance(
         "Tertiary DPS (Healing-Mob Killer)",
         "Players who eliminate the mobs that regenerate the boss' health.",
-        "150k+ DPS and reliable movement to cross a 15+ block lava pit. "
-        "Mobs are low-HP but spawn in inconvenient places.",
+        "150k+ DPS and reliable movement. Mobs are low-HP, but spawn in "
+        "inconvenient places; you will need to cross a 15+ block lava pit.",
         f"{DOCS_BASE}/#tertiary-dps", f"{DOCS_BASE}/#tertiary-builds",
         threshold="150k+ DPS and reliable movement",
     ),

@@ -92,8 +92,10 @@ def test_every_threshold_is_quoted_from_its_requirements():
 
     for role, g in ROLE_GUIDANCE.items():
         assert g.threshold and g.threshold in g.requirements, role
-        before, threshold, after = g.requirement_parts
-        assert before + threshold + after == g.requirements
+        before, threshold, after, detail = g.requirement_parts
+        assert threshold == g.threshold, role
+        assert " ".join(filter(None, (before + threshold + after, detail))) \
+            == g.requirements, role
 
 
 async def test_me_redirects_anonymous_to_login(client):
