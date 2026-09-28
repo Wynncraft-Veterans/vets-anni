@@ -33,6 +33,34 @@ def test_every_role_has_a_glyph_and_label():
         assert s.glyph and s.label, role
 
 
+def test_cb_pip_reliability_is_drawn_as_lines():
+    """Under cb a pip is its role code, and reliability is the lines drawn
+    on it — none / underline / underline + overline. Each level needs its
+    own rule; a missing one would silently merge two levels."""
+    cbc = (_STATIC / "colourblind.css").read_text(encoding="utf-8")
+
+    def lines_for(level: str) -> str | None:
+        m = re.search(
+            rf'data-reliability="{level}"\]\s*\.cap-letter\s*\{{([^}}]*)\}}', cbc)
+        if not m:
+            return None
+        d = re.search(r"text-decoration-line:\s*([^;]+);", m.group(1))
+        return d.group(1).strip() if d else None
+
+    assert lines_for("low") is None            # plain: no rule of its own
+    assert lines_for("moderate") == "underline"
+    assert lines_for("high") == "underline overline"
+
+
+def test_every_role_has_a_distinct_two_letter_code():
+    """Under cb the capability pips ARE these codes (white text in a black
+    box), so two roles sharing one would make them indistinguishable — the
+    box is achromatic by design, leaving the text as the only channel."""
+    codes = [ROLE_STYLES[role].code for role in Role]
+    assert all(len(c) == 2 and c.isupper() for c in codes), codes
+    assert len(set(codes)) == len(codes), f"roles share a code: {codes}"
+
+
 def test_every_status_has_glyph_label_and_border_pattern():
     for status in PresenceStatus:
         s = STATUS_STYLES[status]

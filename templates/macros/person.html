@@ -99,46 +99,54 @@
            answer to "what can they bring to this slot?" without leaving
            the board.
 
-           Letter (P/S/M/H/T) is in the DOM at all times; CSS hides it
-           outside CB so the colour-only default reads as a clean dot, and
-           shows it under body.cb so the channel is non-colour there (spec
-           hard rule). #}
-        {% if p.capability_dots and not p.is_placeholder %}
-          <span class="cap-dots" role="group" aria-label="Capable roles">
-            {% for c in p.capability_dots %}
-              <span class="cap-dot-wrap">
-                {# No `title=` — the custom popover already shows the role
-                   name as its first line; the native browser tooltip would
-                   double up and overlap. `aria-label` still carries it for
-                   screen readers. #}
-                <button type="button" class="cap-dot"
-                        style="--cap-fill: var({{ c.css_var }}); --cap-halo: var({{ c.css_var_light }})"
-                        aria-label="{{ c.label }} (capable, {{ c.reliability }} reliability)"
-                        data-role="{{ c.role }}"
-                        data-reliability="{{ c.reliability }}"
-                        draggable="false">
-                  {% if c.reliability == "low" %}{{ cap_tri() }}{% endif %}
-                  <span class="cap-letter" aria-hidden="true">{{ c.letter }}</span>
-                </button>
-                <span class="cap-popover" role="tooltip">
-                  <strong class="cap-popover-title">{{ c.label }}</strong>
-                  <span class="cap-popover-meta">
-                    {{ level("Confidence", c.confidence) }}
-                    {{ level("Reliability", c.reliability) }}
-                    {{ success(c.success_count) }}
-                  </span>
-                  <span class="cap-popover-weapons">
-                    {% if c.weapons %}
-                      {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
-                    {% else %}
-                      <span class="muted">no weapons listed</span>
-                    {% endif %}
-                  </span>
+           The two-letter code (PR/SU/HD/HE/TA) is in the DOM at all times;
+           CSS hides it outside CB so the default reads as a clean coloured
+           shape, and under body.cb turns the whole row into one black box of
+           white codes, with reliability as the lines drawn on each code
+           (spec hard rule: colour is never the only signal).
+
+           The row is emitted on EVERY card, empty when there is nothing to
+           show (no stated capabilities, or an unregistered placeholder).
+           Default mode hides an empty row (`data-empty`); cb draws it as an
+           empty black box, so every card carries the same bar and "no
+           roles" reads as a blank bar rather than a missing one. #}
+        {% set cap_dots = [] if p.is_placeholder else p.capability_dots %}
+        <span class="cap-dots" role="group"
+              {% if cap_dots %}aria-label="Capable roles"
+              {% else %}aria-label="No capable roles stated" data-empty{% endif %}>
+          {% for c in cap_dots %}
+            <span class="cap-dot-wrap">
+              {# No `title=` — the custom popover already shows the role
+                 name as its first line; the native browser tooltip would
+                 double up and overlap. `aria-label` still carries it for
+                 screen readers. #}
+              <button type="button" class="cap-dot"
+                      style="--cap-fill: var({{ c.css_var }}); --cap-halo: var({{ c.css_var_light }})"
+                      aria-label="{{ c.label }} (capable, {{ c.reliability }} reliability)"
+                      data-role="{{ c.role }}"
+                      data-reliability="{{ c.reliability }}"
+                      draggable="false">
+                {% if c.reliability == "low" %}{{ cap_tri() }}{% endif %}
+                <span class="cap-letter" aria-hidden="true">{{ c.letter }}</span>
+              </button>
+              <span class="cap-popover" role="tooltip">
+                <strong class="cap-popover-title">{{ c.label }}</strong>
+                <span class="cap-popover-meta">
+                  {{ level("Confidence", c.confidence) }}
+                  {{ level("Reliability", c.reliability) }}
+                  {{ success(c.success_count) }}
+                </span>
+                <span class="cap-popover-weapons">
+                  {% if c.weapons %}
+                    {% for w in c.weapons %}{{ weapon(w.name, w.subtype) }}{% endfor %}
+                  {% else %}
+                    <span class="muted">no weapons listed</span>
+                  {% endif %}
                 </span>
               </span>
-            {% endfor %}
-          </span>
-        {% endif %}
+            </span>
+          {% endfor %}
+        </span>
       </span>
       <span class="person-tags">
         {# Placeholder cards are stubs for guild members the auto-promoter saw

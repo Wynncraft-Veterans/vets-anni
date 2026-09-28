@@ -160,11 +160,91 @@ body.cb .legend .role-chip[data-role="fill"] {
 body.cb .pill { font-weight: 700; }
 body.cb .cb-toggle { text-decoration: underline; }
 
-/* Capability dots: surface the per-role letter (P/S/M/H/T) so the role is
-   readable without colour. The letter is in the DOM at all times (the macro
-   never stops emitting it); only CB mode shows it. !important guards against
-   any inline ``display`` ever sneaking in. */
-body.cb .cap-letter { display: inline !important; }
+/* Capability pips. The default pip stacks three channels on one tiny mark
+   — role hue, reliability shape, and a letter squeezed inside — and under cb
+   the hue is the unreliable one, so the shapes and letter were doing all the
+   work at a size too small to read. Here the whole row becomes ONE black
+   box of white two-letter role codes (PR/SU/HD/HE/TA — `RoleStyle.code`),
+   with reliability carried by lines drawn on the code —
+     low = plain, moderate = underline, high = underline + overline.
+   Black and white hold at maximum contrast under every CVD type and in
+   greyscale, and a line either is or isn't there — it doesn't have to be
+   judged. (Type weight was tried first, regular-vs-bold and then a vendored
+   mono's light-vs-extrabold: at this size neither pair was reliably
+   distinguishable, and the light end hurt legibility of the code itself.)
+   With weight no longer carrying anything, the base text is chosen purely
+   to be read: Verdana Bold, designed for small-size screen text and the
+   crispest at 1x of the faces compared (system UI, Tahoma, JetBrains
+   Mono); DejaVu Sans is its near twin on Linux.
+   One box rather than one per code: a row of separate boxes read as a row
+   of buttons competing with each other, and the wide gap inside a single
+   box separates the codes more cleanly than box edges butting together.
+
+   Same DOM as the default pip (the code is in `.cap-letter` at all times;
+   only cb shows it), so this block only has to undo the shape styling in
+   anni.css: size, per-shape margins, the ring box-shadow, and the LOW
+   triangle SVG. No outline on the box: a light ring read as one more line
+   next to the ones that carry meaning. (On a FILL card, black under cb, the
+   box edge vanishes; the white codes still read fine.) The row selector
+   names both homes (card and legend) because anni.css's own card rule is
+   two classes deep and would otherwise keep its zero gap.
+
+   The legend's role chips swap their colour swatch for the same box
+   (`.role-code`, one code each) so they are the key to the codes on the
+   cards. Plain there, which is also how "low" looks — unavoidable, and the
+   role row sits apart from the reliability key that explains the lines.
+
+   Vertical padding is uneven on purpose: an overline is drawn at the top of
+   the font's ascent, above the line box, so the top needs the extra room to
+   keep it inside the box with the same clearance the underline gets. */
+body.cb .person-name .cap-dots,
+body.cb .legend-pips .cap-dots,
+body.cb .legend .role-code {
+  display: inline-flex; align-items: center; gap: .75em;
+  padding: .42em .6em .34em; border-radius: 3px; background: #000;
+  font-family: Verdana, "DejaVu Sans", system-ui, sans-serif;
+  font-size: .72rem; font-weight: 700; line-height: 1; color: #fff;
+}
+/* On cards the box is always as wide as a full five-code row, codes packed
+   left, so boxes line up down a dropzone and a short row reads as "fewer
+   roles" by its empty tail. Measured with all five codes in Verdana Bold
+   (in em, so it tracks the font-size); MIN-width so a wider fallback face
+   grows the box rather than spilling the fifth code out of it. */
+body.cb .person-name .cap-dots {
+  min-width: 11.9em;
+  /* One code line (line-height 1) plus the vertical padding, so a bar
+     with no codes in it stands exactly as tall as one with them. */
+  min-height: calc(1em + .42em + .34em);
+}
+/* Every card carries the bar, blank when there are no stated capabilities
+   (a FILL-only player, or an unregistered placeholder): the bars line up
+   down a dropzone and "no roles" reads as an empty bar, not a gap. */
+body.cb .person-name .cap-dots[data-empty] { display: inline-flex; }
+body.cb .cap-dot,
+body.cb .cap-dots .cap-dot {
+  width: auto; height: auto; margin: 0; padding: 0;
+  border-radius: 0; background: none; box-shadow: none;
+  /* The on-card pip is a <button>, which anni.css sets to weight 500 —
+     Verdana has no 500 and drops to regular, so take the box's type. */
+  font: inherit;
+}
+body.cb .cap-tri { display: none; }
+/* !important guards against any inline ``display`` ever sneaking in. The
+   `.cap-dot` ancestor is for specificity: it has to outrank anni.css's
+   nudge on the LOW letter, which only made sense inside the triangle. The
+   code takes the box's type wholesale, via the pip reset above. */
+body.cb .cap-dot .cap-letter {
+  display: inline !important;
+  position: static; top: auto;
+  font: inherit; color: #fff; -webkit-text-stroke: 0;
+  text-decoration-thickness: 1px; text-underline-offset: 2px;
+}
+body.cb .cap-dot[data-reliability="moderate"] .cap-letter {
+  text-decoration-line: underline;
+}
+body.cb .cap-dot[data-reliability="high"] .cap-letter {
+  text-decoration-line: underline overline;
+}
 
 /* Status border. CB OFF (default world state): a single SOLID coloured
    outline — colour is reliable for non-CVD users, so the dash/dot/double

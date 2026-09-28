@@ -37,16 +37,6 @@ from app.services.state import AppState
 from app.settings import get_settings
 
 
-#: Single-letter glyph per capability role for the colourblind variant. "M" for
-#: tertiary (Mob killer) distinguishes it from Tank — same convention as
-#: ``constants.ROLE_STYLES`` uses ``HDMG`` rather than ``TER``.
-_CAP_LETTER: dict[Role, str] = {
-    Role.PRIMARY: "P",
-    Role.SECONDARY: "S",
-    Role.TERTIARY: "M",
-    Role.HEALER: "H",
-    Role.TANK: "T",
-}
 #: CSS custom property for the dot's *raw* role hue (the same one ``role_chip``
 #: returns as ``css_var`` — full red/yellow/magenta/green/blue, body.cb swaps
 #: them to the Okabe-Ito set).
@@ -89,7 +79,9 @@ def _capability_dots(caps, setbacks=()) -> list[dict]:
         dots.append({
             "role": c.role.value,
             "label": ROLE_STYLES[c.role].label,
-            "letter": _CAP_LETTER[c.role],
+            # The whole pip under cb: the row draws as white codes in one
+            # black box (colourblind.css), keyed by the legend's role chips.
+            "letter": ROLE_STYLES[c.role].code,
             "css_var": _CAP_CSS_VAR[c.role],
             "css_var_light": _CAP_CSS_VAR_LIGHT[c.role],
             "confidence": c.confidence.value,

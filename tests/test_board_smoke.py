@@ -145,6 +145,52 @@ async def test_capability_pips_carry_reliability(as_staff, seeded):
     pips = re.findall(r'class="cap-dot"[^>]*data-reliability="(\w+)"', body)
     assert pips and set(pips) <= {"low", "moderate", "high"}
     assert 'class="legend-pips"' in body
+    # The two-letter code is always in the DOM — it is the whole pip under cb.
+    assert '<span class="cap-letter" aria-hidden="true">PR</span>' in body
+
+
+async def test_every_card_carries_the_pip_bar(as_staff, seeded):
+    """The row is emitted on every card — empty (and flagged) when there is
+    nothing to show — so cb can draw the same bar on all of them."""
+    body = (await as_staff.get("/staff/board")).text
+    cards = body.count('class="person status-border"')
+    assert cards and body.count('class="cap-dots"') == cards
+    assert "data-empty" in body     # the seed has cards with no capabilities
+
+
+async def test_cb_reliability_legend_is_its_own_example(as_staff, seeded):
+    """Under cb the pip row is one box of codes lined by reliability, so the
+    legend is one such box carrying each level's word, not shapes."""
+    import re
+
+    plain = (await as_staff.get("/staff/board")).text
+    assert "cap-tri" in plain
+    assert not re.search(r'class="cap-letter">\s*Moderate', plain)
+
+    as_staff.cookies.set("cb", "1")
+    legend = (await as_staff.get("/staff/board")).text
+    legend = legend[legend.index('class="legend-pips"'):]
+    legend = legend[:legend.index("legend-block")]
+    for word in ("Low", "Moderate", "High"):
+        assert re.search(rf'class="cap-letter">\s*{word}\s*<', legend)
+    assert legend.count('class="cap-dots"') == 1     # one box, not three
+    assert "cap-tri" not in legend
+
+
+async def test_cb_role_legend_keys_the_pip_codes(as_staff, seeded):
+    """The pips are bare codes under cb, so the role row must show the same
+    codes — a PRIM swatch there would leave "PR" on a card undecoded."""
+    from app.constants import ROLE_STYLES
+
+    plain = (await as_staff.get("/staff/board")).text
+    assert 'class="role-code"' not in plain
+
+    as_staff.cookies.set("cb", "1")
+    body = (await as_staff.get("/staff/board")).text
+    legend = body[body.index('class="card legend"'):body.index('class="legend-pips"')]
+    for s in ROLE_STYLES.values():
+        assert f'<span class="role-code">{s.code}</span>' in legend
+        assert f">{s.glyph}</span>" not in legend       # the swatch is gone
 
 async def test_board_fragment_is_inner_only(as_staff, seeded):
     r = await as_staff.get("/staff/board/fragment")

@@ -432,6 +432,7 @@ class RoleStyle:
     dark: str         # shade — surface for WHITE text
     cb: str           # colourblind-safe palette (canonical Okabe-Ito)
     glyph: str        # short code shown on the pill/person object
+    code: str         # two-letter cb code: the capability pip text + its legend key
     label: str        # accessible label (aria)
 
 
@@ -468,8 +469,8 @@ class StatusStyle:
     description: str  # the full sentence — the legend chip's hover title
 
 
-def _role(s: Style, glyph: str, label: str) -> RoleStyle:
-    return RoleStyle(s.color, s.light, s.dark, s.cb, glyph, label)
+def _role(s: Style, glyph: str, code: str, label: str) -> RoleStyle:
+    return RoleStyle(s.color, s.light, s.dark, s.cb, glyph, code, label)
 
 
 def _status(
@@ -482,16 +483,19 @@ def _status(
 # Role → shared colour (spec.md [^5]). Roles draw from the same ``STYLES``
 # table as statuses and RSVP flags, but each family now picks its own entries
 # — there is no longer a role↔status pairing to keep in step.
+#: ``code`` is the colourblind variant's text for a role — white text in a
+#: black box, on the capability pips and on the legend key that decodes them.
+#: Two letters from the glyph, so the two vocabularies read as one.
 ROLE_STYLES: dict[Role, RoleStyle] = {
-    Role.PRIMARY:   _role(STYLES[PaletteColor.RED],    "PRIM", "Primary (boss killer)"),
-    Role.SECONDARY: _role(STYLES[PaletteColor.YELLOW], "SUNK", "Secondary (sun killer)"),
-    Role.TERTIARY:  _role(STYLES[PaletteColor.MAGENTA], "HDMG", "Tertiary (mob killer)"),
-    Role.HEALER:    _role(STYLES[PaletteColor.GREEN],  "HEAL", "Healer"),
-    Role.TANK:      _role(STYLES[PaletteColor.BLUE],   "TANK", "Tank"),
-    Role.FILL:      _role(STYLES[PaletteColor.CYAN], "FILL", "Fill"),
+    Role.PRIMARY:   _role(STYLES[PaletteColor.RED],    "PRIM", "PR", "Primary (boss killer)"),
+    Role.SECONDARY: _role(STYLES[PaletteColor.YELLOW], "SUNK", "SU", "Secondary (sun killer)"),
+    Role.TERTIARY:  _role(STYLES[PaletteColor.MAGENTA], "HDMG", "HD", "Tertiary (mob killer)"),
+    Role.HEALER:    _role(STYLES[PaletteColor.GREEN],  "HEAL", "HE", "Healer"),
+    Role.TANK:      _role(STYLES[PaletteColor.BLUE],   "TANK", "TA", "Tank"),
+    Role.FILL:      _role(STYLES[PaletteColor.CYAN], "FILL", "FI", "Fill"),
 }
 #: Unassigned person object background (no role yet).
-UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "Unassigned")
+UNASSIGNED_STYLE = _role(STYLES[PaletteColor.GREY], "—", "—", "Unassigned")
 
 
 #: Default intra-container ordering by assigned role. Lower = sorts earlier.

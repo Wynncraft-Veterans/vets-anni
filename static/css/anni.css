@@ -769,6 +769,9 @@ body.hide-statuslabel .person .status-tag { display:none; }
      low next to a bold capitalised name. */
   transform:translateY(-3px);
 }
+/* Every card emits the row; an empty one only has a job under cb (where it
+   is drawn as a blank bar — colourblind.css), so here it takes no space. */
+.person-name .cap-dots[data-empty] { display:none; }
 .cap-dot-wrap { position:relative; display:inline-flex; }
 .cap-dot {
   width:.85rem; height:.85rem; padding:0; margin:0; border:none;
@@ -790,7 +793,8 @@ body.hide-statuslabel .person .status-tag { display:none; }
    All three share one outline: a silver ring with a faint dark hairline
    either side of it (inside, between fill and ring, and outside), which
    gives an edge even on a card painted in the pip's own role's dark shade.
-   Shape is a second, non-colour channel, so it reads the same under body.cb.
+   Default mode only: under body.cb the shapes give way to a text badge
+   whose underline/overline carries reliability (colourblind.css).
 
    The triangle is an inline SVG (``cap_tri`` in macros/pills.html): a
    box-shadow outline would be clipped off with the corners, and faking one
@@ -832,11 +836,10 @@ body.hide-statuslabel .person .status-tag { display:none; }
 .cap-dots .cap-dot[data-reliability="high"]     { margin:0 2.9px; }
 .cap-dots .cap-dot[data-reliability="moderate"] { margin:0 3.2px; }
 .cap-dots .cap-dot[data-reliability="low"]      { margin:0 1.8px; }
-/* Letter glyph (P/S/M/H/T): the CB non-colour channel. Hidden in default
-   mode (the colour conveys it for non-CVD users); CSS in colourblind.css
-   shows it under body.cb so colour is never the only signal there.
-   White-with-thin-black-outline mirrors the existing role-chip glyph trick
-   — legible on every role hue including yellow. */
+/* Role code (PR/SU/HD/HE/TA): the CB non-colour channel. Hidden in default
+   mode (the colour conveys it for non-CVD users); under body.cb,
+   colourblind.css replaces the shaped pip with this code as a black text
+   badge and restyles it there. */
 .cap-letter {
   display:none; font-size:.55rem; font-weight:800; line-height:1;
   color:#fff; -webkit-text-stroke:.4px #000; paint-order:stroke fill;

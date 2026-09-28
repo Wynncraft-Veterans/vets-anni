@@ -53,6 +53,7 @@ class RoleChip(TypedDict):
     css_var: str       # raw identifying hue (e.g. "--role-tank") — glyph swatch
     css_var_dark: str  # legible dark shade (e.g. "--role-tank-dark") — chip body
     glyph: str         # e.g. "TANK"
+    code: str          # e.g. "TA" — the cb legend key for the capability pips
     label: str         # aria-label / title
 
 
@@ -85,11 +86,12 @@ def role_chip(role: Role | None) -> RoleChip:
     if role is None:
         var = "--role-unassigned"
         return RoleChip(css_var=var, css_var_dark=f"{var}-dark",
-                        glyph=UNASSIGNED_STYLE.glyph, label=UNASSIGNED_STYLE.label)
+                        glyph=UNASSIGNED_STYLE.glyph, code=UNASSIGNED_STYLE.code,
+                        label=UNASSIGNED_STYLE.label)
     s = ROLE_STYLES[role]
     var = _ROLE_VAR[role]
     return RoleChip(css_var=var, css_var_dark=f"{var}-dark",
-                    glyph=s.glyph, label=s.label)
+                    glyph=s.glyph, code=s.code, label=s.label)
 
 
 def status_chip(status: PresenceStatus) -> StatusChip:

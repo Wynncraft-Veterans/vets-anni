@@ -38,26 +38,47 @@
             {% set rc = role_chip(role) %}
             <span class="role-chip" data-role="{{ role.value }}"
                   style="background-color: var({{ rc.css_var_dark }})">
-              <span class="glyph" style="background-color: var({{ rc.css_var }})">{{ rc.glyph }}</span>
+              {# Under cb the colour swatch gives way to the role's code in
+                 the capability pips' own black box, so this row is their
+                 key — a PRIM swatch would leave "PR" on a card undecoded. #}
+              {% if cb %}
+                <span class="role-code">{{ rc.code }}</span>
+              {% else %}
+                <span class="glyph" style="background-color: var({{ rc.css_var }})">{{ rc.glyph }}</span>
+              {% endif %}
               <span class="chip-text">{{ rc.label }}</span>
             </span>
           {% endfor %}
           {# The capability pips' second channel: their shape is the
              player's reliability in that role. Neutral slate, which no role
-             uses, so the key doesn't read as one. #}
+             uses, so the key doesn't read as one. Under cb the pip row is
+             one black box of codes whose underline/overline carries
+             reliability instead (colourblind.css), so the key is one such
+             box holding each level's own word with its lines — its own
+             example. #}
           <span class="legend-sep" aria-hidden="true"></span>
           <span class="legend-pips" title="Capability pips: reliability in that role">
             Reliability
-            {% for lv in ["low", "moderate", "high"] %}
-              <span class="legend-pip">
-                <span class="cap-dot" data-reliability="{{ lv }}"
-                      style="--cap-fill: #64748b; --cap-halo: #cbd5e1"
-                      aria-hidden="true">
-                  {%- if lv == "low" %}{{ cap_tri() }}{% endif -%}
-                </span>
-                {{ lv | capitalize }}
+            {% if cb %}
+              <span class="cap-dots">
+                {% for lv in ["low", "moderate", "high"] %}
+                  <span class="cap-dot" data-reliability="{{ lv }}">
+                    <span class="cap-letter">{{ lv | capitalize }}</span>
+                  </span>
+                {% endfor %}
               </span>
-            {% endfor %}
+            {% else %}
+              {% for lv in ["low", "moderate", "high"] %}
+                <span class="legend-pip">
+                  <span class="cap-dot" data-reliability="{{ lv }}"
+                        style="--cap-fill: #64748b; --cap-halo: #cbd5e1"
+                        aria-hidden="true">
+                    {%- if lv == "low" %}{{ cap_tri() }}{% endif -%}
+                  </span>
+                  {{ lv | capitalize }}
+                </span>
+              {% endfor %}
+            {% endif %}
           </span>
         </div>
       </div>
