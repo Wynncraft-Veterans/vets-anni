@@ -21,9 +21,14 @@ from app.web.ws.board_hub import maybe_broadcast_for
 from app.web.deps import (
     clear_session,
     colourblind,
+    CB_FEATURES,
+    a11y_menu,
+    cb_features,
     dropdown_assign,
     pin_legend,
     render,
+    set_a11y_menu,
+    set_cb_feature,
     set_colourblind,
     set_dropdown_assign,
     set_pin,
@@ -149,15 +154,25 @@ async def toggle_colourblind(request: Request):
 
 @router.get("/toggle-label", include_in_schema=False)
 async def toggle_label(request: Request):
-    """Flip a board-controls preference (``which`` = pin|dropdown_assign)
-    and bounce back. (The route is named for the retired role/status
-    text-label switch it was built for; the remaining configs share it.)"""
-    which = request.query_params.get("which")
+    """Flip a board-controls preference and bounce back: ``which`` = pin |
+    dropdown_assign | a11y (show the Accessibility menu) | cbf_<feature>
+    (one colourblind feature, see ``deps.CB_FEATURES``). (The route is named
+    for the retired role/status text-label switch it was built for; the
+    remaining configs share it.)"""
+    which = request.query_params.get("which") or ""
     target = request.query_params.get("next") or "/staff/board"
     resp = RedirectResponse(target, status_code=303)
+    feature = which.removeprefix("cbf_")
     if which == "pin":
         set_pin(resp, not pin_legend(request))
     elif which == "dropdown_assign":
         set_dropdown_assign(resp, not dropdown_assign(request))
+    elif which == "a11y":
+        set_a11y_menu(resp, not a11y_menu(request))
+    elif which.startswith("cbf_") and feature in CB_FEATURES:
+        # The menu only renders under cb, where cb_features reflects the
+        # cookie; with cb off every feature reads False, and a flip from
+        # there lands on "on", which is the default anyway.
+        set_cb_feature(resp, feature, not cb_features(request)[feature])
     # Unknown facet -> a safe bounce, no cookie change, never a crash.
     return resp

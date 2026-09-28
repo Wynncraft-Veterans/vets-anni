@@ -746,8 +746,8 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 }
 /* CB mode drops the border entirely (status is the traffic light there),
    so the rings that frame it go too. */
-body.cb .person.status-border,
-body.cb .legend-status.status-border { box-shadow:none; }
+body.cb.cbf-lamps .person.status-border,
+body.cb.cbf-lamps .legend-status.status-border { box-shadow:none; }
 
 /* Capability dots — "what can this player do?". Sit inline after the name on
    the title row, full raw role hue (PRIM=red/SUNK=yellow/HDMG=magenta/
@@ -901,6 +901,17 @@ body.cb .legend-status.status-border { box-shadow:none; }
 }
 .legend-wrap > .legend { flex:90 1 18rem; margin-top:0; }
 .legend-wrap > .board-controls { flex:10 1 7rem; margin-top:0; }
+/* The Accessibility bar (cb only) takes a full line of its own under the
+   legend + Configs — still inside .legend-wrap, so pinning carries it. Its
+   switches run in a row (the Configs box stacks them), label then switch,
+   wrapping on narrow screens. */
+.legend-wrap > .a11y-bar { flex:1 1 100%; margin-top:0;
+  display:flex; align-items:center; flex-wrap:wrap; gap:.4rem 1.5rem;
+  padding:.55rem 1.25rem; }
+.a11y-title { font-weight:700; font-size:.9rem; color:#0f172a; }
+.a11y-bar .a11y-list { flex-direction:row; flex-wrap:wrap; flex:1;
+  justify-content:flex-start; gap:.3rem 1.75rem; }
+.a11y-bar .cfg-row { gap:.6rem; }
 @media (max-width:780px){ .legend-wrap > * { flex-basis:100%; } }
 
 /* Pinned: keep the legend/Configs bar just under the sticky navbar while

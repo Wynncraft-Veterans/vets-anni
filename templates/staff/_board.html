@@ -50,7 +50,7 @@
               {# Under cb the colour swatch gives way to the role's code in
                  the capability pips' own black box, so this row is their
                  key — a PRIM swatch would leave "PR" on a card undecoded. #}
-              {% if cb %}
+              {% if cbf.codes %}
                 <span class="role-code">{{ rc.code }}</span>
               {% else %}
                 <span class="glyph" style="background-color: var({{ rc.css_var }})">{{ rc.glyph }}</span>
@@ -72,7 +72,7 @@
              example. #}
           <span class="legend-pips" title="Capability pips: reliability in that role">
             Reliability
-            {% if cb %}
+            {% if cbf.codes %}
               <span class="cap-dots">
                 {% for lv in ["low", "moderate", "high"] %}
                   <span class="cap-dot" data-reliability="{{ lv }}">
@@ -109,7 +109,7 @@
                   style="--stc: var({{ sc.css_var }});
                          --stc-dark: var({{ sc.css_var_dark }});
                          border-color: var({{ sc.css_var }})">
-              {% if cb %}{{ status_lamps(sc) }}{% endif %}
+              {% if cbf.lamps %}{{ status_lamps(sc) }}{% endif %}
               {{ sc.label }}
             </span>
           {% endfor %}
@@ -165,8 +165,44 @@
             <span class="cfg-switch{{ ' on' if dropdown_assign }}" aria-hidden="true"></span>
           </a>
         </li>
+        {# Colourblind mode only: shows / hides the Accessibility bar below. #}
+        {% if cb %}
+          <li>
+            <a class="cfg-row" role="switch"
+               aria-checked="{{ 'true' if a11y_menu else 'false' }}"
+               href="/toggle-label?which=a11y&next=/staff/board"
+               title="Show the switches for each colourblind feature">
+              <span class="cfg-name">Accessibility Menu</span>
+              <span class="cfg-switch{{ ' on' if a11y_menu }}" aria-hidden="true"></span>
+            </a>
+          </li>
+        {% endif %}
       </ul>
     </section>
+
+    {# The Accessibility bar — colourblind mode only, under the legend and
+       Configs, inside .legend-wrap so "Pin to top" carries it too. One
+       switch per colourblind feature (deps.CB_FEATURES, all default on); a
+       feature switched off behaves exactly as it does in regular mode (its
+       CSS is scoped under a `cbf-*` body class that then isn't there).
+       Choices are one-year cookies, independent of the login session. #}
+    {% if cb and a11y_menu %}
+      <section class="card a11y-bar" aria-label="Accessibility features">
+        <span class="a11y-title">Accessibility</span>
+        <ul class="cfg-list a11y-list">
+          {% for name, label in cb_feature_labels.items() %}
+            <li>
+              <a class="cfg-row" role="switch"
+                 aria-checked="{{ 'true' if cbf[name] else 'false' }}"
+                 href="/toggle-label?which=cbf_{{ name }}&next=/staff/board">
+                <span class="cfg-name">{{ label }}</span>
+                <span class="cfg-switch{{ ' on' if cbf[name] }}" aria-hidden="true"></span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
     </div>
 
     <div class="board-grid">

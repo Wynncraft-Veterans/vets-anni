@@ -27,7 +27,11 @@ You can also follow along with the status of the current anni (if announced).{% 
   <meta property="og:image" content="{{ PUBLIC_BASE_URL }}{{ asset('img/favicon.png') }}">
   <meta name="twitter:card" content="summary">
 </head>
-<body class="{% if cb %}cb{% endif %}">
+{# `cbf-<feature>` for each colourblind feature the viewer has live
+   (deps.cb_features — all default on, each switchable from the board's
+   Accessibility menu). colourblind.css scopes every feature's rules under
+   its class, so a switched-off feature falls back to regular-mode styling. #}
+<body class="{% if cb %}cb{% for name, on in cbf.items() if on %} cbf-{{ name }}{% endfor %}{% endif %}">
   {# Alpine x-data drives the mobile hamburger toggle. On desktop the
      menu is always visible (CSS @media), so `open` is only consulted at
      narrow widths — the .open class is what reveals the dropdown there. #}

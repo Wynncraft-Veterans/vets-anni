@@ -127,6 +127,78 @@ async def test_capability_pips_carry_reliability(as_staff, seeded):
     assert '<span class="cap-letter" aria-hidden="true">PR</span>' in body
 
 
+def _body_classes(html: str) -> set[str]:
+    import re
+    return set(re.search(r'<body class="([^"]*)"', html).group(1).split())
+
+
+async def test_accessibility_menu_is_cb_only_and_all_on_by_default(as_staff, seeded):
+    """With cb off there is no menu and no feature class. Turning cb on
+    brings every feature on (each a `cbf-*` body class) and the menu bar
+    with one switch per feature, all on."""
+    from app.web.deps import CB_FEATURES
+
+    body = (await as_staff.get("/staff/board")).text
+    assert "Accessibility Menu" not in body and "a11y-bar" not in body
+    assert not any(c.startswith("cbf-") for c in _body_classes(body))
+
+    as_staff.cookies.set("cb", "1")
+    body = (await as_staff.get("/staff/board")).text
+    assert _body_classes(body) >= {"cb"} | {f"cbf-{n}" for n in CB_FEATURES}
+    assert "Accessibility Menu" in body and 'class="card a11y-bar"' in body
+    bar = body[body.index('class="card a11y-bar"'):]
+    bar = bar[:bar.index("</section>")]
+    for name, label in CB_FEATURES.items():
+        assert label in bar and f"which=cbf_{name}" in bar
+    assert bar.count('aria-checked="true"') == len(CB_FEATURES)
+
+
+async def test_switching_a_cb_feature_off_reverts_it_to_regular_mode(as_staff, seeded):
+    """A switched-off feature loses its body class (so its CSS stops
+    applying) and its legend key goes back to the regular-mode one. The
+    choice is a one-year cookie; switching back on clears it."""
+    as_staff.cookies.set("cb", "1")
+    r = await as_staff.get("/toggle-label?which=cbf_codes&next=/staff/board",
+                           follow_redirects=False)
+    assert r.status_code == 303 and r.cookies.get("cbf_codes") == "0"
+    assert "Max-Age=31536000" in r.headers["set-cookie"]
+
+    body = (await as_staff.get("/staff/board")).text
+    classes = _body_classes(body)
+    assert "cbf-codes" not in classes and {"cb", "cbf-lamps"} <= classes
+    legend = body[body.index('class="card legend"'):body.index('class="legend-pips"')]
+    assert 'class="role-code"' not in legend and ">PRIM</span>" in legend
+
+    r = await as_staff.get("/toggle-label?which=cbf_lamps&next=/staff/board",
+                           follow_redirects=False)
+    assert r.cookies.get("cbf_lamps") == "0"
+    body = (await as_staff.get("/staff/board")).text
+    legend = body[body.index('class="card legend"'):body.index('class="card board-controls"')]
+    assert "cbf-lamps" not in _body_classes(body)
+    assert 'class="status-lamps"' not in legend        # plain status chips
+
+    as_staff.cookies.set("cbf_codes", "0")            # (the jar keeps the "0")
+    r = await as_staff.get("/toggle-label?which=cbf_codes&next=/staff/board",
+                           follow_redirects=False)
+    assert 'cbf_codes=""' in r.headers["set-cookie"]  # deleted → default on
+
+    # Unknown features are a harmless bounce.
+    r = await as_staff.get("/toggle-label?which=cbf_bogus", follow_redirects=False)
+    assert r.status_code == 303 and not r.cookies
+
+
+async def test_accessibility_menu_toggle_hides_the_bar(as_staff, seeded):
+    as_staff.cookies.set("cb", "1")
+    r = await as_staff.get("/toggle-label?which=a11y&next=/staff/board",
+                           follow_redirects=False)
+    assert r.cookies.get("cfg_a11y") == "0"
+    body = (await as_staff.get("/staff/board")).text
+    assert "a11y-bar" not in body
+    assert "Accessibility Menu" in body                # the switch stays
+    # Hiding the menu doesn't touch the features themselves.
+    assert "cbf-codes" in _body_classes(body)
+
+
 async def test_legend_is_three_groups_that_can_flow(as_staff, seeded):
     """Structured, the legend is three rows — role keys / reliability +
     statuses / RSVPs — in that order; the two flow-only rules sit between
@@ -285,9 +357,9 @@ async def test_status_traffic_light_replaces_the_border_under_cb_only(
     cbc = (await as_staff.get("/static/css/colourblind.css")).text
     anni = (await as_staff.get("/static/css/anni.css")).text
     assert ".status-border { border-width: 3px; border-style: solid; }" in cbc
-    assert "body.cb .status-border { border: 0; }" in cbc
+    assert "body.cb.cbf-lamps .status-border { border: 0; }" in cbc
     assert ".status-lamps { display:none; }" in anni
-    assert "body.cb .status-lamps {" in cbc
+    assert "body.cb.cbf-lamps .status-lamps {" in cbc
 
     body = (await as_staff.get("/staff/board")).text
     cards = body.count('class="person status-border"')

@@ -161,6 +161,64 @@ def set_dropdown_assign(response: Response, on: bool) -> None:
         response.delete_cookie(_DROPDOWN_ASSIGN_COOKIE)
 
 
+# --- colourblind features (the board's Accessibility menu) -----------------
+# Colourblind mode is a bundle of independent features, and a cb viewer can
+# hand any one of them back to regular-mode behaviour from the board's
+# Accessibility menu. All default ON — turning cb on gives the whole bundle
+# — so only an explicit opt-OUT is stored, one "0" cookie per feature, the
+# same shape as `cfg_pin`. Per-user and site-wide: each live feature becomes
+# a `cbf-<name>` body class (base.html) that colourblind.css scopes its rules
+# under. With cb off every feature is off, whatever the cookies say.
+
+#: Feature name -> its label in the Accessibility menu, in menu order.
+CB_FEATURES: dict[str, str] = {
+    "lamps": "Status lamps (not borders)",
+    "palette": "Okabe-Ito colours",
+    "codes": "Text role pips",
+    "textures": "Role card textures",
+}
+
+
+def _cb_feature_cookie(name: str) -> str:
+    return f"cbf_{name}"
+
+
+def cb_features(request: Request) -> dict[str, bool]:
+    """Which colourblind features are live for this viewer (all False with
+    cb off; with cb on, True unless the viewer switched it off)."""
+    on = colourblind(request)
+    return {
+        name: on and request.cookies.get(_cb_feature_cookie(name)) != "0"
+        for name in CB_FEATURES
+    }
+
+
+def set_cb_feature(response: Response, name: str, on: bool) -> None:
+    cookie = _cb_feature_cookie(name)
+    if on:
+        response.delete_cookie(cookie)               # back to default (on)
+    else:
+        response.set_cookie(cookie, "0", max_age=60 * 60 * 24 * 365,
+                            samesite="lax")
+
+
+# Whether the Accessibility menu bar shows under the legend (cb only; its
+# toggle lives in the board's Configs box). Default on, opt-out stored.
+_A11Y_MENU_COOKIE = "cfg_a11y"
+
+
+def a11y_menu(request: Request) -> bool:
+    return request.cookies.get(_A11Y_MENU_COOKIE) != "0"
+
+
+def set_a11y_menu(response: Response, on: bool) -> None:
+    if on:
+        response.delete_cookie(_A11Y_MENU_COOKIE)
+    else:
+        response.set_cookie(_A11Y_MENU_COOKIE, "0", max_age=60 * 60 * 24 * 365,
+                            samesite="lax")
+
+
 # Per-user collapsed parties — a CSV of party ids in a cookie (same family as
 # cb/pin). It MUST be server-side: the board re-renders on every WS tick, so
 # a client-only collapse would pop back open; and it's per-user, so it never
@@ -196,6 +254,12 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "user_uuid": session.get("mc_uuid") if session.get("kind") == "user" else None,
         "is_staff": session.get("kind") == "staff",
         "debug": _settings.debug,
+        # Live colourblind features (all False with cb off) — base.html turns
+        # them into `cbf-*` body classes; the board legend and the
+        # Accessibility menu read them directly.
+        "cbf": cb_features(request),
+        "cb_feature_labels": CB_FEATURES,
+        "a11y_menu": a11y_menu(request),
         "pin_legend": pin_legend(request),
         "dropdown_assign": dropdown_assign(request),
         # Cookie-derived by default; the collapse toggle route passes a fresh

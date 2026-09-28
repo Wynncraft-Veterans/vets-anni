@@ -52,6 +52,18 @@ def test_cb_pip_reliability_is_drawn_as_lines():
     assert lines_for("high") == "underline overline"
 
 
+def test_every_cb_feature_switch_has_css_to_switch():
+    """Each Accessibility-menu switch toggles a `cbf-<name>` body class, and
+    only CSS scoped under that class makes the feature do anything. A switch
+    with no scoped rule would be a dead toggle."""
+    from app.web.deps import CB_FEATURES
+
+    css = ((_STATIC / "colourblind.css").read_text(encoding="utf-8")
+           + (_STATIC / "anni.css").read_text(encoding="utf-8"))
+    for name in CB_FEATURES:
+        assert f"body.cb.cbf-{name}" in css, f"no CSS behind the {name!r} switch"
+
+
 def test_every_role_has_a_distinct_two_letter_code():
     """Under cb the capability pips ARE these codes (white text in a black
     box), so two roles sharing one would make them indistinguishable — the
@@ -154,7 +166,7 @@ def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
         assert h in cb_block, f"{h} not swapped under body.cb"
     # Status under cb is the traffic light: the lamps are drawn (and lit)
     # there, and the retired border-pattern ring has left no rules behind.
-    assert "body.cb .status-lamps" in cbc and "i.lit" in cbc
+    assert "body.cb.cbf-lamps .status-lamps" in cbc and "i.lit" in cbc
     assert not re.search(r"\[data-pattern=", cbc), "dead border-pattern rule"
 
     # Borders are VERBATIM Okabe-Ito under cb: the body.cb --c-* hex are
@@ -179,7 +191,7 @@ def test_css_defines_base_hues_and_swaps_every_one_under_body_cb():
     # for achromatopsia, since Okabe-Ito collapses in greyscale). Unassigned
     # stays flat — "no texture" maps to "no role".
     for r in ("primary", "secondary", "tertiary", "healer", "tank", "fill"):
-        assert f'body.cb .person[data-role="{r}"]' in cbc, (
+        assert f'body.cb.cbf-textures .person[data-role="{r}"]' in cbc, (
             f"missing CB card texture for role={r}")
 
 
@@ -223,8 +235,8 @@ def test_every_var_c_alias_is_re_declared_under_body_cb():
     anni = (_STATIC / "anni.css").read_text(encoding="utf-8")
     cbc = (_STATIC / "colourblind.css").read_text(encoding="utf-8")
     root = anni[anni.index(":root"):anni.index("}", anni.index(":root"))]
-    start = cbc.index("body.cb {")
-    cb_block = cbc[start:cbc.index("}", start)]  # the body.cb declarations only
+    start = cbc.index("body.cb.cbf-palette {")
+    cb_block = cbc[start:cbc.index("}", start)]  # the palette declarations only
 
     # Aliases anni.css :root defines purely as `var(--c-...)`.
     aliases = re.findall(r"(--[\w-]+)\s*:\s*var\(\s*(--c-[\w-]+)\s*\)\s*;",

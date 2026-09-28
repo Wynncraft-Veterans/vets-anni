@@ -4,6 +4,16 @@
    glyphs, textures) carry meaning so colour is never load-bearing. Satisfies the spec's hard
    "usable colourblind variant" requirement.
 
+   FEATURE CLASSES. cb is a bundle of four independent features, and each
+   one's rules are scoped under its own body class as well as `.cb`:
+   `cbf-palette` (Okabe-Ito hues), `cbf-textures` (role card textures),
+   `cbf-codes` (text capability pips + their legend keys) and `cbf-lamps`
+   (status traffic light instead of the border). base.html adds a class per
+   live feature (deps.cb_features: all default on, each switchable from the
+   board's Accessibility menu), so a feature switched off simply falls back
+   to the regular-mode styling underneath. Rules that belong to no single
+   feature stay on bare `body.cb`.
+
    NOTE: never write a glob asterisk immediately followed by a slash inside
    a CSS comment — that two-char sequence closes the comment early and
    silently corrupts the whole stylesheet (it killed the entire body.cb
@@ -21,7 +31,7 @@
    MUST be mirrored here too (a static guard in test_colourblind.py
    enforces it). */
 
-body.cb {
+body.cb.cbf-palette {
   /* Neon family (roles + RSVP icons) -> Okabe-Ito. */
   --c-red:     #D55E00;  /* vermillion */
   --c-yellow:  #F0E442;  /* yellow */
@@ -132,41 +142,41 @@ body.cb {
    cross-dashboard role chips emitted by the `role_bg` macro deliberately
    stay clean (they live outside `.legend`); chip-size texture reads as
    noise at that scale. */
-body.cb {
+body.cb.cbf-textures {
   --tex-ink: rgba(255,255,255,.22);   /* stripe / dot colour */
   --tex-ink-x: rgba(255,255,255,.15); /* crosshatch: two layers overlap */
 }
-body.cb .person[data-role="primary"],
-body.cb .legend .role-chip[data-role="primary"] {
+body.cb.cbf-textures .person[data-role="primary"],
+body.cb.cbf-textures .legend .role-chip[data-role="primary"] {
   background-image: repeating-linear-gradient(45deg,
     var(--tex-ink) 0 3px, transparent 3px 11px);
 }
-body.cb .person[data-role="secondary"],
-body.cb .legend .role-chip[data-role="secondary"] {
+body.cb.cbf-textures .person[data-role="secondary"],
+body.cb.cbf-textures .legend .role-chip[data-role="secondary"] {
   background-image: repeating-linear-gradient(135deg,
     var(--tex-ink) 0 3px, transparent 3px 11px);
 }
-body.cb .person[data-role="tertiary"],
-body.cb .legend .role-chip[data-role="tertiary"] {
+body.cb.cbf-textures .person[data-role="tertiary"],
+body.cb.cbf-textures .legend .role-chip[data-role="tertiary"] {
   background-image: repeating-linear-gradient(90deg,
     var(--tex-ink) 0 3px, transparent 3px 11px);
 }
-body.cb .person[data-role="healer"],
-body.cb .legend .role-chip[data-role="healer"] {
+body.cb.cbf-textures .person[data-role="healer"],
+body.cb.cbf-textures .legend .role-chip[data-role="healer"] {
   background-image:
     repeating-linear-gradient(45deg,
       var(--tex-ink-x) 0 2.5px, transparent 2.5px 10px),
     repeating-linear-gradient(135deg,
       var(--tex-ink-x) 0 2.5px, transparent 2.5px 10px);
 }
-body.cb .person[data-role="tank"],
-body.cb .legend .role-chip[data-role="tank"] {
+body.cb.cbf-textures .person[data-role="tank"],
+body.cb.cbf-textures .legend .role-chip[data-role="tank"] {
   background-image: radial-gradient(circle at center,
     rgba(255,255,255,.3) 2.4px, transparent 2.8px);
   background-size: 10px 10px;
 }
-body.cb .person[data-role="fill"],
-body.cb .legend .role-chip[data-role="fill"] {
+body.cb.cbf-textures .person[data-role="fill"],
+body.cb.cbf-textures .legend .role-chip[data-role="fill"] {
   background-image: repeating-linear-gradient(0deg,
     var(--tex-ink) 0 3px, transparent 3px 11px);
 }
@@ -174,12 +184,12 @@ body.cb .legend .role-chip[data-role="fill"] {
    show a few repeats of the rhythm — at the default chip height the dot
    grid and crosshatch showed barely two. Also brings them close to the
    status pills' height beside them. */
-body.cb .legend .role-chip { min-height: 2.2rem; }
+body.cb.cbf-textures .legend .role-chip { min-height: 2.2rem; }
 /* Text that sits straight on a textured card: a tight dark halo keeps it
    legible wherever it crosses a stripe. (Pills, codes, lamps, tickets and
    the dropdown all bring their own solid backgrounds.) */
-body.cb .person-name-text,
-body.cb .legend .role-chip .chip-text {
+body.cb.cbf-textures .person-name-text,
+body.cb.cbf-textures .legend .role-chip .chip-text {
   text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 1px #000;
 }
 
@@ -224,9 +234,9 @@ body.cb .cb-toggle { text-decoration: underline; }
    Vertical padding is uneven on purpose: an overline is drawn at the top of
    the font's ascent, above the line box, so the top needs the extra room to
    keep it inside the box with the same clearance the underline gets. */
-body.cb .person-name .cap-dots,
-body.cb .legend-pips .cap-dots,
-body.cb .legend .role-code {
+body.cb.cbf-codes .person-name .cap-dots,
+body.cb.cbf-codes .legend-pips .cap-dots,
+body.cb.cbf-codes .legend .role-code {
   display: inline-flex; align-items: center; gap: .75em;
   padding: .42em .6em .34em; border-radius: 3px; background: #000;
   font-family: Verdana, "DejaVu Sans", system-ui, sans-serif;
@@ -237,7 +247,7 @@ body.cb .legend .role-code {
    roles" by its empty tail. Measured with all five codes in Verdana Bold
    (in em, so it tracks the font-size); MIN-width so a wider fallback face
    grows the box rather than spilling the fifth code out of it. */
-body.cb .person-name .cap-dots {
+body.cb.cbf-codes .person-name .cap-dots {
   min-width: 11.9em;
   /* One code line (line-height 1) plus the vertical padding, so a bar
      with no codes in it stands exactly as tall as one with them. */
@@ -246,36 +256,36 @@ body.cb .person-name .cap-dots {
 /* Every card carries the bar, blank when there are no stated capabilities
    (a FILL-only player, or an unregistered placeholder): the bars line up
    down a dropzone and "no roles" reads as an empty bar, not a gap. */
-body.cb .person-name .cap-dots[data-empty] { display: inline-flex; }
+body.cb.cbf-codes .person-name .cap-dots[data-empty] { display: inline-flex; }
 /* The legend's reliability key stands as tall as the status pills and role
    chips beside it (2.2rem, the lamp column's height). At its natural height
    the overline on "High" ran into the box's top edge, and against the
    white legend card that edge read as the line — the box needs black
    above the overline for the overline to show. */
-body.cb .legend-pips .cap-dots { min-height: 2.2rem; }
-body.cb .cap-dot,
-body.cb .cap-dots .cap-dot {
+body.cb.cbf-codes .legend-pips .cap-dots { min-height: 2.2rem; }
+body.cb.cbf-codes .cap-dot,
+body.cb.cbf-codes .cap-dots .cap-dot {
   width: auto; height: auto; margin: 0; padding: 0;
   border-radius: 0; background: none; box-shadow: none;
   /* The on-card pip is a <button>, which anni.css sets to weight 500 —
      Verdana has no 500 and drops to regular, so take the box's type. */
   font: inherit;
 }
-body.cb .cap-tri { display: none; }
+body.cb.cbf-codes .cap-tri { display: none; }
 /* !important guards against any inline ``display`` ever sneaking in. The
    `.cap-dot` ancestor is for specificity: it has to outrank anni.css's
    nudge on the LOW letter, which only made sense inside the triangle. The
    code takes the box's type wholesale, via the pip reset above. */
-body.cb .cap-dot .cap-letter {
+body.cb.cbf-codes .cap-dot .cap-letter {
   display: inline !important;
   position: static; top: auto;
   font: inherit; color: #fff; -webkit-text-stroke: 0;
   text-decoration-thickness: 1px; text-underline-offset: 2px;
 }
-body.cb .cap-dot[data-reliability="moderate"] .cap-letter {
+body.cb.cbf-codes .cap-dot[data-reliability="moderate"] .cap-letter {
   text-decoration-line: underline;
 }
-body.cb .cap-dot[data-reliability="high"] .cap-letter {
+body.cb.cbf-codes .cap-dot[data-reliability="high"] .cap-letter {
   text-decoration-line: underline overline;
 }
 
@@ -294,28 +304,28 @@ body.cb .cap-dot[data-reliability="high"] .cap-letter {
    dash-dot-dot for unknown, drawn as a ring outside the card): five line
    rhythms around a busy card were too confusing to tell apart at a glance.
    The lamps are always in the DOM; anni.css hides them outside cb. */
-body.cb .status-border { border: 0; }
+body.cb.cbf-lamps .status-border { border: 0; }
 /* The gap is wider than it looks like it needs to be: each lamp's hairline
    sits 1px outside it, so the visible space between rings is the gap
    minus 2px. At .2rem the column is also exactly the ticket's 2.2rem. */
-body.cb .status-lamps {
+body.cb.cbf-lamps .status-lamps {
   display: inline-flex; flex-direction: column; gap: .2rem; flex: none;
 }
 /* Each lamp gets a light grey hairline so a DARK lamp still has an edge on
    a black card (FILL is black under cb) — without it an offline card there
    would show no light at all. A box-shadow ring rather than a border, so
    the lamp keeps its size and the column its alignment. */
-body.cb .status-lamps > i {
+body.cb.cbf-lamps .status-lamps > i {
   width: .6rem; height: .6rem; border-radius: 50%; background: #000;
   box-shadow: 0 0 0 1px #bdbdbd;
 }
-body.cb .status-lamps > i.lit { background: #fff; }
+body.cb.cbf-lamps .status-lamps > i.lit { background: #fff; }
 /* The legend key: smaller lamps, on a card-dark plate — the legend card is
    near-white, which would swallow a lit (white) lamp. Extra vertical padding
    so the lamp column (and its hairlines) sits inside the plate with room to
    spare instead of grazing its top and bottom edges. */
-body.cb .legend-status {
+body.cb.cbf-lamps .legend-status {
   background: #4d4d4d; color: #fff; padding: .3rem .55rem .3rem .45rem;
 }
-body.cb .legend-status .status-lamps { gap: .2rem; }
-body.cb .legend-status .status-lamps > i { width: .4rem; height: .4rem; }
+body.cb.cbf-lamps .legend-status .status-lamps { gap: .2rem; }
+body.cb.cbf-lamps .legend-status .status-lamps > i { width: .4rem; height: .4rem; }
