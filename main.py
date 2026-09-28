@@ -63,8 +63,11 @@ logging.basicConfig(
 )
 # Quiet third-party DEBUG noise that drowns out our own logs: full SQL strings
 # from tortoise + the same query repeated by aiosqlite, plus discord's gateway
-# heartbeats and frame dumps. Our own ``anni.*`` loggers stay at DEBUG.
-for _noisy in ("tortoise.db_client", "aiosqlite", "discord.gateway", "discord.client"):
+# heartbeats and frame dumps, and the reloader's raw file-event log (every
+# editor write under .git/ shows up there; uvicorn still announces real
+# reloads itself). Our own ``anni.*`` loggers stay at DEBUG.
+for _noisy in ("tortoise.db_client", "aiosqlite", "discord.gateway", "discord.client",
+               "watchfiles"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 logger = logging.getLogger("anni")
 
