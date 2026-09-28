@@ -44,7 +44,8 @@ Slash commands (e.g. `/rsvp`) are unprefixed. The prefix only applies to text/me
 - **vets-anni uses its OWN WAPI token** (separate ratelimit bucket — mandated).
   Never reuse the dazebot/temporary-server token.
 - **Online truth = mirror vetsmod `/wv list`** (merge `api.wynnvets.org`
-  `/v1/outbound/{list,roster,aliases}` + WAPI guild online + grace cache).
+  `/v1/outbound/{list,roster,aliases}` + WAPI guild online + grace cache),
+  plus WAPI per-player for board members outside the guild (integration.md).
   Never trust the bare Wynncraft server API alone.
   - **In-queue players are not offline** (see the queue state in the above)
 - **Auth is intentionally low-trust** (IGN + optional password) — a

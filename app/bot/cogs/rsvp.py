@@ -602,7 +602,7 @@ async def execute_check(username: str, state: AppState) -> str:
     # Online state — mirrors web/routers/user._build_specific.
     online = state.is_online(player.mc_uuid)
     if online is None:
-        if identity_domain.is_api_disabled(player.last_online):
+        if identity_domain.is_api_hidden(state, player.mc_uuid, player.last_online):
             lines.append("Online: _unknown — Wynncraft API disabled_")
         else:
             lines.append("Online: offline")

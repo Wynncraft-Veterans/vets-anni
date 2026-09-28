@@ -10,7 +10,8 @@ and 429 back-off honouring ``Retry-After`` / ``RateLimit-Reset``.
 We deliberately spend the token on only three things:
 * ``/v3/guild/{name}``           — guild online members (online-merge),
 * ``/v3/item/search/{query}``    — the weapons catalog (1 h cache),
-* ``/v3/player/{uuid|name}``     — login guild/identity + Phase-2 probe.
+* ``/v3/player/{uuid|name}``     — login guild/identity, online status of
+  board members outside the guild (online-merge), + Phase-2 probe.
 
 Everything heavy (staff, roster, aliases) comes from api.wynnvets.org, which
 already paid the WAPI cost — see ``app/services/tempserver.py``.

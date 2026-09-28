@@ -11,7 +11,14 @@
 - `GET /v1/outbound/aliases` → `{legacyname_lower: uuid}` (rename desync).
 
 `online_merge` = union of `list` ∪ WAPI `/v3/guild/Returners` online ∪ roster,
-with a ~30 s grace cache — mirrors vetsmod `OnlineMemberService`.
+with a ~30 s grace cache — mirrors vetsmod `OnlineMemberService`. Plus one
+source vetsmod doesn't need: WAPI `/v3/player/{uuid}` for **active-board
+members outside the guild payload** (allies, community). The guild fetch
+can't see them and most don't run vetsmod, so without it they read OFFLINE
+all night. One call per outsider per 120 s TTL, capped per tick. The same
+payload's `restrictions.onlineStatus` is the live API-hidden verdict
+(`state.api_hidden_by_uuid`), which overrides the epoch `last_online` stored
+at login (`identity.is_api_hidden`), so a hidden outsider reads UNKNOWN.
 
 ## Identity (IGN → UUID) — spare the shared Mojang bucket
 
@@ -38,7 +45,8 @@ want the (stable) UUID, not the canonical current name.
 `services/wapi.py` is the only place that sends `WAPI_TOKEN`. Honour
 `RateLimit-*` headers, back off on 429 (port of dazebot's Requestor). We spend
 the token only on: `/v3/guild/Returners` online, `/v3/item/search/{q}` (weapons
-catalog, ITEMS bucket, 1 h cache), and the slow api-disabled `/v3/player/{uuid}`
+catalog, ITEMS bucket, 1 h cache), `/v3/player/{uuid}` for outside-guild board
+members' online status (above), and the slow api-disabled `/v3/player/{uuid}`
 probe. Heavy reads come from api.wynnvets.org instead.
 
 The single `/v3/guild/Returners` response `online_merge` already fetches is

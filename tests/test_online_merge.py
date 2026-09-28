@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.constants import BucketKind
+from app.db.models import AnniEvent, AnniPlayer, BoardPlacement
 from app.services import online_merge
 from app.services.state import AppState
 from app.settings import Settings
@@ -27,10 +29,12 @@ def _reset_wapi_cache():
     online_merge._wapi_guild_cache = None
     online_merge._wapi_guild_fetched_at = 0.0
     online_merge._recent.clear()
+    online_merge._wapi_player_cache.clear()
     yield
     online_merge._wapi_guild_cache = None
     online_merge._wapi_guild_fetched_at = 0.0
     online_merge._recent.clear()
+    online_merge._wapi_player_cache.clear()
 
 
 class _FakeWapi:
@@ -297,3 +301,148 @@ async def test_wapi_failure_uses_cached_payload(db, monkeypatch):
 
     # WAPI-only member is still present from the cached payload.
     assert "uuid-guildie" in state.online_by_uuid
+
+
+# --- source (3): board members outside the guild payload --------------------
+
+class _RoutedWapi:
+    """Answers ``guild/...`` with the guild payload and ``player/<uuid>`` from
+    ``players`` (a missing uuid raises like a WAPI 404). Records every path."""
+
+    def __init__(self, guild: dict, players: dict[str, dict]) -> None:
+        self.guild = guild
+        self.players = players
+        self.paths: list[str] = []
+
+    async def get_json(self, path: str, *, priority: int = 0) -> dict:
+        self.paths.append(path)
+        if path.startswith("guild/"):
+            return self.guild
+        uuid = path.removeprefix("player/")
+        if uuid not in self.players:
+            raise online_merge.WapiError(f"WAPI 404 for {path}")
+        return self.players[uuid]
+
+
+class _NobodyTemp:
+    async def roster(self) -> dict:
+        return {}
+
+    async def aliases(self) -> dict:
+        return {}
+
+    async def online_list(self) -> list[dict]:
+        return []
+
+
+async def _board(*uuids: str) -> None:
+    event = await AnniEvent.create(stamp_epoch=2_000_000_000, is_active=True)
+    for i, uuid in enumerate(uuids):
+        player = await AnniPlayer.create(mc_uuid=uuid, mc_username=uuid)
+        await BoardPlacement.create(
+            event=event, player=player, bucket=BucketKind.UNASSIGNED, sort_index=i,
+        )
+
+
+def _player(*, online: bool, server: str | None = None, hidden: bool = False) -> dict:
+    return {
+        "username": "Outsider",
+        "online": online,
+        "server": server,
+        "restrictions": {"onlineStatus": hidden},
+    }
+
+
+async def test_outsider_on_the_board_is_looked_up_per_player(db, monkeypatch):
+    """Regression: an ally/community member without vetsmod was in neither
+    the vetsmod list nor the Returners guild payload, so nothing ever asked
+    WAPI about them and the board showed them OFFLINE while they were on."""
+    await _board("uuid-ally", "uuid-guildie")
+    wapi = _RoutedWapi(
+        {"members": {"recruit": {"G": {"uuid": "uuid-guildie", "online": False}}}},
+        {"uuid-ally": _player(online=True, server="EU14")},
+    )
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _NobodyTemp())
+
+    state = AppState()
+    await online_merge._tick(state, Settings())
+
+    assert state.online_by_uuid["uuid-ally"].server == "EU14"
+    assert state.api_hidden_by_uuid == {"uuid-ally": False}
+    # The guild payload already answers for guild members — no per-player call.
+    assert "player/uuid-guildie" not in wapi.paths
+    assert "uuid-guildie" not in state.online_by_uuid
+
+
+async def test_hidden_outsider_is_a_verdict_not_an_offline(db, monkeypatch):
+    """A hidden online status is recorded live so presence reads UNKNOWN; the
+    ``online: false`` WAPI sends for them must not count as a sighting."""
+    await _board("uuid-hidden")
+    wapi = _RoutedWapi({"members": {}},
+                       {"uuid-hidden": _player(online=False, hidden=True)})
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _NobodyTemp())
+
+    state = AppState()
+    await online_merge._tick(state, Settings())
+
+    assert "uuid-hidden" not in state.online_by_uuid
+    assert state.api_hidden_by_uuid == {"uuid-hidden": True}
+
+
+async def test_outsider_fetch_throttled_to_ttl_and_failures_wait_it_out(db, monkeypatch):
+    """One call per uuid per TTL — including a 404 (never joined Wynncraft),
+    which must not retry every 5s hot tick."""
+    await _board("uuid-ally", "uuid-never-joined")
+    wapi = _RoutedWapi({"members": {}},
+                       {"uuid-ally": _player(online=True, server="EU14")})
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _NobodyTemp())
+
+    state = AppState()
+    settings = Settings(wapi_player_ttl_seconds=120)
+    await online_merge._tick(state, settings)
+    await online_merge._tick(state, settings)
+
+    assert wapi.paths.count("player/uuid-ally") == 1
+    assert wapi.paths.count("player/uuid-never-joined") == 1
+    # Cached payload re-parsed on the second tick: still online.
+    assert state.online_by_uuid["uuid-ally"].server == "EU14"
+    # No verdict for a uuid WAPI never answered — the stored flag stands.
+    assert "uuid-never-joined" not in state.api_hidden_by_uuid
+
+
+async def test_outsider_fetches_capped_per_tick(db, monkeypatch):
+    await _board(*(f"uuid-{i}" for i in range(7)))
+    wapi = _RoutedWapi({"members": {}}, {})
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _NobodyTemp())
+
+    state = AppState()
+    settings = Settings(wapi_player_fetch_cap_per_tick=5)
+    await online_merge._tick(state, settings)
+    assert sum(p.startswith("player/") for p in wapi.paths) == 5
+    await online_merge._tick(state, settings)
+    # The two left over go next tick; the five just fetched wait out the TTL.
+    assert sum(p.startswith("player/") for p in wapi.paths) == 7
+
+
+async def test_vetsmod_outsider_with_a_world_is_not_fetched(db, monkeypatch):
+    """vetsmod already placed them on a world — nothing for WAPI to add."""
+    await _board("uuid-ally")
+
+    class _AllyOnVetsmod(_NobodyTemp):
+        async def online_list(self) -> list[dict]:
+            return [{"uuid": "uuid-ally", "username": "Ally", "server": "EU15"}]
+
+    wapi = _RoutedWapi({"members": {}},
+                       {"uuid-ally": _player(online=True, server="NA1")})
+    monkeypatch.setattr(online_merge, "get_wapi", lambda: wapi)
+    monkeypatch.setattr(online_merge, "get_tempserver", lambda: _AllyOnVetsmod())
+
+    state = AppState()
+    await online_merge._tick(state, Settings())
+
+    assert "player/uuid-ally" not in wapi.paths
+    assert state.online_by_uuid["uuid-ally"].server == "EU15"

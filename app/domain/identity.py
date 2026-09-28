@@ -67,6 +67,17 @@ def is_api_disabled(dt: datetime | None) -> bool:
     return dt.timestamp() <= API_DISABLED_LAST_ONLINE_MAX
 
 
+def is_api_hidden(state: AppState, uuid: str, last_online: datetime | None) -> bool:
+    """Whether ``uuid``'s online status is hidden from WAPI right now.
+
+    The live verdict ``online_merge`` read off their ``/v3/player`` payload
+    wins when there is one (board members outside the guild); otherwise the
+    epoch sentinel stored at login (:func:`is_api_disabled`).
+    """
+    live = state.api_hidden_by_uuid.get(uuid)
+    return is_api_disabled(last_online) if live is None else live
+
+
 def dash_uuid(raw: str) -> str:
     """Normalise a 32-hex Mojang id to canonical 8-4-4-4-12 dashed form.
 

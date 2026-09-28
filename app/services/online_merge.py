@@ -6,7 +6,14 @@ We union, exactly like vetsmod ``OnlineMemberService.merge``:
 1. ``/v1/outbound/list`` connected clients — **including ``queued`` ones**
    (anni is queue-heavy; a queued player is *connecting*, not offline);
 2. WAPI ``/v3/guild/<Returners>`` members flagged ``online`` (our OWN token);
-3. a ~grace window of recently-seen uuids so a one-tick blip doesn't flicker
+3. WAPI ``/v3/player/<uuid>`` for active-board members the guild payload
+   can't speak for — allies and community members outside Returners. Without
+   this, anyone outside the guild who doesn't run vetsmod was never looked
+   up at all and sat on the board as OFFLINE all night. The same payload
+   carries ``restrictions.onlineStatus``, the *live* API-hidden verdict,
+   which lands in ``state.api_hidden_by_uuid`` so a hidden outsider reads
+   UNKNOWN rather than a fabricated OFFLINE;
+4. a ~grace window of recently-seen uuids so a one-tick blip doesn't flicker
    someone offline.
 
 Names are resolved from the authoritative roster (then the connected payload
@@ -20,6 +27,8 @@ import logging
 import time
 from dataclasses import replace
 
+from app.db.lifecycle import get_active_event
+from app.db.models import BoardPlacement
 from app.services import hot_window
 from app.services.loop import poll_forever
 from app.services.state import AppState, OnlinePlayer
@@ -46,6 +55,11 @@ _recent: dict[str, tuple[float, OnlinePlayer]] = {}
 #: vanish from ``state.online_by_uuid`` just because we skipped the fetch).
 _wapi_guild_cache: dict | None = None
 _wapi_guild_fetched_at: float = 0.0
+
+#: uuid -> (monotonic fetched-at, last ``/v3/player`` payload) for board
+#: members outside the guild payload. Same fetch-at-TTL, re-parse-every-tick
+#: shape as the guild cache, per player (the endpoint is also max-age 120).
+_wapi_player_cache: dict[str, tuple[float, dict]] = {}
 
 
 def _parse_guild_online(payload: dict) -> dict[str, tuple[str, str | None]]:
@@ -74,6 +88,116 @@ def _parse_guild_online(payload: dict) -> dict[str, tuple[str, str | None]]:
                     str(server) if isinstance(server, str) and server else None,
                 )
     return out
+
+
+def _parse_guild_member_uuids(payload: dict) -> set[str]:
+    """Every member uuid in the guild payload, online or not — the players
+    whose presence the guild fetch already answers for."""
+    out: set[str] = set()
+    members = payload.get("members")
+    if not isinstance(members, dict):
+        return out
+    for rank, group in members.items():
+        if rank == "total" or not isinstance(group, dict):
+            continue
+        for info in group.values():
+            if isinstance(info, dict) and info.get("uuid"):
+                out.add(str(info["uuid"]))
+    return out
+
+
+def _parse_player(payload: dict) -> tuple[bool, bool, str | None]:
+    """``(hidden, online, server)`` from a ``/v3/player`` payload.
+
+    ``hidden`` is ``restrictions.onlineStatus`` — the player has hidden their
+    online status, so ``online: false`` means nothing. When it is set we
+    still honour an explicit ``online``/``server`` (a real signal if WAPI
+    sends one, same as ``api_disabled._looks_online``).
+    """
+    restrictions = payload.get("restrictions")
+    hidden = isinstance(restrictions, dict) and bool(restrictions.get("onlineStatus"))
+    server = payload.get("server")
+    server = server if isinstance(server, str) and server else None
+    return hidden, bool(payload.get("online")) or server is not None, server
+
+
+async def _board_uuids() -> list[str]:
+    """mc_uuids placed on the active event's board (``[]`` with no anni)."""
+    event = await get_active_event()
+    if event is None:
+        return []
+    return await BoardPlacement.filter(event=event).values_list(
+        "player__mc_uuid", flat=True
+    )
+
+
+async def _probe_outsiders(
+    state: AppState, settings: Settings, merged: dict[str, OnlinePlayer]
+) -> None:
+    """Source (3): board members outside the guild payload, via
+    ``/v3/player/<uuid>``. Mutates ``merged`` and ``state.api_hidden_by_uuid``.
+
+    Each uuid is re-fetched at most once per ``wapi_player_ttl_seconds``,
+    oldest first and at most ``wapi_player_fetch_cap_per_tick`` a tick, so a
+    board-sized burst spreads over a few ticks instead of stalling this one.
+    A failure (including a 404 for someone who has never joined Wynncraft)
+    still stamps the uuid, keeping its last-good payload, so it waits out
+    the TTL rather than retrying every tick.
+    """
+    covered = (
+        _parse_guild_member_uuids(_wapi_guild_cache)
+        if _wapi_guild_cache is not None
+        else set()
+    )
+    outsiders = [u for u in await _board_uuids() if u not in covered]
+    live = set(outsiders)
+    for gone in [u for u in _wapi_player_cache if u not in live]:
+        del _wapi_player_cache[gone]
+
+    now = time.monotonic()
+    ttl = settings.wapi_player_ttl_seconds
+    due = sorted(
+        (
+            u for u in outsiders
+            # vetsmod already says where they are; nothing left to learn.
+            if not (u in merged and merged[u].server)
+            and now - _wapi_player_cache.get(u, (float("-inf"), {}))[0] >= ttl
+        ),
+        key=lambda u: _wapi_player_cache.get(u, (float("-inf"), {}))[0],
+    )[: settings.wapi_player_fetch_cap_per_tick]
+    for uuid in due:
+        payload = _wapi_player_cache.get(uuid, (0.0, {}))[1]
+        try:
+            fetched = await get_wapi().get_json(f"player/{uuid}", priority=PRIO_LOW)
+            payload = fetched if isinstance(fetched, dict) else {}
+        except WapiError as exc:
+            logger.info("player-online fetch skipped for %s (%s)", uuid, exc)
+        except Exception:  # noqa: BLE001
+            logger.warning("player-online fetch failed for %s", uuid, exc_info=True)
+        _wapi_player_cache[uuid] = (now, payload)
+
+    hidden_by_uuid: dict[str, bool] = {}
+    for uuid in outsiders:
+        cached = _wapi_player_cache.get(uuid)
+        if cached is None or not cached[1]:
+            continue  # never fetched OK: no verdict, the stored flag stands
+        hidden, online, server = _parse_player(cached[1])
+        hidden_by_uuid[uuid] = hidden
+        if not online:
+            continue
+        existing = merged.get(uuid)
+        if existing is None:
+            name = cached[1].get("username")
+            merged[uuid] = OnlinePlayer(
+                uuid=uuid,
+                username=state.roster_by_uuid.get(uuid)
+                or (name if isinstance(name, str) and name else uuid[:8]),
+                tier="outside",
+                server=server,
+            )
+        elif server and existing.server is None:
+            merged[uuid] = replace(existing, server=server)
+    state.api_hidden_by_uuid = hidden_by_uuid
 
 
 def _parse_guild_staff(payload: dict, staff_ranks: frozenset[str]) -> dict[str, dict]:
@@ -181,7 +305,15 @@ async def _tick(state: AppState, settings: Settings) -> None:
             state.guild_staff = staff
             state.touch("guild_staff_fetched_at")
 
-    # (3) grace window: re-add anyone seen very recently but missing now.
+    # (3) board members outside the guild — WAPI per-player. Own try: a DB
+    # or WAPI hiccup here must not cost the sources above their tick.
+    try:
+        await _probe_outsiders(state, settings, merged)
+    except Exception:  # noqa: BLE001
+        logger.warning("outside-guild probe failed — skipping this tick",
+                       exc_info=True)
+
+    # (4) grace window: re-add anyone seen very recently but missing now.
     now = time.monotonic()
     fresh = len(merged)
     for uuid, player in merged.items():

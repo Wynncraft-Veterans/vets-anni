@@ -37,7 +37,7 @@ class OnlinePlayer:
 
     uuid: str
     username: str
-    tier: str = "guild"          # guild | waitlist | honourary (from /v1/outbound/list)
+    tier: str = "guild"          # guild | waitlist | honourary (from /v1/outbound/list); outside (WAPI player probe)
     queued: bool = False
     server: str | None = None
 
@@ -77,6 +77,13 @@ class AppState:
     #: lowercased legacy/old name -> uuid (rename-desync resolution).
     aliases: dict[str, str] = field(default_factory=dict)
     roster_fetched_at: float = 0.0
+    #: mc_uuid -> "has hidden their online status", read live from WAPI's
+    #: ``restrictions.onlineStatus`` for the board members outside the guild
+    #: that ``online_merge`` probes per-player. Overrides the epoch sentinel
+    #: stored at login (which goes stale the moment they flip the setting);
+    #: absent => no live verdict, the stored flag stands. Read through
+    #: ``identity.is_api_hidden``.
+    api_hidden_by_uuid: dict[str, bool] = field(default_factory=dict)
 
     # --- weapons_poller ------------------------------------------------------
     #: lowercased weapon name -> subtype (bow/spear/wand/dagger/relik). The

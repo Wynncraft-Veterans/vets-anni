@@ -67,7 +67,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
     for p in placements:
         uuid = p.player.mc_uuid
         online = state.is_online(uuid)
-        api_disabled = identity.is_api_disabled(p.player.last_online)
+        api_disabled = identity.is_api_hidden(state, uuid, p.player.last_online)
         # online-merge is authoritative; the probe-inferred set only ever
         # *adds* an api-disabled player (never removes / never fabricates a
         # specific world), so they surface as ONLINE_ELSEWHERE not UNKNOWN.

@@ -271,6 +271,14 @@ class Settings(BaseSettings):
     # ``state.online_by_uuid``.
     wapi_guild_ttl_seconds: int = 120
 
+    # Per-player twin of the above for board members *outside* the guild
+    # payload (``online_merge`` source 3): WAPI ``/v3/player/<uuid>`` is also
+    # ``max-age=120``, PLAYER bucket 50 req / 60s. The cap bounds how many
+    # a single tick fetches so a board full of outsiders spreads over a few
+    # ticks — steady state is one call per outsider per TTL.
+    wapi_player_ttl_seconds: int = 120
+    wapi_player_fetch_cap_per_tick: int = 5
+
     # Grace window (hours) for staff to record per-party results before wipe.
     grace_hours: int = 2
 

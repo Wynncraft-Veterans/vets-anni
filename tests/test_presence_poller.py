@@ -158,6 +158,21 @@ async def test_api_disabled_player_confirmed_two_ways(seeded):
     assert got[meta] is S.ONLINE_ELSEWHERE
 
 
+async def test_live_api_verdict_beats_the_flag_stored_at_login(seeded):
+    """``online_merge`` reads outsiders' ``restrictions.onlineStatus`` live;
+    that verdict wins over the epoch sentinel snapshotted at login, in both
+    directions."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid     # stored public
+    meta = p["Metrafish"].mc_uuid  # stored hidden
+
+    got = await presence_poller._compute(
+        AppState(api_hidden_by_uuid={wen: True, meta: False})
+    )
+    assert got[wen] is S.UNKNOWN   # hid it since: we can't say offline
+    assert got[meta] is S.OFFLINE  # WAPI answered publicly: really offline
+
+
 async def test_tick_caches_and_stamps(seeded):
     state = AppState()
     await presence_poller._tick(state, None)  # no WS clients -> no broadcast

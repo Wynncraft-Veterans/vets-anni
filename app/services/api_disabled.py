@@ -57,7 +57,7 @@ async def _tick(state: AppState, settings: Settings) -> None:
     targets = [
         p.player
         for p in placements
-        if identity.is_api_disabled(p.player.last_online)
+        if identity.is_api_hidden(state, p.player.mc_uuid, p.player.last_online)
         and state.is_online(p.player.mc_uuid) is None
     ]
 

@@ -106,11 +106,12 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
 
     party = placement.party if placement else None
     online = st.is_online(player.mc_uuid)
+    api_hidden = identity.is_api_hidden(st, player.mc_uuid, player.last_online)
     pv = presence.view(
         presence.PresenceInputs(
             online=online is not None,
             queued=bool(online and online.queued),
-            api_disabled=identity.is_api_disabled(player.last_online),
+            api_disabled=api_hidden,
             rsvp_notice=stored,
             # Same "was here tonight" history the board reads, so the user's
             # own bar agrees with the border staff are looking at.
@@ -118,17 +119,18 @@ def _build_specific(player, event, rsvp, placement, st) -> dict | None:
             has_party=party is not None,
             party_world=party.world if party else None,
             party_created=party is not None,
-            current_server=None,  # no per-player server signal until App4
+            # The server the board classifies from, so "on the right world"
+            # reads the same here as on the organiser's border.
+            current_server=online.server if online else None,
             in_party_confirmed=False,
             seconds_to_anni=seconds,
         )
     )
 
-    # Where are you *right now* (separate from RSVP). online_merge rarely
-    # knows a non-staff player's server in Phase 1, so we show what we can
-    # truthfully say: online / in-queue / offline / API-disabled.
+    # Where are you *right now* (separate from RSVP): online / in-queue /
+    # offline / API-disabled, plus the world when a source reported it.
     if online is None:
-        if identity.is_api_disabled(player.last_online):
+        if api_hidden:
             online_state = {"kind": "unknown",
                             "text": "Status unknown — your Wynncraft API is disabled"}
         else:
