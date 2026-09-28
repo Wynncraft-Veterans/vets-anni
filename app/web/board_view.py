@@ -63,12 +63,6 @@ _CAP_CSS_VAR: dict[Role, str] = {
 _CAP_CSS_VAR_LIGHT: dict[Role, str] = {
     role: f"{var}-light" for role, var in _CAP_CSS_VAR.items()
 }
-#: ...and the *-dark* one: the outline of the MODERATE square and LOW
-#: triangle pips (the HIGH circle's ring is a fixed grey). body.cb
-#: re-declares the dark family too, so it holds there.
-_CAP_CSS_VAR_DARK: dict[Role, str] = {
-    role: f"{var}-dark" for role, var in _CAP_CSS_VAR.items()
-}
 #: Confidence ranking for dot order. Mirrors :class:`ConfidenceLevel` (low =
 #: least confident, high = most), inverted so the sort key reads left-to-right
 #: as best-first. Unknown / off-table values fall to the end.
@@ -98,7 +92,6 @@ def _capability_dots(caps, setbacks=()) -> list[dict]:
             "letter": _CAP_LETTER[c.role],
             "css_var": _CAP_CSS_VAR[c.role],
             "css_var_light": _CAP_CSS_VAR_LIGHT[c.role],
-            "css_var_dark": _CAP_CSS_VAR_DARK[c.role],
             "confidence": c.confidence.value,
             "reliability": reliability.of(c, setbacks).value,
             "success_count": c.success_count,

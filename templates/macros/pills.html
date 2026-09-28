@@ -54,14 +54,17 @@
   {% endif %}
 {% endmacro %}
 
-{# The LOW-reliability capability pip (see .cap-dot in anni.css). Three
-   copies of one path, widest first: the faint hairline, the outline, then
-   the fill with a thin stroke of its own colour to soften the corners — an
-   even outline that CSS clip-path + drop-shadows couldn't give. #}
+{# The LOW-reliability capability pip (see .cap-dot in anni.css). The same
+   path stroked widest first — outer hairline, ring, then the fill with a
+   thin stroke of its own colour to soften the corners — and last an inner
+   hairline on a copy shrunk toward the incentre, so it sits just inside
+   the fill's edge like the circle's inset one instead of half-covering the
+   ring. An even outline that CSS clip-path + drop-shadows couldn't give. #}
 {% macro cap_tri() -%}
   <svg class="cap-tri" viewBox="0 0 12 11" aria-hidden="true" focusable="false">
     <path class="cap-tri-hair" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
     <path class="cap-tri-halo" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
     <path class="cap-tri-fill" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
+    <path class="cap-tri-inner" d="M6 1.83 L10.41 9.49 L1.59 9.49 Z"/>
   </svg>
 {%- endmacro %}

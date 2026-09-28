@@ -51,7 +51,7 @@
             {% for lv in ["low", "moderate", "high"] %}
               <span class="legend-pip">
                 <span class="cap-dot" data-reliability="{{ lv }}"
-                      style="--cap-fill: #64748b; --cap-halo: #cbd5e1; --cap-halo-dark: #1e293b"
+                      style="--cap-fill: #64748b; --cap-halo: #cbd5e1"
                       aria-hidden="true">
                   {%- if lv == "low" %}{{ cap_tri() }}{% endif -%}
                 </span>
