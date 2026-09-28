@@ -62,7 +62,8 @@ one channel in one place.
 Each `STYLES` entry has `color` (default), `light`/`dark` (legible surfaces
 for BLACK/WHITE text) and `cb` (Okabe-Ito, used under `body.cb`).
 `ROLE_STYLES`/`STATUS_STYLES`/`RSVP_STYLES` only attach the glyph/icon +
-label (+ border pattern for statuses) to a `STYLES` entry, so colour is never
+label (+ cb traffic-light lamps for statuses, a two-letter cb code for
+roles) to a `STYLES` entry, so colour is never
 load-bearing — see `colourblind.md`. Capability rows use the 5 core roles;
 FILL is assignable/colourable only.
 

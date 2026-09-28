@@ -51,7 +51,9 @@ Slash commands (e.g. `/rsvp`) are unprefixed. The prefix only applies to text/me
 - **Auth is intentionally low-trust** (IGN + optional password) — a
   coordination tool, not a security boundary. Documented in integration.md.
 - **Colourblind variant is mandatory on every interface** — colour is never
-  the only signal (glyph + label + border pattern always accompany it).
+  the only signal (a glyph/code/shape + label always accompany it; on the
+  board under cb, status is a traffic light and capabilities a text bar —
+  see colourblind.md).
 - **Single-instance-per-person** on the board: DB `unique_together(event,
   player)` on `BoardPlacement`; every move is an UPSERT in a transaction.
 - **API-disabled users** (epoch `last_online`): infer via the online-merge /
@@ -79,6 +81,46 @@ web) → **2** ✅ App3 (staff/board) → **3** App2 (fishbot) → **4** App4
 (vetsmod, deferred & coordinated). See the plan file for per-phase scope +
 verification. App4 vetsmod surface shipped 2026-06-18 (S7 completion of the
 multi-stage cross-repo plan).
+
+**Colourblind board rework + card layout (2026-09-28):** driven by a
+colourblind user's report that the board's cb channels were unreadable. The
+detail and the rejected attempts are in colourblind.md; the decisions:
+- **Capability pips → one black text bar under cb.** White two-letter role
+  codes (`RoleStyle.code`: PR/SU/HD/HE/TA/FI) in Verdana Bold; reliability
+  is lines on the code — plain / underline / underline + overline. Weight
+  as the channel failed twice (regular-vs-bold, then a vendored mono's
+  light-vs-extrabold) and was dropped with the font. The bar is a fixed
+  width (a full five-code row) and on every card, blank when empty.
+- **Status border → traffic light under cb.** Three lamps at the card's
+  left edge (`StatusStyle.lamps`, replacing `StatusStyle.pattern`); the
+  border-pattern ring and `data-pattern` are gone. Default mode keeps the
+  coloured border.
+- **The legend decodes both**: role chips show their code in the same black
+  box, the reliability key is one box of its own words, and the status
+  chips show lamps on a card-dark plate.
+- **Legend layout, both modes**: three rows (role keys / reliability +
+  statuses / RSVPs), or — when any would wrap — one flowing row with
+  separators; `board.js` `fitLegend` measures and picks.
+- **Cards are at most three lines, both modes**: name + bar never wrap (the
+  name ellipsises last), tags clamp at two rows, role dropdown pinned
+  bottom-right.
+- **Dropdown move no longer grows cards, both modes**: its select sits
+  under the ticket + avatar (which move up and shrink slightly), not under
+  the role dropdown.
+- **"Role/Status info" switch removed, both modes**, with the card text
+  tags it governed — rarely used, undercut the visual channels, and the
+  main cause of card overflow.
+- **Accessibility menu**: cb's five features (lamps / Okabe-Ito palette /
+  text pips / textures / name backdrop) are each switchable back to
+  regular-mode behaviour
+  from a bar under the legend (shown by an "Accessibility Menu" switch in
+  Configs, pinned with the legend). All default on; per-user one-year
+  opt-out cookies; each live feature is a `cbf-*` body class that
+  colourblind.css scopes its rules under.
+- **Role textures made bold** (~22% white, 3px lines) with a dark halo on
+  the name text; at the old ~7% they vanished on the black cb Fill card.
+  The bolder stripes also make the black capability bar visible on Fill,
+  as a band across them — so the cb Fill background stays black.
 
 **Status palette + gone-as-a-stamp (2026-08-24):**
 - **Status borders moved onto the ROLE palette**, each step echoing the role
