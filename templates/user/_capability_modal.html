@@ -73,20 +73,31 @@
         {% endfor %}
       </select>
 
-      <label for="build_quality">Build quality</label>
-      <p class="field-help">
-        How much have you invested into this role/build?<br>
-        High = crafted/tailored builds, maximum% rolls.<br>
-        Low = generic builds, minimum% rolls.
-      </p>
-      <select id="build_quality" name="build_quality">
-        {% for lv in ["high", "moderate", "low"] %}
-          <option value="{{ lv }}"
-            {{ "selected" if cap and cap.build_quality == lv or (not cap and lv == "moderate") }}>
-            {{ lv | capitalize }}
-          </option>
-        {% endfor %}
-      </select>
+      {# Staff-only (only the /staff/roles modal passes it): reliability is
+         derived, so this doesn't set it outright — it restarts it at a tier,
+         and later wins/setbacks still move it. "No change" is the default so
+         re-saving the form never re-bases by accident. #}
+      {% if staff_reliability %}
+        <label for="reliability_override">Reliability override</label>
+        <p class="field-help">
+          Currently <strong>{{ staff_reliability.current | capitalize }}</strong>
+          {%- if staff_reliability.override %}, restarted at
+          {{ staff_reliability.override | capitalize }} by staff on
+          {{ staff_reliability.set_at.strftime("%Y-%m-%d") }}
+          {%- else %}, from their record{% endif %}.<br>
+          Setting a tier restarts it there; wins, losses and missed RSVPs
+          from then on still move it.
+        </p>
+        <select id="reliability_override" name="reliability_override">
+          <option value="keep" selected>No change</option>
+          {% for lv in ["high", "moderate", "low"] %}
+            <option value="{{ lv }}">Restart at {{ lv | capitalize }}</option>
+          {% endfor %}
+          {% if staff_reliability.override %}
+            <option value="auto">Clear override (back to their record)</option>
+          {% endif %}
+        </select>
+      {% endif %}
 
       <label for="weapons">Weapons</label>
       <p class="field-help">

@@ -19,12 +19,14 @@ the routes (not by the underlying capability domain).
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.constants import MAX_WEAPONS_PER_CAPABILITY
+from app.constants import MAX_WEAPONS_PER_CAPABILITY, Reliability
 from app.db.models import RoleCapability
+from app.domain import reliability
 from app.domain.roles import guidance
 from app.web import auth
 from app.web.deps import render
@@ -67,7 +69,6 @@ def _render_modal(
             "id": str(cap.id),
             "role": cap.role,
             "confidence": cap.confidence,
-            "build_quality": cap.build_quality,
             "success_count": cap.success_count,
             "weapons": ", ".join(w.weapon_name for w in cap.weapons),
         },
@@ -75,10 +76,40 @@ def _render_modal(
         guidance=guidance(cap.role),
         available_roles=[cap.role],
         max_weapons=MAX_WEAPONS_PER_CAPABILITY,
+        staff_reliability={
+            "current": reliability.of(cap, cap.player.setbacks).value,
+            "override": (
+                cap.reliability_override.value if cap.reliability_override else None
+            ),
+            "set_at": cap.reliability_set_at,
+        },
         form_action=f"/staff/roles/capability/{cap.id}",
         form_target=f"#roles-row-{cap.player.mc_uuid}",
         weapon_search_url="/staff/roles/capability/weapons",
         modal_error=modal_error,
+    )
+
+
+def _apply_reliability_override(cap: RoleCapability, choice: str) -> None:
+    """``keep`` (the form default, so re-saving never re-bases), ``auto``
+    (back to derived from the whole record), or a tier to restart at now —
+    snapshotting the win count so only later wins move it."""
+    choice = (choice or "").strip().lower()
+    if choice == "auto":
+        cap.reliability_override = None
+        cap.reliability_set_at = None
+        cap.reliability_set_wins = 0
+        return
+    try:
+        tier = Reliability(choice)
+    except ValueError:
+        return  # "keep", or anything unrecognised
+    cap.reliability_override = tier
+    cap.reliability_set_at = datetime.now(timezone.utc)
+    cap.reliability_set_wins = cap.success_count
+    logger.info(
+        "staff set reliability: %s -> %s = %s",
+        cap.player.mc_username, cap.role.value, tier.value,
     )
 
 
@@ -88,7 +119,7 @@ async def staff_edit_modal(request: Request, cap_id: str):
         return RedirectResponse("/staff", status_code=303)
     cap = (
         await RoleCapability.filter(id=cap_id)
-        .prefetch_related("weapons", "player")
+        .prefetch_related("weapons", "player", "player__setbacks")
         .first()
     )
     if cap is None:
@@ -101,21 +132,24 @@ async def staff_update_capability(
     request: Request,
     cap_id: str,
     confidence: str = Form("moderate"),
-    build_quality: str = Form("moderate"),
     weapons: str = Form(""),
+    reliability_override: str = Form("keep"),
 ):
     if not auth.is_staff(request):
         return RedirectResponse("/staff", status_code=303)
     cap = (
         await RoleCapability.filter(id=cap_id)
-        .prefetch_related("player", "weapons")
+        .prefetch_related("player", "weapons", "player__setbacks")
         .first()
     )
     if cap is None:
         return RedirectResponse("/staff/roles", status_code=303)
     cap.confidence = _parse_conf(confidence, cap.confidence)
-    cap.build_quality = _parse_conf(build_quality, cap.build_quality)
-    await cap.save(update_fields=["confidence", "build_quality", "updated_at"])
+    _apply_reliability_override(cap, reliability_override)
+    await cap.save(update_fields=[
+        "confidence", "reliability_override", "reliability_set_at",
+        "reliability_set_wins", "updated_at",
+    ])
     # Staff filling in someone's capability is enough signal to upgrade
     # them out of the auto-promoter "Unregistered" stub-card state.
     from app.domain.identity import mark_registered

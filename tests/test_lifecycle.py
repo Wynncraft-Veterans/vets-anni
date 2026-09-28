@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import time
 
-from app.constants import BucketKind, PartyResult
+from datetime import datetime, timezone
+
+from app.constants import BucketKind, PartyResult, Role, SetbackKind
 from app.db.lifecycle import get_active_event
 from app.db.models import (
     AnniPlayer,
@@ -18,6 +20,7 @@ from app.db.models import (
     Party,
     RoleCapability,
     Rsvp,
+    Setback,
 )
 from app.domain.schedule import EventPhase, is_board_frozen, phase_of
 from app.services import lifecycle_task
@@ -121,7 +124,7 @@ async def test_expired_event_credits_tbd_parties_as_wins(seeded):
     await mine_place.save(update_fields=["assigned_role"])
     mine_cap = await RoleCapability.create(
         player=seeded["players"]["Minethuselah"], role="healer",
-        confidence="moderate", build_quality="moderate", success_count=0,
+        confidence="moderate", success_count=0,
     )
 
     event.stamp_epoch = int(time.time()) - grace - 10  # EXPIRED
@@ -165,8 +168,7 @@ async def test_bucketed_players_never_earn_win_credit(seeded):
         place.assigned_role = "tank"
         await place.save(update_fields=["assigned_role"])
         caps[name] = await RoleCapability.create(
-            player=player, role="tank", confidence="high",
-            build_quality="high", success_count=0,
+            player=player, role="tank", confidence="high", success_count=0,
         )
 
     event.stamp_epoch = int(time.time()) - grace - 10  # EXPIRED
@@ -184,3 +186,90 @@ async def test_bucketed_players_never_earn_win_credit(seeded):
     assert (await RoleCapability.get(
         player=seeded["players"]["Wenweia"], role="primary")
     ).success_count == wen_before + 1
+
+
+# --- reliability setbacks ---------------------------------------------------
+
+async def _expire(event) -> None:
+    event.stamp_epoch = int(time.time()) - get_settings().grace_hours * 3600 - 10
+    await event.save(update_fields=["stamp_epoch"])
+
+
+async def _mark_seen(event, *names_players) -> None:
+    for player in names_players:
+        await Rsvp.filter(event=event, player=player).update(
+            seen_online_at=datetime.now(timezone.utc)
+        )
+
+
+async def test_loss_party_members_get_a_loss_setback_in_their_role(seeded):
+    """Mirrors the win credit: party members with a core role they hold a
+    capability for. Minethuselah sits in the LAG party with no role."""
+    event, p = seeded["event"], seeded["players"]
+    await Party.filter(event=event, ordinal=1).update(result=PartyResult.LOSS)
+    await Party.filter(event=event, ordinal=2).update(result=PartyResult.LAG)
+    await _mark_seen(event, p["Wenweia"])  # presence tracking was running
+    await _expire(event)
+
+    await lifecycle_task._tick(AppState(), get_settings())
+
+    losses = await Setback.filter(
+        event=event, kind=SetbackKind.LOSS,
+    ).prefetch_related("player")
+    got = sorted((s.player.mc_username, s.role.value) for s in losses)
+    assert got == sorted({
+        ("Wenweia", Role.PRIMARY.value),
+        ("Nazzae", Role.HEALER.value),
+        ("_akaPasta", Role.TANK.value),
+    })
+    stamp = datetime.fromtimestamp(event.stamp_epoch, tz=timezone.utc)
+    assert [s.occurred_at for s in losses] == [stamp] * 3
+    # A loss is not a win.
+    assert (await RoleCapability.get(
+        player=p["Wenweia"], role="primary")).success_count == 12
+
+
+async def test_hard_rsvp_nobody_saw_is_a_missed_setback(seeded):
+    """Seeded hard RSVPs: Wenweia + Nazzae (in party 1), Metrafish (API
+    hidden), foo (unassigned, API visible). Only foo is provably absent."""
+    event, p = seeded["event"], seeded["players"]
+    await _mark_seen(event, p["Nazzae"])
+    await _expire(event)
+
+    await lifecycle_task._tick(AppState(), get_settings())
+
+    missed = await Setback.filter(
+        event=event, kind=SetbackKind.MISSED,
+    ).prefetch_related("player")
+    assert [(s.player.mc_username, s.role) for s in missed] == [("foo", None)]
+
+
+async def test_being_seen_in_the_hot_window_is_turning_up(seeded):
+    event, p = seeded["event"], seeded["players"]
+    await _mark_seen(event, p["foo"])
+    await _expire(event)
+
+    await lifecycle_task._tick(AppState(), get_settings())
+
+    assert not await Setback.filter(kind=SetbackKind.MISSED).exists()
+
+
+async def test_no_misses_when_presence_tracking_never_ran(seeded):
+    """Nobody's RSVP was ever stamped seen: the process was down for the
+    anni, so a no-show can't be told from a blind spot."""
+    await _expire(seeded["event"])
+
+    await lifecycle_task._tick(AppState(), get_settings())
+
+    assert not await Setback.filter(kind=SetbackKind.MISSED).exists()
+
+
+async def test_live_api_hidden_verdict_exempts_a_miss(seeded):
+    event, p = seeded["event"], seeded["players"]
+    await _mark_seen(event, p["Nazzae"])
+    await _expire(event)
+    state = AppState(api_hidden_by_uuid={p["foo"].mc_uuid: True})
+
+    await lifecycle_task._tick(state, get_settings())
+
+    assert not await Setback.filter(kind=SetbackKind.MISSED).exists()

@@ -154,8 +154,7 @@ async def execute_roles(discord_id: int | str) -> str:
         )
         lines.append(
             f"• **{guidance(c.role).title}** — confidence "
-            f"`{c.confidence.value}`, build `{c.build_quality.value}`, "
-            f"lifetime wins {c.success_count}\n"
+            f"`{c.confidence.value}`, lifetime wins {c.success_count}\n"
             f"  weapons: {weapons}"
         )
     return "\n".join(lines)

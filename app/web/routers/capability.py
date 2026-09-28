@@ -119,7 +119,6 @@ async def edit_modal(request: Request, cap_id: str):
             "id": str(cap.id),
             "role": cap.role,
             "confidence": cap.confidence,
-            "build_quality": cap.build_quality,
             "success_count": cap.success_count,
             "weapons": ", ".join(w.weapon_name for w in cap.weapons),
         },
@@ -170,7 +169,6 @@ async def create_capability(
     request: Request,
     role: str = Form(...),
     confidence: str = Form("moderate"),
-    build_quality: str = Form("moderate"),
     weapons: str = Form(""),
 ):
     player = await _require_user(request)
@@ -187,7 +185,6 @@ async def create_capability(
         player=player,
         role=parsed,
         confidence=_parse_conf(confidence, ConfidenceLevel.MODERATE),
-        build_quality=_parse_conf(build_quality, ConfidenceLevel.MODERATE),
     )
     ok, err, flagged = await _write_weapons(request, cap, weapons)
     if not ok:
@@ -205,7 +202,6 @@ async def update_capability(
     request: Request,
     cap_id: str,
     confidence: str = Form("moderate"),
-    build_quality: str = Form("moderate"),
     weapons: str = Form(""),
 ):
     player = await _require_user(request)
@@ -215,8 +211,7 @@ async def update_capability(
     if cap is None:
         return await _capacity_fragment(request, player, error="Capability not found.")
     cap.confidence = _parse_conf(confidence, cap.confidence)
-    cap.build_quality = _parse_conf(build_quality, cap.build_quality)
-    await cap.save(update_fields=["confidence", "build_quality", "updated_at"])
+    await cap.save(update_fields=["confidence", "updated_at"])
     ok, err, flagged = await _write_weapons(request, cap, weapons)
     if not ok:
         return await _capacity_fragment(request, player, error=err)

@@ -12,7 +12,8 @@ from __future__ import annotations
 import time
 
 from app.constants import PresenceStatus as S
-from app.services import presence_poller
+from app.db.models import Rsvp
+from app.services import hot_window, presence_poller
 from app.services.state import AppState, OnlinePlayer, _PARTY_LEADER_TTL_SECONDS
 
 
@@ -182,3 +183,26 @@ async def test_tick_caches_and_stamps(seeded):
 
 async def test_no_active_event_is_empty(db):
     assert await presence_poller._compute(AppState()) == {}
+
+
+async def test_first_hot_window_sighting_is_stamped_on_the_rsvp(seeded, monkeypatch):
+    """The grace-wipe's missed-RSVP rule reads ``Rsvp.seen_online_at`` —
+    persisted, so a restart can't erase who turned up."""
+    event = seeded["event"]
+    wen = seeded["players"]["Wenweia"]
+    state = AppState(online_by_uuid={wen.mc_uuid: _online(wen.mc_uuid)})
+
+    monkeypatch.setattr(hot_window, "_currently_hot", False)
+    await presence_poller._compute(state)
+    # Online the day before isn't attendance.
+    assert (await Rsvp.get(event=event, player=wen)).seen_online_at is None
+
+    monkeypatch.setattr(hot_window, "_currently_hot", True)
+    await presence_poller._compute(state)
+    first = (await Rsvp.get(event=event, player=wen)).seen_online_at
+    assert first is not None
+
+    await presence_poller._compute(state)  # first sighting only
+    assert (await Rsvp.get(event=event, player=wen)).seen_online_at == first
+    # Nobody else was online.
+    assert await Rsvp.filter(event=event, seen_online_at__isnull=False).count() == 1

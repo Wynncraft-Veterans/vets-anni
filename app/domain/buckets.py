@@ -605,12 +605,13 @@ async def board_rows(event: AnniEvent) -> list[dict]:
     ``capabilities`` is the player's declared :class:`RoleCapability` rows with
     weapons eager-loaded — surfaced on the person card as small role-coloured
     dots (what a player *can* do, distinct from ``assigned_role`` which is
-    what they *will* do in this anni). Raw rows only; the popover shape lives
-    in ``app/web/board_view``."""
+    what they *will* do in this anni). ``setbacks`` are the player's
+    :class:`Setback` rows, which the popover needs to derive reliability.
+    Raw rows only; the popover shape lives in ``app/web/board_view``."""
     rows = (
         await BoardPlacement.filter(event=event)
         .select_related("player", "party")
-        .prefetch_related("player__capabilities__weapons")
+        .prefetch_related("player__capabilities__weapons", "player__setbacks")
         .order_by("sort_index")
     )
     out: list[dict] = []
@@ -636,6 +637,7 @@ async def board_rows(event: AnniEvent) -> list[dict]:
                 "is_walkin": r.is_walkin,
                 "sort_index": r.sort_index,
                 "capabilities": list(r.player.capabilities),
+                "setbacks": list(r.player.setbacks),
             }
         )
     return out

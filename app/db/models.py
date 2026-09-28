@@ -24,6 +24,7 @@ from app.constants import (
     MembershipTier,
     PartyResult,
     Role,
+    SetbackKind,
 )
 
 
@@ -70,6 +71,7 @@ class AnniPlayer(Model):
     updated_at = fields.DatetimeField(auto_now=True)
 
     capabilities: fields.ReverseRelation[RoleCapability]
+    setbacks: fields.ReverseRelation[Setback]
 
     class Meta:
         table = "anni_player"
@@ -81,7 +83,13 @@ class AnniPlayer(Model):
 class RoleCapability(Model):
     """A user's self-declared ability in one core role. At most one row per
     (player, role). ``success_count`` increments when a party they were
-    assigned this role in is recorded as a WIN (grace-wipe time)."""
+    assigned this role in is recorded as a WIN (grace-wipe time).
+
+    Reliability is not stored: it is derived from ``confidence``,
+    ``success_count`` and the player's :class:`Setback` rows by
+    ``app.domain.reliability`` (it replaced the self-declared build quality).
+    A staff override (``/staff/roles``) re-bases that derivation — see the
+    ``reliability_*`` fields."""
 
     id = fields.UUIDField(primary_key=True)
     player = fields.ForeignKeyField(
@@ -89,8 +97,17 @@ class RoleCapability(Model):
     )
     role = fields.CharEnumField(Role, max_length=16)
     confidence = fields.CharEnumField(ConfidenceLevel, max_length=12)
-    build_quality = fields.CharEnumField(ConfidenceLevel, max_length=12)
     success_count = fields.IntField(default=0)
+    #: Staff override: reliability restarts at this tier as of
+    #: ``reliability_set_at``, and only what is recorded after that moves it.
+    #: Null = derived from the whole record.
+    reliability_override = fields.CharEnumField(
+        ConfidenceLevel, max_length=12, null=True
+    )
+    reliability_set_at = fields.DatetimeField(null=True)
+    #: ``success_count`` when the override was set — wins are a bare counter,
+    #: so this is how "wins since" is known.
+    reliability_set_wins = fields.IntField(default=0)
 
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
@@ -100,6 +117,37 @@ class RoleCapability(Model):
     class Meta:
         table = "role_capability"
         unique_together = (("player", "role"),)
+
+
+class Setback(Model):
+    """One bad outcome, recorded by the grace-wipe, that can cost the player
+    reliability. Dated rather than counted because the rule forgives the
+    first one each calendar month (``app.domain.reliability``).
+
+    * ``LOSS`` — sat in a party, in ``role``, whose result was LOSS (LAG is
+      never recorded; TBD defaults to a win). Counts against that role only,
+      and only written when the player has a capability for it, mirroring
+      the win credit.
+    * ``MISSED`` — a hard RSVP they never turned up for. ``role`` is null: a
+      no-show counts against every role they hold."""
+
+    id = fields.UUIDField(primary_key=True)
+    player = fields.ForeignKeyField(
+        "models.AnniPlayer", related_name="setbacks", on_delete=fields.CASCADE
+    )
+    kind = fields.CharEnumField(SetbackKind, max_length=12)
+    role = fields.CharEnumField(Role, max_length=16, null=True)
+    event = fields.ForeignKeyField(
+        "models.AnniEvent", related_name="setbacks",
+        null=True, on_delete=fields.SET_NULL,
+    )
+    #: The anni's stamp — the calendar month this counts against.
+    occurred_at = fields.DatetimeField()
+
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "setback"
 
 
 class RoleCapabilityWeapon(Model):
@@ -255,6 +303,10 @@ class Rsvp(Model):
     notice = fields.CharEnumField(AttendanceNotice, max_length=16)
     source = fields.CharField(max_length=16, default="discord")
     revoked_at = fields.DatetimeField(null=True)
+    #: First time the presence poller saw them online inside the hot window
+    #: (T-2h through grace). Persisted so a restart mid-anni can't turn
+    #: someone who came into a missed hard RSVP at the grace-wipe.
+    seen_online_at = fields.DatetimeField(null=True)
 
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

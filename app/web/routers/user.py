@@ -62,7 +62,6 @@ async def _capability_rows(player) -> list[dict]:
                 "role_label": guidance(c.role).title,
                 "chip": role_chip(c.role),
                 "confidence": c.confidence,
-                "build_quality": c.build_quality,
                 "success_count": c.success_count,
                 "weapons": [
                     {"name": w.weapon_name, "subtype": w.weapon_subtype}

@@ -27,6 +27,7 @@ from app.constants import (
 )
 from app.domain import buckets
 from app.domain import regions as regions_domain
+from app.domain import reliability
 from app.domain import rsvp as rsvp_domain
 from app.domain.colourblind import role_chip, rsvp_chip, status_chip
 from app.domain.membership import label as tier_label
@@ -68,7 +69,7 @@ _CAP_CSS_VAR_LIGHT: dict[Role, str] = {
 _CONFIDENCE_RANK: dict[str, int] = {"high": 0, "moderate": 1, "low": 2}
 
 
-def _capability_dots(caps) -> list[dict]:
+def _capability_dots(caps, setbacks=()) -> list[dict]:
     """Shape a player's :class:`RoleCapability` rows for the person-card dots
     + their hover/click popovers. Skips anything not in
     :data:`CAPABILITY_ROLES` (FILL is assign-only, never a capability) so a
@@ -92,7 +93,7 @@ def _capability_dots(caps) -> list[dict]:
             "css_var": _CAP_CSS_VAR[c.role],
             "css_var_light": _CAP_CSS_VAR_LIGHT[c.role],
             "confidence": c.confidence.value,
-            "build_quality": c.build_quality.value,
+            "reliability": reliability.of(c, setbacks).value,
             "success_count": c.success_count,
             "weapons": [
                 {"name": w.weapon_name, "subtype": w.weapon_subtype}
@@ -207,7 +208,9 @@ def _person(
         "rsvp_state": rsvp_state.value,
         "rsvp_chip": rsvp_chip(rsvp_state),
         "sort_index": row["sort_index"],
-        "capability_dots": _capability_dots(row.get("capabilities") or []),
+        "capability_dots": _capability_dots(
+            row.get("capabilities") or [], row.get("setbacks") or [],
+        ),
     }
 
 

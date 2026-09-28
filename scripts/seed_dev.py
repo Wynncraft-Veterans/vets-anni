@@ -47,6 +47,7 @@ from app.constants import (  # noqa: E402
     ConfidenceLevel,
     MembershipTier,
     Role,
+    SetbackKind,
 )
 from app.db import lifecycle  # noqa: E402
 from app.db.models import (  # noqa: E402
@@ -57,6 +58,7 @@ from app.db.models import (  # noqa: E402
     RoleCapability,
     RoleCapabilityWeapon,
     Rsvp,
+    Setback,
 )
 
 UTC = timezone.utc
@@ -119,7 +121,7 @@ PREFERRED_REGIONS: dict[str, str] = {
 async def _wipe() -> None:
     """Clear anni-domain rows (children first to respect FKs)."""
     for model in (
-        RoleCapabilityWeapon, RoleCapability, BoardPlacement, Rsvp,
+        RoleCapabilityWeapon, RoleCapability, Setback, BoardPlacement, Rsvp,
         Party, AnniEvent, AnniPlayer,
     ):
         await model.all().delete()
@@ -157,7 +159,7 @@ async def populate() -> dict[str, object]:
     # Wenweia: multi-weapon PRIMARY (Labyrinth + Revolution) + a HEALER cap.
     cap = await RoleCapability.create(
         player=p["Wenweia"], role=Role.PRIMARY,
-        confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.HIGH,
+        confidence=ConfidenceLevel.HIGH,
         success_count=12,
     )
     # Subtypes are the real Wynncraft v3 `subType` values (verified against
@@ -168,28 +170,37 @@ async def populate() -> dict[str, object]:
                                       weapon_subtype="bow")
     cap = await RoleCapability.create(
         player=p["Wenweia"], role=Role.HEALER,
-        confidence=ConfidenceLevel.MODERATE, build_quality=ConfidenceLevel.MODERATE,
+        confidence=ConfidenceLevel.MODERATE,
         success_count=3,
     )
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Lament",
                                       weapon_subtype="wand")
     cap = await RoleCapability.create(
         player=p["Nazzae"], role=Role.HEALER,
-        confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.HIGH,
+        confidence=ConfidenceLevel.HIGH,
         success_count=8,
     )
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Absolution",
                                       weapon_subtype="relik")
     cap = await RoleCapability.create(
         player=p["_akaPasta"], role=Role.TANK,
-        confidence=ConfidenceLevel.HIGH, build_quality=ConfidenceLevel.MODERATE,
+        confidence=ConfidenceLevel.HIGH,
         success_count=5,
     )
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Guardian",
                                       weapon_subtype="spear")
+    # A rough month for _akaPasta's tank: four losses in one calendar month.
+    # The first two are free (grace), so two are penalised, pulling a
+    # high-confidence 5-win tank from Moderate down to Low reliability.
+    rough = (now - timedelta(days=40)).replace(day=3)
+    for i in range(4):
+        await Setback.create(
+            player=p["_akaPasta"], kind=SetbackKind.LOSS, role=Role.TANK,
+            occurred_at=rough + timedelta(days=i),
+        )
     cap = await RoleCapability.create(
         player=p["Paradrex"], role=Role.TERTIARY,
-        confidence=ConfidenceLevel.MODERATE, build_quality=ConfidenceLevel.LOW,
+        confidence=ConfidenceLevel.MODERATE,
         success_count=1,
     )
     await RoleCapabilityWeapon.create(capability=cap, weapon_name="Idol",

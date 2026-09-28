@@ -176,16 +176,24 @@ QUEUE_IS_NEVER_OFFLINE = True
 
 
 class ConfidenceLevel(StrEnum):
-    """Self-assessed confidence/preference for a role (and reused for build
-    quality). HIGH = confident & enjoys it; LOW = inexperienced/dispreferred."""
+    """Self-assessed confidence/preference for a role (and reused for
+    reliability). HIGH = confident & enjoys it; LOW = inexperienced/dispreferred."""
 
     HIGH = "high"
     MODERATE = "moderate"
     LOW = "low"
 
 
-# Build quality uses the same three levels but is a distinct concept.
-BuildQuality = ConfidenceLevel
+# Reliability uses the same three levels but is derived, never self-declared
+# — see ``app.domain.reliability``.
+Reliability = ConfidenceLevel
+
+
+class SetbackKind(StrEnum):
+    """A recorded bad outcome that can cost reliability (``models.Setback``)."""
+
+    LOSS = "loss"      # sat in a party, in this role, that lost
+    MISSED = "missed"  # hard-RSVP'd and never turned up
 
 
 class ContinentCode(StrEnum):

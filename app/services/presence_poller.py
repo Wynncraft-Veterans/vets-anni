@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 
 from app.constants import AttendanceNotice, PresenceStatus
 from app.db.lifecycle import get_active_event
@@ -64,6 +65,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
     }
 
     out: dict[str, PresenceStatus] = {}
+    seen_now: set[str] = set()
     for p in placements:
         uuid = p.player.mc_uuid
         online = state.is_online(uuid)
@@ -79,6 +81,7 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         # accumulated out here. Add-only; cleared by the grace-wipe.
         if is_online:
             state.seen_online_uuids.add(uuid)
+            seen_now.add(uuid)
         party = p.party
         # Corroboration: vetsmod-reporting players send their Wynncraft party
         # roster via the S7 ``anni_party_observation`` frame when an organiser
@@ -116,6 +119,20 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
                 seconds_to_anni=seconds,
             )
         )
+
+    # Persist "they turned up" for the grace-wipe's missed-hard-RSVP rule —
+    # in-memory history dies with a restart, and a restart mid-anni must not
+    # turn everyone who came and went into a no-show. Hot window only, so
+    # being on the day before isn't attendance; first sighting only.
+    if hot_window.is_currently_hot():
+        arrived = [
+            r.id for r in rsvps
+            if r.seen_online_at is None and r.player.mc_uuid in seen_now
+        ]
+        if arrived:
+            await Rsvp.filter(id__in=arrived).update(
+                seen_online_at=datetime.now(timezone.utc)
+            )
     return out
 
 

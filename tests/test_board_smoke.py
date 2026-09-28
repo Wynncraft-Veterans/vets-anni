@@ -131,6 +131,7 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
     assert "board.js" in body and "sortable.min.js" in body
 
 
+
 async def test_board_fragment_is_inner_only(as_staff, seeded):
     r = await as_staff.get("/staff/board/fragment")
     assert r.status_code == 200
@@ -146,6 +147,10 @@ async def test_roles_dashboard_lists_capabilities(as_staff, seeded):
     assert "Wenweia" in body and "Core" in body
     assert "Labyrinth" in body            # a seeded weapon
     assert "win" in body.lower()          # success-count pill
+    # Derived reliability replaced the self-declared build quality.
+    assert "Reliability: high" in body    # Wenweia's primary: 12 wins
+    assert "Reliability: low" in body     # _akaPasta's tank: a rough month
+    assert "Build" not in body
 
 
 async def test_rest_move_twin_mutates_through_single_instance(as_staff, seeded):
@@ -424,3 +429,72 @@ async def test_gone_stamp_outranks_the_late_hourglass(as_staff, seeded):
     finally:
         st.presence_by_uuid = {}
         st.seen_online_uuids = set()
+
+
+
+# --- staff reliability override (/staff/roles) -------------------------------
+
+async def _paradrex_cap(seeded):
+    from app.db.models import RoleCapability
+    return await RoleCapability.get(player=seeded["players"]["Paradrex"])
+
+
+async def _post_cap(as_staff, cap, **form):
+    return await as_staff.post(
+        f"/staff/roles/capability/{cap.id}",
+        data={"confidence": cap.confidence.value, "weapons": "Idol", **form},
+    )
+
+
+async def test_staff_modal_offers_the_reliability_override(as_staff, seeded):
+    cap = await _paradrex_cap(seeded)
+    body = (await as_staff.get(f"/staff/roles/capability/{cap.id}/edit")).text
+    assert "Reliability override" in body
+    assert '<option value="keep" selected>No change</option>' in body
+    assert "Currently <strong>Low</strong>, from their record" in body
+    assert 'value="auto"' not in body  # nothing to clear yet
+
+
+async def test_staff_restart_rebases_and_clear_undoes_it(as_staff, seeded):
+    cap = await _paradrex_cap(seeded)  # moderate confidence, 1 win -> Low
+
+    r = await _post_cap(as_staff, cap, reliability_override="high")
+    assert r.status_code == 200
+    assert "Reliability: high" in r.text and "staff-set" in r.text
+    await cap.refresh_from_db()
+    assert cap.reliability_override == "high"
+    assert cap.reliability_set_wins == 1 and cap.reliability_set_at is not None
+
+    # Re-saving with the default leaves the restart exactly where it was.
+    set_at = cap.reliability_set_at
+    await _post_cap(as_staff, cap)
+    await cap.refresh_from_db()
+    assert cap.reliability_override == "high" and cap.reliability_set_at == set_at
+
+    r = await _post_cap(as_staff, cap, reliability_override="auto")
+    assert "Reliability: low" in r.text and "staff-set" not in r.text
+    await cap.refresh_from_db()
+    assert cap.reliability_override is None and cap.reliability_set_at is None
+
+
+async def test_players_cannot_override_their_own_reliability(client, seeded):
+    """The user's own edit route has no such field — a crafted POST is
+    ignored and the user modal never offers it."""
+    from app.db.models import RoleCapability
+
+    wen = seeded["players"]["Wenweia"]
+    client.cookies.set("anni_session", deps._serializer.dumps(
+        {"kind": "user", "mc_uuid": wen.mc_uuid, "name": wen.mc_username}
+    ))
+    cap = await RoleCapability.get(player=wen, role="healer")
+
+    body = (await client.get(f"/me/capability/{cap.id}/edit")).text
+    assert "Reliability override" not in body
+
+    r = await client.post(f"/me/capability/{cap.id}", data={
+        "confidence": "moderate", "weapons": "Lament",
+        "reliability_override": "high",
+    })
+    assert r.status_code == 200
+    await cap.refresh_from_db()
+    assert cap.reliability_override is None

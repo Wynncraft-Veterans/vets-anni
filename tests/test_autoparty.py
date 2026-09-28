@@ -79,8 +79,7 @@ async def _add_player(
     )
     for role, conf, wins in caps or []:
         await RoleCapability.create(
-            player=p, role=role, confidence=conf,
-            build_quality=ConfidenceLevel.MODERATE, success_count=wins,
+            player=p, role=role, confidence=conf, success_count=wins,
         )
     await BoardPlacement.create(
         event=event, player=p, bucket=bucket, sort_index=0,

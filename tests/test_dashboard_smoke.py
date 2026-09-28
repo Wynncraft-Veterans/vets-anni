@@ -61,6 +61,14 @@ async def test_capability_modal_quotes_guidance_and_links(as_user):
     assert r.status_code == 200
     assert "wynnvets.org/docs/guild/anni" in r.text  # docs links (spec)
     assert "Requirements:" in r.text
+    # Reliability is derived and staff-only: nothing to fill in, nothing shown.
+    assert "build_quality" not in r.text and "Reliability" not in r.text
+
+
+async def test_player_dashboard_never_shows_reliability(as_user):
+    r = await as_user.get("/me")
+    assert r.status_code == 200
+    assert "Reliability" not in r.text and "Build" not in r.text
 
 
 async def test_capability_modal_bolds_the_threshold(as_user):

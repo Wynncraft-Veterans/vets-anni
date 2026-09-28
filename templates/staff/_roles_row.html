@@ -72,7 +72,9 @@
           <div class="cap-bottom">
             <span class="cap-levels">
               {{ level("Confidence", c.confidence) }}
-              {{ level("Build", c.build_quality) }}
+              {{ level("Reliability", c.reliability) }}
+              {% if c.reliability_staff_set %}<span class="pill pill-muted"
+                title="Staff restarted this reliability at a set tier; wins and setbacks since still move it">staff-set</span>{% endif %}
               {{ success(c.success_count) }}
             </span>
             <span class="cap-actions">

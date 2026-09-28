@@ -93,6 +93,45 @@ A capability holds **multiple weapons** (e.g. a primary-capable user on both
 primary and a separate 3 for secondary is fine. Modelled as N
 `RoleCapabilityWeapon` rows under one `(player, role)` `RoleCapability`.
 
+## Reliability (`domain/reliability.py`)
+How far staff can count on a player in one role. **Derived, never
+declared, and staff-only** — it replaced the self-assessed "build quality"
+field; players neither fill it in nor see it (not on their dashboard, not in
+the Discord role lookup). Shown as a Low/Moderate/High level on the board's
+capability popover and the staff roles page.
+
+In points: start at 3 if confidence is HIGH, else 0; **+1 per win** in the
+role (`success_count`); **−3 per penalised setback**. MODERATE at 3+ points;
+HIGH needs **10+ wins and 10+ points**; else LOW. So new players start Low
+(Moderate with high confidence), and nobody reaches High on confidence alone.
+
+Setbacks (`Setback`, written by the grace-wipe): a LOSS in this role, or a
+MISSED hard RSVP (counts against every role). Taken in date order, one is
+**free** if it is among the first two ever, or the first in its calendar
+month (UTC). So nobody is penalised before their third, three in one month
+penalises the third, and one bad night a month never costs anything.
+
+| Record (confidence) | Reliability |
+|---|---|
+| new (low / moderate) | Low |
+| new (high) | Moderate |
+| 3 wins (moderate) | Moderate |
+| 10 wins | High |
+| 10 wins, 3 losses in one month (moderate) | Moderate (10 − 3) |
+| 13 wins, 3 losses in one month (moderate) | High (13 − 3) |
+| 10 wins, one loss a month for 6 months | High (all free) |
+
+**Staff override** (`/staff/roles` → Edit → "Reliability override"): restarts
+the score on the chosen tier's line *now* — Low 0, Moderate 3, High 10
+points — replacing the confidence start and everything before it. From then
+on only wins and setbacks **recorded after** the restart move it, each judged
+as it otherwise would be (the free allowance still runs over the whole
+history, so a restart doesn't hand out two fresh free setbacks). A High
+restart vouches for the 10-win gate; Low/Moderate still need 10 lifetime
+wins to climb to High. The select defaults to "No change" so re-saving never
+re-bases; "Clear override" returns to the derivation from the whole record.
+The roles page marks an overridden capability "staff-set".
+
 ## Preferred regions (`domain/regions.py`)
 A user's preferred play region(s): a self-set multi-select over the **MaxMind
 GeoIP2 continent codes** — `ContinentCode` in `constants.py` holds all seven
@@ -355,10 +394,19 @@ except per-party result + stage). now>stamp+2h → wipe in ONE transaction:
 snapshot results, increment `success_count` for WIN **party members only** —
 anyone left in a bucket (Unassigned / Volunteers / Sitting-out) earns nothing
 even if their card carries an assigned role, since a role is routinely set
-before (or left set after) a card is dragged into a party — delete
+before (or left set after) a card is dragged into a party — record reliability
+setbacks (below), delete
 `BoardPlacement`/`Rsvp` for the event, mark `wiped_at`+`is_active=False`,
 broadcast `BOARD_WIPE`. `RoleCapability`/`AnniPlayer` persist. A new/changed
 future stamp updates the active event (re-announcement), not a duplicate.
+
+Setbacks at the wipe: **LOSS** for exactly the members the win credit would
+have covered (party members, core role, holding that capability) in parties
+marked LOSS — LAG is never a setback, TBD is a win. **MISSED** for a
+non-revoked hard RSVP whose player never sat in a party and was never seen
+online in the hot window (`Rsvp.seen_online_at`). Never fabricated: a player
+whose API is hidden is exempt (unconfirmable, not absent), and if no RSVP
+was stamped at all the presence poller wasn't running, so none are recorded.
 
 ## API-disabled inference (`services/api_disabled.py`)
 Epoch `last_online` ⇒ disabled. Confirm presence via the online-merge source

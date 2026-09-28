@@ -34,6 +34,7 @@ from app.db.models import AnniPlayer, Rsvp
 from app.domain import capability as cap_domain
 from app.domain import players as players_domain
 from app.domain import regions as regions_domain
+from app.domain import reliability
 from app.domain.colourblind import role_chip
 from app.domain.membership import label as tier_label
 from app.domain.roles import capability_roles, guidance
@@ -165,7 +166,8 @@ def row_for(
                 "role_label": guidance(c.role).title,
                 "chip": role_chip(c.role),
                 "confidence": c.confidence,
-                "build_quality": c.build_quality,
+                "reliability": reliability.of(c, player.setbacks),
+                "reliability_staff_set": c.reliability_override is not None,
                 "success_count": c.success_count,
                 "weapons": [
                     {"name": w.weapon_name, "subtype": w.weapon_subtype}
@@ -184,7 +186,7 @@ async def roles_dashboard(request: Request):
 
     players = (
         await AnniPlayer.all()
-        .prefetch_related("capabilities__weapons")
+        .prefetch_related("capabilities__weapons", "setbacks")
         .order_by("mc_username")
     )
     active, rsvp_by_uuid, has_event = await view_signals(
@@ -231,7 +233,7 @@ async def _row_response(
     """
     player = (
         await AnniPlayer.filter(mc_uuid=player_uuid)
-        .prefetch_related("capabilities__weapons")
+        .prefetch_related("capabilities__weapons", "setbacks")
         .first()
     )
     if player is None:

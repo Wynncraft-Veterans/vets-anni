@@ -14,7 +14,9 @@ lifecycle so the destructive transition lives in exactly one place:
   never earn credit, assigned role or not (parties left ``TBD`` at wipe time
   are treated as WIN —
   staff had the whole grace window to mark a ``LOSS``/``LAG`` and didn't, so
-  the members still get credit), delete this event's
+  the members still get credit), record the reliability setbacks (a LOSS
+  party's members, and hard RSVPs nobody saw turn up — see
+  ``_record_setbacks``), delete this event's
   ``BoardPlacement``/``Rsvp``, mark ``wiped_at`` + ``is_active=False`` — then
   broadcast ``BOARD_WIPE``. ``RoleCapability``/``AnniPlayer`` persist; a later
   future stamp makes a fresh event via ``stamp_poller`` (a re-announce
@@ -30,9 +32,15 @@ from datetime import datetime, timezone
 from tortoise.expressions import F
 from tortoise.transactions import in_transaction
 
-from app.constants import CAPABILITY_ROLES, PartyResult
+from app.constants import (
+    CAPABILITY_ROLES,
+    AttendanceNotice,
+    PartyResult,
+    SetbackKind,
+)
 from app.db.lifecycle import get_active_event
-from app.db.models import BoardPlacement, Party, RoleCapability, Rsvp
+from app.db.models import BoardPlacement, Party, RoleCapability, Rsvp, Setback
+from app.domain import identity
 from app.domain.schedule import EventPhase, phase_of
 from app.services.loop import poll_forever
 from app.services.state import AppState
@@ -83,10 +91,77 @@ async def _credit_wins(event) -> int:
     return credited
 
 
+async def _record_setbacks(event, state: AppState) -> tuple[int, int]:
+    """Write this event's :class:`Setback` rows. Returns ``(losses, misses)``.
+
+    **Losses** mirror :func:`_credit_wins` exactly — party members only,
+    core roles only, and only where the player holds that capability — for
+    parties marked LOSS. LAG is never a setback; TBD is a win.
+
+    **Misses** are non-revoked hard RSVPs where the player never sat in a
+    party *and* was never seen online in the hot window
+    (``Rsvp.seen_online_at``, stamped by the presence poller). Two
+    exemptions, both "never fabricate": a player whose API is hidden is
+    unconfirmable, not absent; and if *no* RSVP was stamped at all, presence
+    tracking wasn't running (the process was down for the anni), so we
+    can't tell a no-show from a blind spot and record none.
+    """
+    occurred_at = datetime.fromtimestamp(event.stamp_epoch, tz=timezone.utc)
+
+    lost = await BoardPlacement.filter(
+        event=event,
+        party_id__isnull=False,
+        bucket__isnull=True,
+        party__result=PartyResult.LOSS,
+        assigned_role__in=CAPABILITY_ROLES,
+    )
+    losses = 0
+    for m in lost:
+        if await RoleCapability.filter(
+            player_id=m.player_id, role=m.assigned_role,
+        ).exists():
+            await Setback.create(
+                player_id=m.player_id, kind=SetbackKind.LOSS,
+                role=m.assigned_role, event=event, occurred_at=occurred_at,
+            )
+            losses += 1
+
+    hard = await Rsvp.filter(
+        event=event, revoked_at=None, notice=AttendanceNotice.RSVP_HARD,
+    ).select_related("player")
+    if not await Rsvp.filter(event=event, seen_online_at__isnull=False).exists():
+        if hard:
+            logger.warning(
+                "no RSVP was seen online during this anni — presence tracking "
+                "wasn't running; recording no missed RSVPs",
+            )
+        return losses, 0
+    partied = set(
+        await BoardPlacement.filter(
+            event=event, party_id__isnull=False,
+        ).values_list("player_id", flat=True)
+    )
+    misses = 0
+    for r in hard:
+        uuid = r.player.mc_uuid
+        if (
+            r.seen_online_at is None
+            and uuid not in partied
+            and not identity.is_api_hidden(state, uuid, r.player.last_online)
+        ):
+            await Setback.create(
+                player=r.player, kind=SetbackKind.MISSED,
+                event=event, occurred_at=occurred_at,
+            )
+            misses += 1
+    return losses, misses
+
+
 async def _wipe(event, state: AppState) -> None:
     now = datetime.now(timezone.utc)
     async with in_transaction():
         credited = await _credit_wins(event)
+        losses, misses = await _record_setbacks(event, state)
         placements = await BoardPlacement.filter(event=event).count()
         await BoardPlacement.filter(event=event).delete()
         await Party.filter(event=event).update(
@@ -98,8 +173,9 @@ async def _wipe(event, state: AppState) -> None:
         await event.save(update_fields=["wiped_at", "is_active"])
     logger.info(
         "anni wiped (stamp=%d): %d placements cleared, %d capabilities "
-        "credited (WIN + TBD-default-to-WIN); event marked inactive",
-        event.stamp_epoch, placements, credited,
+        "credited (WIN + TBD-default-to-WIN), setbacks: %d losses + %d missed "
+        "RSVPs; event marked inactive",
+        event.stamp_epoch, placements, credited, losses, misses,
     )
     # The next presence tick recomputes empty (no active event); clear now so
     # nothing stale lingers between ticks.
