@@ -86,7 +86,9 @@
       <p class="muted">No players known yet.</p>
     {% endif %}
   </section>
+{% endblock %}
 
+{% block modals %}
   {# Edit-capability modal mounts here (HTMX innerHTML swap from the Edit
      button). The form's success swap targets the row, then the JS below
      clears the mount. #}

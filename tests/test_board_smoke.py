@@ -213,6 +213,7 @@ async def test_add_player_is_a_popup_not_an_inline_field(as_staff, seeded):
     assert "Add a walk-in by IGN" not in body
     assert 'hx-get="/staff/board/add"' in body
     assert 'id="board-modal-mount"' in body
+    assert body.index('id="board-modal-mount"') > body.index("</main>")  # not clipped by .page
 
     r = await as_staff.get("/staff/board/add")
     assert r.status_code == 200

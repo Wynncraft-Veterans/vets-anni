@@ -39,6 +39,9 @@ async def test_me_dashboard_renders_general_and_specific(as_user):
     # Seeded event is ~93 min out (future) -> Today's-anni module NOT blank.
     assert "Today's Annihilation" in body
     assert "RSVP" in body and "Tentative Information" in body
+    # The modal mount sits outside .page — inside it, .page's backdrop-filter
+    # makes it the fixed overlay's containing block and tall modals clip.
+    assert body.index('id="modal-mount"') > body.index("</main>")
     # The 15 s refresh lives on the STABLE wrapper (card animates once, the
     # fragment swaps inside it) — not on the fragment itself.
     assert 'hx-get="/me/specific"' in body

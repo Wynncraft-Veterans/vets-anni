@@ -41,7 +41,9 @@
      signal, so all rendering stays server-side. Forms inside it post to the
      REST twins and work even with the socket down (graceful degradation). #}
   {% include "staff/_board.html" %}
+{% endblock %}
 
+{% block modals %}
   {# Add-player popup mounts here (outside #board so a board refresh can't
      wipe an open modal); board.js clears it once the board swaps in. #}
   <div id="board-modal-mount"></div>

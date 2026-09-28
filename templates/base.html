@@ -76,6 +76,11 @@ You can also follow along with the status of the current anni (if announced).{% 
     {% block content %}{% endblock %}
   </main>
 
+  {# Modal mounts go here, OUTSIDE .page: its backdrop-filter (and the
+     transform/filter its fade-in leaves behind) make it the containing block
+     for position:fixed, so an overlay inside it was clipped to the panel. #}
+  {% block modals %}{% endblock %}
+
   {% block scripts %}{% endblock %}
 </body>
 </html>
