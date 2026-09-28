@@ -27,7 +27,7 @@ You can also follow along with the status of the current anni (if announced).{% 
   <meta property="og:image" content="{{ PUBLIC_BASE_URL }}{{ asset('img/favicon.png') }}">
   <meta name="twitter:card" content="summary">
 </head>
-<body class="{% if cb %}cb{% endif %}{% if not label_tags %} hide-rolelabel hide-statuslabel{% endif %}">
+<body class="{% if cb %}cb{% endif %}">
   {# Alpine x-data drives the mobile hamburger toggle. On desktop the
      menu is always visible (CSS @media), so `open` is only consulted at
      narrow widths — the .open class is what reveals the dropdown there. #}

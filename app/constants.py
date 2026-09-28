@@ -441,8 +441,8 @@ class RoleStyle:
 class StatusStyle:
     """A person's *status* chip. Same four shared colour channels as
     RoleStyle (the border colour, default mode), plus ``lamps`` — the
-    colourblind variant's channel — and ``glyph`` + ``label`` for the opt-in
-    text tag and screen readers.
+    colourblind variant's channel — and ``glyph`` + ``label`` for screen
+    readers.
 
     ``label`` is a SHORT name ("In Party"), because it is read in two places
     that both want brevity: the legend, which is scanned rather than read,

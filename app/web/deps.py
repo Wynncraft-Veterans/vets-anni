@@ -117,31 +117,14 @@ def set_colourblind(response: Response, on: bool) -> None:
         response.delete_cookie(_CB_COOKIE)
 
 
-# --- board label-density toggle --------------------------------------------
-# Per-user "show the text tags?" pref for the board person cards (a single
-# switch that governs both the role tag and the status tag — they're the same
-# density choice). Default OFF in both modes: the role-card background, status
-# border colour+pattern, and capability dots already carry the signal, so the
-# text tag is opt-in density. The toggle is interactive in CB too; the person
-# root's aria-label still announces role+status for screen-reader users.
-_LABEL_COOKIE = "lbl_tags"
+# --- board display prefs ---------------------------------------------------
+# (There was a third, a "Role/Status info" switch that added role + status
+# text tags to every card. Removed 2026-09-28: rarely used, it undercut the
+# card's visual channels and was the main cause of card overflow. A stale
+# `lbl_tags` cookie in someone's browser is simply ignored.)
 
-
-def labels_visible(request: Request) -> bool:
-    """Whether the role + status text tags render on a person card."""
-    return request.cookies.get(_LABEL_COOKIE) == "1"
-
-
-def set_labels_pref(response: Response, on: bool) -> None:
-    if on:
-        response.set_cookie(_LABEL_COOKIE, "1", max_age=60 * 60 * 24 * 365,
-                            samesite="lax")
-    else:
-        response.delete_cookie(_LABEL_COOKIE)
-
-
-# Pin the legend/configs bar to the top while scrolling. Unlike the label
-# prefs this defaults **on**, so "no cookie" == pinned and we only ever store
+# Pin the legend/configs bar to the top while scrolling. Unlike the dropdown
+# pref this defaults **on**, so "no cookie" == pinned and we only ever store
 # the explicit opt-OUT ("0"); clearing it returns to the default.
 _PIN_COOKIE = "cfg_pin"
 
@@ -213,10 +196,6 @@ def render(request: Request, template: str, **context: Any) -> Response:
         "user_uuid": session.get("mc_uuid") if session.get("kind") == "user" else None,
         "is_staff": session.get("kind") == "staff",
         "debug": _settings.debug,
-        # Effective board label visibility (a single combined switch covers
-        # both the role and status text tags); base.html turns it into the
-        # body classes, the board controls box reflects it.
-        "label_tags": labels_visible(request),
         "pin_legend": pin_legend(request),
         "dropdown_assign": dropdown_assign(request),
         # Cookie-derived by default; the collapse toggle route passes a fresh

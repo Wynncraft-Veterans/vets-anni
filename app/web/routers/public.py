@@ -22,12 +22,10 @@ from app.web.deps import (
     clear_session,
     colourblind,
     dropdown_assign,
-    labels_visible,
     pin_legend,
     render,
     set_colourblind,
     set_dropdown_assign,
-    set_labels_pref,
     set_pin,
     write_session,
 )
@@ -151,16 +149,13 @@ async def toggle_colourblind(request: Request):
 
 @router.get("/toggle-label", include_in_schema=False)
 async def toggle_label(request: Request):
-    """Flip a board-controls preference (``which`` = tags|pin|
-    dropdown_assign) and bounce back. ``tags`` is the combined role+status
-    text-label density switch; the others are unrelated configs that share
-    this route/box for routing symmetry."""
+    """Flip a board-controls preference (``which`` = pin|dropdown_assign)
+    and bounce back. (The route is named for the retired role/status
+    text-label switch it was built for; the remaining configs share it.)"""
     which = request.query_params.get("which")
     target = request.query_params.get("next") or "/staff/board"
     resp = RedirectResponse(target, status_code=303)
-    if which == "tags":
-        set_labels_pref(resp, not labels_visible(request))
-    elif which == "pin":
+    if which == "pin":
         set_pin(resp, not pin_legend(request))
     elif which == "dropdown_assign":
         set_dropdown_assign(resp, not dropdown_assign(request))

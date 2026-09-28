@@ -677,16 +677,6 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
 .person-name .muted { color:#e5e7eb; opacity:.8; font-weight:400; }
 .person-tags { display:flex; flex-wrap:wrap; gap:.3rem; align-items:center;
   font-size:.72rem; }
-.role-tag, .status-tag {
-  display:inline-flex; align-items:center; gap:.25rem;
-  background:rgba(0,0,0,.28); padding:.05rem .4rem; border-radius:999px;
-  font-weight:600;
-}
-.role-tag .glyph {
-  font-size:.62rem; color:#fff; -webkit-text-stroke:.6px #000;
-  paint-order:stroke fill; padding:.05rem .3rem; border-radius:5px;
-}
-.status-tag .glyph { font-size:.8rem; }
 .person .pill { font-size:.68rem; }
 /* Stacked so the (optional) move dropdown doesn't fight the role select for
    the card's narrow right-hand column. */
@@ -741,13 +731,6 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
    so the rings that frame it go too. */
 body.cb .person.status-border,
 body.cb .legend-status.status-border { box-shadow:none; }
-
-/* Label-density toggle (deps.labels_visible -> base.html body classes; one
-   switch covers both tags). Default off in both modes — the role card
-   background, status border colour+pattern, and capability dots already carry
-   the signal; the text tags are opt-in. */
-body.hide-rolelabel  .person .role-tag    { display:none; }
-body.hide-statuslabel .person .status-tag { display:none; }
 
 /* Capability dots — "what can this player do?". Sit inline after the name on
    the title row, full raw role hue (PRIM=red/SUNK=yellow/HDMG=magenta/

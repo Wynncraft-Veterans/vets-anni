@@ -127,20 +127,12 @@
       </div>
     </section>
 
-    {# No visible heading: three labelled switches explain themselves, and the
+    {# No visible heading: the labelled switches explain themselves, and the
        heading was the single thing making this card taller than the legend
        beside it — which then set the height of the whole bar. `aria-label`
        keeps the region named for anyone navigating by landmark. #}
     <section class="card board-controls" aria-label="Board display options">
       <ul class="cfg-list">
-        <li>
-          <a class="cfg-row" role="switch"
-             aria-checked="{{ 'true' if label_tags else 'false' }}"
-             href="/toggle-label?which=tags&next=/staff/board">
-            <span class="cfg-name">Role/Status info</span>
-            <span class="cfg-switch{{ ' on' if label_tags }}" aria-hidden="true"></span>
-          </a>
-        </li>
         <li>
           <a class="cfg-row" role="switch"
              aria-checked="{{ 'true' if pin_legend else 'false' }}"

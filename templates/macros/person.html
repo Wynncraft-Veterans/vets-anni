@@ -16,7 +16,11 @@
      (person/tick/half-ring/cross) + title + aria-label carry it; colour only
      reinforces;
    * the assigned ROLE is the card background (legible -dark shade, white
-     text) plus the raw-hue glyph swatch + label;
+     text; under cb also a per-role texture), named by the role dropdown
+     and the root's aria-label. (Opt-in role + status text tags used to
+     repeat both axes as pills; they were rarely switched on, undercut the
+     visual channels, and were the main cause of card overflow, so they
+     went — 2026-09-28.);
    * a HISTORY stamp sits over the avatar — a `?` for "was online earlier,
      is not now", else an hourglass for a late arrival. Each is its own axis
      (any RSVP state and any status can carry either), but only the more
@@ -37,8 +41,7 @@
      for any descendant under the pointer, so a title here pops up on top of
      the capability-dot popover whenever you hover a dot. The same name +
      status is in `aria-label` for screen readers; the visible card + border
-     colour (or, under cb, the traffic light) + opt-in Status Labels carry
-     it visually. #}
+     colour (or, under cb, the traffic light) carry it visually. #}
   <div class="person status-border"
        data-uuid="{{ p.uuid }}" data-role="{{ p.assigned_role or '' }}"
        draggable="true"
@@ -164,13 +167,6 @@
            they register (RSVP, dashboard login, capability edit, walk-in).
            LATE + Retracted pills are always shown when applicable. #}
         {% if not p.is_placeholder %}
-          <span class="role-tag" role="img" aria-label="Assigned role: {{ p.role_chip.label }}">
-            <span class="glyph" style="background-color: var({{ p.role_chip.css_var }})">{{ p.role_chip.glyph }}</span>
-            {{ p.assigned_role | capitalize if p.assigned_role else "Unassigned" }}
-          </span>
-          <span class="status-tag" role="img" aria-label="Status: {{ p.status_chip.label }}">
-            <span class="glyph">{{ p.status_chip.glyph }}</span>{{ p.status.replace('_', ' ') }}
-          </span>
           <span class="pill pill-muted">{{ p.tier_label }}</span>
         {% else %}
           <span class="pill pill-warn"
