@@ -67,7 +67,7 @@
       <select id="confidence" name="confidence">
         {% for lv in ["high", "moderate", "low"] %}
           <option value="{{ lv }}"
-            {{ "selected" if cap and cap.confidence == lv or (not cap and lv == "moderate") }}>
+            {{ "selected" if cap and cap.confidence == lv or (not cap and lv == "low") }}>
             {{ lv | capitalize }}
           </option>
         {% endfor %}
