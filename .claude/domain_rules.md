@@ -98,7 +98,10 @@ How far staff can count on a player in one role. **Derived, never
 declared, and staff-only** — it replaced the self-assessed "build quality"
 field; players neither fill it in nor see it (not on their dashboard, not in
 the Discord role lookup). Shown as a Low/Moderate/High level on the board's
-capability popover and the staff roles page.
+capability popover and the staff roles page, and as the **shape of the
+board's capability pips**: triangle = Low, square = Moderate, circle = High,
+each a size step smaller than the next (keyed in the board legend; shape is
+a non-colour channel, so CB-safe).
 
 In points: start at 3 if confidence is HIGH, else 0; **+1 per win** in the
 role (`success_count`); **−3 per penalised setback**. MODERATE at 3+ points;

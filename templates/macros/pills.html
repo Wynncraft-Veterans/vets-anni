@@ -53,3 +53,15 @@
     <span class="pill pill-muted" title="No preferred play region set">🌐 Any region</span>
   {% endif %}
 {% endmacro %}
+
+{# The LOW-reliability capability pip (see .cap-dot in anni.css). Three
+   copies of one path, widest first: the faint hairline, the outline, then
+   the fill with a thin stroke of its own colour to soften the corners — an
+   even outline that CSS clip-path + drop-shadows couldn't give. #}
+{% macro cap_tri() -%}
+  <svg class="cap-tri" viewBox="0 0 12 11" aria-hidden="true" focusable="false">
+    <path class="cap-tri-hair" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
+    <path class="cap-tri-halo" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
+    <path class="cap-tri-fill" d="M6 1.6 L10.6 9.6 L1.4 9.6 Z"/>
+  </svg>
+{%- endmacro %}

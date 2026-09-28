@@ -670,6 +670,9 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   width:1px; align-self:stretch; margin:.1rem .3rem;
   background:#cbd5e1; flex:none;
 }
+.legend-pips { display:inline-flex; align-items:center; gap:.75rem; font-weight:600; }
+.legend-pip { display:inline-flex; align-items:center; gap:.35rem; font-weight:400; }
+.legend-pips .cap-dot { cursor:default; }
 .person-main { display:flex; flex-direction:column; gap:.15rem; min-width:0;
   flex:1; }
 .person-name { font-weight:700; font-size:.9rem; }
@@ -757,7 +760,9 @@ body.hide-statuslabel .person .status-tag { display:none; }
    info panel; the popover is a sibling so the CSS-only hover path (the
    default) is one `+` selector away. */
 .person-name .cap-dots {
-  display:inline-flex; align-items:center; gap:.25rem;
+  /* No gap: each shape carries its own side margin (below) so the *visible*
+     space between pips is even whatever mix of shapes sits side by side. */
+  display:inline-flex; align-items:center; gap:0;
   margin-left:.4rem; vertical-align:middle;
   /* Nudge up: `vertical-align:middle` aligns the dot's vertical centre to
      the parent's lowercase x-height (not the cap-height), which reads ~3px
@@ -779,6 +784,61 @@ body.hide-statuslabel .person .status-tag { display:none; }
   -webkit-touch-callout:none; user-select:none;
 }
 .cap-dot:focus-visible { outline:2px solid #fff; outline-offset:1px; }
+/* Reliability in that role (derived, staff-only — domain/reliability.py)
+   is the dot's SHAPE, size and outline: triangle = LOW, square = MODERATE,
+   circle = HIGH (the base style above), each a step smaller than the next.
+   The outline: the circle is ringed light grey, the square and triangle in
+   the role's own dark shade (--cap-halo-dark), the square's a little
+   heavier. All three carry the same faint dark hairline 1px outside that
+   outline, which gives an edge even on a card painted in the pip's own
+   role's dark shade, where the dark outline alone would vanish. Shape is a
+   second, non-colour channel, so it reads the same under body.cb.
+
+   The triangle is an inline SVG (``cap_tri`` in macros/pills.html): a
+   box-shadow outline would be clipped off with the corners, and faking one
+   with drop-shadows gives a stepped, uneven edge. At this box size a unit
+   is ~0.82px, so outline stroke 3 minus the fill's own 1 leaves ~0.8px,
+   and the hairline's 5.4 reaches ~1px beyond that. */
+.cap-dot[data-reliability] { --cap-hairline: rgba(0,0,0,.28); }
+.cap-dot[data-reliability="high"] {
+  /* The light ring is the only light edge in the set, so it gets a hairline
+     on both sides: inset (between the fill and the ring) and outside. */
+  box-shadow:inset 0 0 0 1px var(--cap-hairline),
+             0 0 0 1.5px #b4bac4, 0 0 0 2.5px var(--cap-hairline);
+}
+.cap-dot[data-reliability="moderate"] {
+  width:.576rem; height:.576rem; border-radius:0;
+  box-shadow:0 0 0 1px var(--cap-halo-dark, #1e293b),
+             0 0 0 2px var(--cap-hairline);
+}
+.cap-dot[data-reliability="low"] {
+  position:relative; width:.612rem; height:.561rem;
+  background:none; border-radius:0; box-shadow:none;
+}
+.cap-tri {
+  position:absolute; inset:0; width:100%; height:100%; overflow:visible;
+}
+.cap-tri path { stroke-linejoin:round; }
+.cap-tri-hair {
+  fill:var(--cap-hairline); stroke:var(--cap-hairline); stroke-width:5.4;
+}
+.cap-tri-halo {
+  fill:var(--cap-halo-dark, #1e293b); stroke:var(--cap-halo-dark, #1e293b);
+  stroke-width:3;
+}
+.cap-tri-fill {
+  fill:var(--cap-fill, currentColor);
+  stroke:var(--cap-fill, currentColor); stroke-width:1;
+}
+/* Above the SVG, and nudged toward the triangle's wider base. */
+.cap-dot[data-reliability="low"] .cap-letter { position:relative; top:.08rem; }
+/* Even visible spacing on a card, tuned by measuring rendered gaps: each
+   shape's side margin makes up for how far its outline spills past its box
+   and for its silhouette — a circle's curve and a triangle's sloping sides
+   both read as extra space, a square's flat side as none. */
+.cap-dots .cap-dot[data-reliability="high"]     { margin:0 2.9px; }
+.cap-dots .cap-dot[data-reliability="moderate"] { margin:0 2.8px; }
+.cap-dots .cap-dot[data-reliability="low"]      { margin:0 1.2px; }
 /* Letter glyph (P/S/M/H/T): the CB non-colour channel. Hidden in default
    mode (the colour conveys it for non-CVD users); CSS in colourblind.css
    shows it under body.cb so colour is never the only signal there.

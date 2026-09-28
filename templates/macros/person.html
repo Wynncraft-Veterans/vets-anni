@@ -27,7 +27,7 @@
    Every colour comes from a `var(--st-*)` / `var(--role-*)` custom property,
    so the per-user `cb` cookie swap recolours it with zero markup change. #}
 
-{% from "macros/pills.html" import level, weapon, success %}
+{% from "macros/pills.html" import level, weapon, success, cap_tri %}
 {% from "macros/icons.html" import rsvp_icon, late_icon, gone_icon %}
 {% macro person(p) %}
   {# No `title=` on the root: the browser fires the nearest ancestor's title
@@ -112,10 +112,12 @@
                    double up and overlap. `aria-label` still carries it for
                    screen readers. #}
                 <button type="button" class="cap-dot"
-                        style="--cap-fill: var({{ c.css_var }}); --cap-halo: var({{ c.css_var_light }})"
-                        aria-label="{{ c.label }} (capable)"
+                        style="--cap-fill: var({{ c.css_var }}); --cap-halo: var({{ c.css_var_light }}); --cap-halo-dark: var({{ c.css_var_dark }})"
+                        aria-label="{{ c.label }} (capable, {{ c.reliability }} reliability)"
                         data-role="{{ c.role }}"
+                        data-reliability="{{ c.reliability }}"
                         draggable="false">
+                  {% if c.reliability == "low" %}{{ cap_tri() }}{% endif %}
                   <span class="cap-letter" aria-hidden="true">{{ c.letter }}</span>
                 </button>
                 <span class="cap-popover" role="tooltip">

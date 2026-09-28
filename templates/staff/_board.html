@@ -6,6 +6,7 @@
    `with context` so the person() macro sees `assignable_roles`. #}
 {% from "macros/person.html" import person with context %}
 {% from "macros/icons.html" import rsvp_icon %}
+{% from "macros/pills.html" import cap_tri %}
 <div id="board" class="board"
      {% if has_event %}data-phase="{{ snapshot.event.phase }}"
      data-frozen="{{ '1' if snapshot.event.frozen else '0' }}"{% endif %}>
@@ -41,6 +42,23 @@
               <span class="chip-text">{{ rc.label }}</span>
             </span>
           {% endfor %}
+          {# The capability pips' second channel: their shape is the
+             player's reliability in that role. Neutral slate, which no role
+             uses, so the key doesn't read as one. #}
+          <span class="legend-sep" aria-hidden="true"></span>
+          <span class="legend-pips" title="Capability pips: reliability in that role">
+            Reliability
+            {% for lv in ["low", "moderate", "high"] %}
+              <span class="legend-pip">
+                <span class="cap-dot" data-reliability="{{ lv }}"
+                      style="--cap-fill: #64748b; --cap-halo: #cbd5e1; --cap-halo-dark: #1e293b"
+                      aria-hidden="true">
+                  {%- if lv == "low" %}{{ cap_tri() }}{% endif -%}
+                </span>
+                {{ lv | capitalize }}
+              </span>
+            {% endfor %}
+          </span>
         </div>
       </div>
       <div class="legend-block">

@@ -132,6 +132,20 @@ async def test_board_renders_people_legend_and_cb_channels(as_staff, seeded):
 
 
 
+async def test_capability_pips_carry_reliability(as_staff, seeded):
+    """Each pip's ring/fade is its reliability — a data attribute the CSS
+    keys on, spelled out in the aria-label, and keyed in the legend."""
+    import re
+
+    body = (await as_staff.get("/staff/board")).text
+    # Wenweia's primary (12 wins, high confidence) and _akaPasta's tank (a
+    # rough month in the seed) sit at opposite ends.
+    assert 'aria-label="Primary (boss killer) (capable, high reliability)"' in body
+    assert 'aria-label="Tank (capable, low reliability)"' in body
+    pips = re.findall(r'class="cap-dot"[^>]*data-reliability="(\w+)"', body)
+    assert pips and set(pips) <= {"low", "moderate", "high"}
+    assert 'class="legend-pips"' in body
+
 async def test_board_fragment_is_inner_only(as_staff, seeded):
     r = await as_staff.get("/staff/board/fragment")
     assert r.status_code == 200
