@@ -954,6 +954,15 @@ a.cfg-row:hover .cfg-switch { filter:brightness(.97); }
 .legend-block { margin:.2rem 0 .8rem; }
 .legend-block h3 { margin:.2rem 0 .35rem; font-size:.95rem; }
 .legend-row { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+/* Legend layouts (see _board.html): STRUCTURED is the three blocks above as
+   rows. FLOW — set by board.js when a structured row would wrap — flattens
+   the blocks into the legend's own single wrapping row and shows the rules
+   that split the groups. */
+.legend-sep-flow { display:none; }
+.legend.legend-flow { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+.legend.legend-flow .legend-block,
+.legend.legend-flow .legend-row { display:contents; }
+.legend.legend-flow .legend-sep-flow { display:block; }
 .legend-status {
   display:inline-flex; align-items:center; gap:.3rem;
   padding:.15rem .55rem; border-radius:8px; font-size:.75rem; font-weight:600;

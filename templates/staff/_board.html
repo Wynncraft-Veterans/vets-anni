@@ -33,6 +33,13 @@
        Optionally pinned under the navbar
        while scrolling (a per-user config, default on). #}
     <div class="legend-wrap{{ ' pinned' if pin_legend }}">
+    {# Two layouts, both modes. STRUCTURED (the default, and the no-JS
+       fallback): three rows — role keys / reliability + statuses / RSVPs.
+       FLOW: if any of those rows would wrap (so the legend would run past
+       three lines), board.js adds `.legend-flow` and all three groups run
+       together in one wrapping row, split by the `.legend-sep-flow` rules
+       that only show in that mode. Re-measured on load, resize and every
+       #board swap. #}
     <section class="card legend">
       <div class="legend-block">
         <div class="legend-row">
@@ -51,6 +58,11 @@
               <span class="chip-text">{{ rc.label }}</span>
             </span>
           {% endfor %}
+        </div>
+      </div>
+      <span class="legend-sep legend-sep-flow" aria-hidden="true"></span>
+      <div class="legend-block">
+        <div class="legend-row">
           {# The capability pips' second channel: their shape is the
              player's reliability in that role. Neutral slate, which no role
              uses, so the key doesn't read as one. Under cb the pip row is
@@ -58,7 +70,6 @@
              reliability instead (colourblind.css), so the key is one such
              box holding each level's own word with its lines — its own
              example. #}
-          <span class="legend-sep" aria-hidden="true"></span>
           <span class="legend-pips" title="Capability pips: reliability in that role">
             Reliability
             {% if cb %}
@@ -82,10 +93,10 @@
               {% endfor %}
             {% endif %}
           </span>
-        </div>
-      </div>
-      <div class="legend-block">
-        <div class="legend-row">
+          {# Statuses share the reliability row rather than taking one of
+             their own: the legend is pinned over the board, so every line
+             it wraps to is a line of board hidden. A rule sets them apart. #}
+          <span class="legend-sep" aria-hidden="true"></span>
           {% for status, s in STATUS_STYLES.items() %}
             {% set sc = status_chip(status) %}
             {# Same three-layer edge as a person card (see anni.css): the
@@ -102,17 +113,18 @@
               {{ sc.label }}
             </span>
           {% endfor %}
-          {# The RSVP key shares this row but stays a distinct GROUP, hence
-             the rule between them: it is a second axis, not more of the same
-             vocabulary — a card can be any status × any RSVP. Short status
-             labels freed the width to sit them together; the two only read
-             as separate keys if something says so.
+        </div>
+      </div>
+      <span class="legend-sep legend-sep-flow" aria-hidden="true"></span>
+      <div class="legend-block">
+        <div class="legend-row">
+          {# The RSVP key: a second axis, not more of the status vocabulary —
+             a card can be any status × any RSVP.
 
              The icon shows in BOTH modes here (unlike the status chips,
              which show their traffic light only under cb) — the
              shape is the badge's only non-colour channel, so the legend has
              to name it. #}
-          <span class="legend-sep" aria-hidden="true"></span>
           {% for state, s in RSVP_STYLES.items() %}
             {% set rv = rsvp_chip(state) %}
             <span class="legend-rsvp">

@@ -127,6 +127,28 @@ async def test_capability_pips_carry_reliability(as_staff, seeded):
     assert '<span class="cap-letter" aria-hidden="true">PR</span>' in body
 
 
+async def test_legend_is_three_groups_that_can_flow(as_staff, seeded):
+    """Structured, the legend is three rows — role keys / reliability +
+    statuses / RSVPs — in that order; the two flow-only rules sit between
+    the groups so board.js can run them together when a row would wrap."""
+    for cb in (False, True):
+        if cb:
+            as_staff.cookies.set("cb", "1")
+        body = (await as_staff.get("/staff/board")).text
+        legend = body[body.index('class="card legend"'):
+                      body.index('class="card board-controls"')]
+        assert legend.count('class="legend-row"') == 3
+        assert legend.count("legend-sep-flow") == 2
+        order = [legend.index(k) for k in (
+            'class="role-chip"', 'class="legend-pips"', "legend-status",
+            'class="legend-rsvp"')]
+        assert order == sorted(order)
+        rows = legend.split('class="legend-row"')[1:]
+        assert "role-chip" in rows[0] and "legend-pips" not in rows[0]
+        assert "legend-pips" in rows[1] and "legend-status" in rows[1]
+        assert "legend-rsvp" in rows[2]
+
+
 async def test_every_card_carries_the_pip_bar(as_staff, seeded):
     """The row is emitted on every card — empty (and flagged) when there is
     nothing to show — so cb can draw the same bar on all of them."""

@@ -285,13 +285,42 @@
     });
   }
 
+  /* ---- legend layout ---------------------------------------------------- */
+  /* The legend is three rows (role keys / reliability + statuses / RSVPs)
+     unless any of them would wrap, in which case it runs as one flowing row
+     (.legend-flow, anni.css). CSS can't ask "did this wrap?", so measure: a
+     single-line flex row is exactly as tall as its tallest item. Always
+     measure from the structured layout, so widening the window can switch
+     back. Runs synchronously after a swap, so the switch never paints. */
+  function fitLegend() {
+    var legend = document.querySelector("#board .legend");
+    if (!legend) return;
+    legend.classList.remove("legend-flow");
+    var wraps = Array.prototype.some.call(
+      legend.querySelectorAll(".legend-row"), function (row) {
+        var tallest = 0;
+        Array.prototype.forEach.call(row.children, function (c) {
+          tallest = Math.max(tallest, c.getBoundingClientRect().height);
+        });
+        return row.getBoundingClientRect().height > tallest + 1;
+      });
+    if (wraps) legend.classList.add("legend-flow");
+  }
+  var fitFrame = 0;
+  window.addEventListener("resize", function () {
+    cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(fitLegend);
+  });
+
   // Re-init after every #board swap (HTMX replaces the node, so the old
-  // Sortable instances are dead) and dismiss the add-player popup once its
-  // submit has swapped the board back in (same pattern as the dashboard
-  // modals — close on the read fragment landing).
+  // Sortable instances are dead, and the legend comes back structured) and
+  // dismiss the add-player popup once its submit has swapped the board back
+  // in (same pattern as the dashboard modals — close on the read fragment
+  // landing).
   document.body.addEventListener("htmx:afterSwap", function (e) {
     if (e.detail && e.detail.target && e.detail.target.id === "board") {
       initBoard();
+      fitLegend();
       var m = document.getElementById("board-modal-mount");
       if (m) m.innerHTML = "";
     }
@@ -325,6 +354,9 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     initBoard();
+    fitLegend();
+    // Widths shift once web fonts land; measure again when they have.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitLegend);
     connect();
     if (safetyTimer) clearInterval(safetyTimer);
     safetyTimer = setInterval(function () {
