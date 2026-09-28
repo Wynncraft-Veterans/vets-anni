@@ -63,6 +63,31 @@ async def test_capability_modal_quotes_guidance_and_links(as_user):
     assert "Requirements:" in r.text
 
 
+async def test_capability_modal_bolds_the_threshold(as_user):
+    """Whichever role the modal opens on (the first one the user hasn't
+    registered), its threshold is bolded inside the requirements box."""
+    import re
+
+    from app.constants import ROLE_GUIDANCE
+
+    r = await as_user.get("/me/capability/new")
+    assert r.status_code == 200
+    assert '<p class="guidance-req">' in r.text
+    m = re.search(r'<strong class="req-threshold">([^<]+)</strong>', r.text)
+    assert m and m.group(1) in {g.threshold for g in ROLE_GUIDANCE.values()}
+
+
+def test_every_threshold_is_quoted_from_its_requirements():
+    """``threshold`` is bolded by splitting ``requirements`` around it; if an
+    edit to the prose stops quoting it verbatim the bold silently vanishes."""
+    from app.constants import ROLE_GUIDANCE
+
+    for role, g in ROLE_GUIDANCE.items():
+        assert g.threshold and g.threshold in g.requirements, role
+        before, threshold, after = g.requirement_parts
+        assert before + threshold + after == g.requirements
+
+
 async def test_me_redirects_anonymous_to_login(client):
     r = await client.get("/me", follow_redirects=False)
     assert r.status_code == 303

@@ -464,6 +464,14 @@ h3 { margin:1rem 0 .35rem; font-size:1rem; }
   background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px;
   padding:.6rem .8rem; margin:.6rem 0;
 }
+/* The bar to clear, lifted out of the surrounding prose. Plain info blue,
+   not a --c-* hue: it marks "read this", not a role or status, so it has
+   no colourblind twin (the "Requirements:" label carries the meaning). */
+.modal .guidance-req {
+  background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #3b82f6;
+  border-radius:8px; padding:.5rem .7rem; color:#1e3a8a;
+}
+.modal .guidance-req .req-threshold { color:#1e40af; font-weight:800; }
 /* align-items:center (NOT the default stretch) + zeroing the global button
    margin-top is what stops Cancel rendering ~40% taller: stretch was
    inflating the small button to the row height, and the primary's inherited

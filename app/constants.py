@@ -683,6 +683,17 @@ class RoleGuidance:
     gameplay_url: str
     builds_url: str
     weapon_subtypes: tuple[str, ...] = field(default_factory=tuple)
+    #: The bar a player has to clear, verbatim from ``requirements`` — the UI
+    #: bolds it so the number isn't lost in the prose around it.
+    threshold: str = ""
+
+    @property
+    def requirement_parts(self) -> tuple[str, str, str]:
+        """``requirements`` split around ``threshold`` as ``(before,
+        threshold, after)``; ``(requirements, "", "")`` if it isn't in there."""
+        if self.threshold and self.threshold in self.requirements:
+            return self.requirements.partition(self.threshold)
+        return self.requirements, "", ""
 
 
 ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
@@ -692,6 +703,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "450k+ close-range DPS. You stand behind the tank, fueled by a healer, "
         "and deal continuous damage to Anni's hitbox.",
         f"{DOCS_BASE}/#primary-dps", f"{DOCS_BASE}/#primary-builds",
+        threshold="450k+ close-range DPS",
     ),
     Role.SECONDARY: RoleGuidance(
         "Secondary DPS (Sun Killer)",
@@ -699,6 +711,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "200k+ ranged DPS. The target floats ~10 blocks up and explodes in ~10s "
         "if not killed; otherwise you do crowd control around the core.",
         f"{DOCS_BASE}/#secondary-dps", f"{DOCS_BASE}/#secondary-builds",
+        threshold="200k+ ranged DPS",
     ),
     Role.TERTIARY: RoleGuidance(
         "Tertiary DPS (Healing-Mob Killer)",
@@ -706,6 +719,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "150k+ DPS and reliable movement to cross a 15+ block lava pit. "
         "Mobs are low-HP but spawn in inconvenient places.",
         f"{DOCS_BASE}/#tertiary-dps", f"{DOCS_BASE}/#tertiary-builds",
+        threshold="150k+ DPS and reliable movement",
     ),
     Role.HEALER: RoleGuidance(
         "Healer (Party Healer)",
@@ -713,6 +727,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "8k+ HPS. You only need to heal players in the core (~5 blocks wide) "
         "and rarely leave its vicinity.",
         f"{DOCS_BASE}/#healer", f"{DOCS_BASE}/#healer-builds",
+        threshold="8k+ HPS",
     ),
     Role.TANK: RoleGuidance(
         "Tank (Party Tank)",
@@ -720,6 +735,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "100k+ EHP with 15k+ HPR. You absorb all direct damage and never "
         "retreat. Paladin (aggro draw, Heavenly Trumpet) is ideal.",
         f"{DOCS_BASE}/#tank", f"{DOCS_BASE}/#tank-builds",
+        threshold="100k+ EHP with 15k+ HPR",
     ),
     Role.FILL: RoleGuidance(
         "Fill (Flexible Learner)",
@@ -727,6 +743,7 @@ ROLE_GUIDANCE: dict[Role, RoleGuidance] = {
         "Capacity is limited (≤30–40% of a party).",
         "None! Any build. Optionally help the tertiary DPS.",
         f"{DOCS_BASE}/#attending", f"{DOCS_BASE}/#attending",
+        threshold="None!",
     ),
 }
 

@@ -41,7 +41,9 @@
       <div class="guidance">
         <h3>{{ guidance.title }}</h3>
         <p>{{ guidance.purpose }}</p>
-        <p class="muted"><strong>Requirements:</strong> {{ guidance.requirements }}</p>
+        {% set before, threshold, after = guidance.requirement_parts %}
+        <p class="guidance-req"><strong>Requirements:</strong>
+          {{ before }}<strong class="req-threshold">{{ threshold }}</strong>{{ after }}</p>
         <p>
           <a href="{{ guidance.gameplay_url }}" target="_blank" rel="noopener">Gameplay guide ↗</a>
           &nbsp;·&nbsp;
