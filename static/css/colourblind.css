@@ -107,13 +107,24 @@ body.cb {
    survives greyscale. Okabe-Ito hues are tuned for protan/deutan/tritan but
    several collapse to similar luminance under achromatopsia (monochromacy),
    so the `--role-*-dark` background alone leaves roles indistinguishable on
-   the person cards. A faint shape rhythm per role restores identifiability
-   for that population. data-role is already on every .person at all times
-   (see templates/macros/person.html); only CB activates the rule, matching
-   how the status lamps work. ONLY background-image is set here so
-   the inline `background-color: var(--role-*-dark)` underneath is untouched
-   (and white text legibility, ≥ ~4.7:1, is preserved — the overlay alpha is
-   < 10%). Unassigned cards stay flat — no texture maps to "no role".
+   the person cards. A shape rhythm per role restores identifiability for
+   that population: PRIMARY `/` stripes, SECONDARY `\` stripes, TERTIARY
+   vertical stripes, HEALER crosshatch, TANK dot grid, FILL horizontal
+   stripes. data-role is already on every .person at all times (see
+   templates/macros/person.html); only CB activates the rule, matching how
+   the status lamps work. ONLY background-image is set here, so the inline
+   `background-color: var(--role-*-dark)` underneath is untouched.
+   Unassigned cards stay flat — no texture maps to "no role".
+
+   BOLD on purpose: the lines are ~22% white, 3px wide, every 11px (dots and
+   crosshatch tuned to match). The first version was ~7% at 2px/14px, which
+   read as faint on the coloured cards and vanished outright on FILL, whose
+   cb background is black — the one card where the texture is the only
+   thing that tells it apart (user report, 2026-09-28). At this strength
+   each pattern holds roughly 2:1 luminance contrast against its own card in
+   greyscale. The cost is that white text now crosses brighter stripes, so
+   the text that sits directly on the card gets a dark halo (below) rather
+   than the texture being toned back down.
 
    The same rule also targets the LEGEND role chips (the big labelled chips
    in `_board.html`, scoped by the `.legend` ancestor) so the legend acts as
@@ -121,39 +132,55 @@ body.cb {
    cross-dashboard role chips emitted by the `role_bg` macro deliberately
    stay clean (they live outside `.legend`); chip-size texture reads as
    noise at that scale. */
+body.cb {
+  --tex-ink: rgba(255,255,255,.22);   /* stripe / dot colour */
+  --tex-ink-x: rgba(255,255,255,.15); /* crosshatch: two layers overlap */
+}
 body.cb .person[data-role="primary"],
 body.cb .legend .role-chip[data-role="primary"] {
   background-image: repeating-linear-gradient(45deg,
-    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+    var(--tex-ink) 0 3px, transparent 3px 11px);
 }
 body.cb .person[data-role="secondary"],
 body.cb .legend .role-chip[data-role="secondary"] {
   background-image: repeating-linear-gradient(135deg,
-    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+    var(--tex-ink) 0 3px, transparent 3px 11px);
 }
 body.cb .person[data-role="tertiary"],
 body.cb .legend .role-chip[data-role="tertiary"] {
   background-image: repeating-linear-gradient(90deg,
-    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+    var(--tex-ink) 0 3px, transparent 3px 11px);
 }
 body.cb .person[data-role="healer"],
 body.cb .legend .role-chip[data-role="healer"] {
   background-image:
     repeating-linear-gradient(45deg,
-      rgba(255,255,255,.06) 0 1.5px, transparent 1.5px 12px),
+      var(--tex-ink-x) 0 2.5px, transparent 2.5px 10px),
     repeating-linear-gradient(135deg,
-      rgba(255,255,255,.06) 0 1.5px, transparent 1.5px 12px);
+      var(--tex-ink-x) 0 2.5px, transparent 2.5px 10px);
 }
 body.cb .person[data-role="tank"],
 body.cb .legend .role-chip[data-role="tank"] {
   background-image: radial-gradient(circle at center,
-    rgba(255,255,255,.09) 1.4px, transparent 1.6px);
-  background-size: 12px 12px;
+    rgba(255,255,255,.3) 2.4px, transparent 2.8px);
+  background-size: 10px 10px;
 }
 body.cb .person[data-role="fill"],
 body.cb .legend .role-chip[data-role="fill"] {
   background-image: repeating-linear-gradient(0deg,
-    rgba(255,255,255,.07) 0 2px, transparent 2px 14px);
+    var(--tex-ink) 0 3px, transparent 3px 11px);
+}
+/* The legend chips are the key to these patterns, so give them room to
+   show a few repeats of the rhythm — at the default chip height the dot
+   grid and crosshatch showed barely two. Also brings them close to the
+   status pills' height beside them. */
+body.cb .legend .role-chip { min-height: 2.2rem; }
+/* Text that sits straight on a textured card: a tight dark halo keeps it
+   legible wherever it crosses a stripe. (Pills, codes, lamps, tickets and
+   the dropdown all bring their own solid backgrounds.) */
+body.cb .person-name-text,
+body.cb .legend .role-chip .chip-text {
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 1px #000;
 }
 
 /* In CB mode, lean on text weight + the always-present glyph/label. */
@@ -220,6 +247,12 @@ body.cb .person-name .cap-dots {
    (a FILL-only player, or an unregistered placeholder): the bars line up
    down a dropzone and "no roles" reads as an empty bar, not a gap. */
 body.cb .person-name .cap-dots[data-empty] { display: inline-flex; }
+/* The legend's reliability key stands as tall as the status pills and role
+   chips beside it (2.2rem, the lamp column's height). At its natural height
+   the overline on "High" ran into the box's top edge, and against the
+   white legend card that edge read as the line — the box needs black
+   above the overline for the overline to show. */
+body.cb .legend-pips .cap-dots { min-height: 2.2rem; }
 body.cb .cap-dot,
 body.cb .cap-dots .cap-dot {
   width: auto; height: auto; margin: 0; padding: 0;
