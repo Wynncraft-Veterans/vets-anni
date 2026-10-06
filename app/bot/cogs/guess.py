@@ -37,9 +37,12 @@ _BOX_PLOT_PNG = (
 logger = logging.getLogger("anni.fishbot.guess")
 
 
-# Empirical anchor: anni #209 corresponds to stamp 1781012498.
-_ANNI_ANCHOR_NUMBER = 209
-_ANNI_ANCHOR_EPOCH = 1_781_012_498
+# Empirical anchor: anni #211 corresponds to stamp 1781547120 (2026-06-15).
+# #209 was 1781012498; #210 (2026-06-12) was announced in a format the
+# poller couldn't read yet and never got an AnniEvent row, so counting from
+# #209 ran one low.
+_ANNI_ANCHOR_NUMBER = 211
+_ANNI_ANCHOR_EPOCH = 1_781_547_120
 
 # Quantile offsets in seconds, extrapolated from 472d of data.
 # The window is Uniform(+71.4h, +82.0h)
