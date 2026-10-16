@@ -40,6 +40,9 @@ from app.constants import (
 )
 from app.db.lifecycle import get_active_event
 from app.db.models import BoardPlacement, Party, RoleCapability, Rsvp, Setback
+# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+from app.domain import anni_250
+# <<< PATCH END: ANNI-250
 from app.domain import identity
 from app.domain.schedule import EventPhase, phase_of
 from app.services.loop import poll_forever
@@ -72,6 +75,14 @@ async def _credit_wins(event) -> int:
     One query for the (event × credited-party × core-role) cross-join — FILL /
     role-less placements are excluded by the ``assigned_role__in`` filter so
     they never reach the per-row capability update."""
+    # >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+    # Reason: Anni #250 (level 30–40 classes) is off the record.
+    # Remove: once Anni #250 has been wiped (see app/domain/anni_250.py).
+    if await anni_250.is_anni_250(event):
+        logger.info("Anni #%d is off the record — no wins credited",
+                    anni_250.NUMBER)
+        return 0
+    # <<< PATCH END: ANNI-250
     members = (
         await BoardPlacement.filter(
             event=event,
@@ -106,6 +117,14 @@ async def _record_setbacks(event, state: AppState) -> tuple[int, int]:
     tracking wasn't running (the process was down for the anni), so we
     can't tell a no-show from a blind spot and record none.
     """
+    # >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+    # Reason: Anni #250 (level 30–40 classes) is off the record.
+    # Remove: once Anni #250 has been wiped (see app/domain/anni_250.py).
+    if await anni_250.is_anni_250(event):
+        logger.info("Anni #%d is off the record — no losses or missed "
+                    "RSVPs recorded", anni_250.NUMBER)
+        return 0, 0
+    # <<< PATCH END: ANNI-250
     occurred_at = datetime.fromtimestamp(event.stamp_epoch, tz=timezone.utc)
 
     lost = await BoardPlacement.filter(

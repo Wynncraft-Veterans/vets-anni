@@ -25,6 +25,9 @@ import discord
 from discord.ext import commands
 
 from app.db.models import AnniEvent
+# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+from app.domain import anni_250
+# <<< PATCH END: ANNI-250
 from app.services.tempserver import get_tempserver
 from app.settings import get_settings
 
@@ -118,6 +121,29 @@ def _format_prediction(number: int, anchor: int) -> GuessReply:
     return GuessReply(text=text, image_png=_BOX_PLOT_PNG)
 
 
+# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+# Reason: Anni #250 is a special one, run on level 30–40 classes.
+# Remove: once Anni #250 is over (see app/domain/anni_250.py).
+_ANNI_250_BANNER = (
+    f"> # 🎉 Anni #{anni_250.NUMBER} is an exception! 🎉\n"
+    # "> " keeps the gap inside the one quote box; a bare blank line would
+    # end it and start a second.
+    f"> ## We will exclusively be using **level 30–40 classes**.\n> \n"
+    f"> For more info, see the event thread: "
+    f"https://discord.com/channels/1313769181321236490/1558562472539979926\n"
+)
+
+
+def _with_anni_250_banner(number: int, reply: GuessReply) -> GuessReply:
+    """Top ``reply`` with the banner when the anni it's about is #250."""
+    if number != anni_250.NUMBER:
+        return reply
+    return GuessReply(
+        text=f"{_ANNI_250_BANNER}\n{reply.text}", image_png=reply.image_png,
+    )
+# <<< PATCH END: ANNI-250
+
+
 async def execute_guess() -> GuessReply:
     """Pure executor: build the reply payload, no Discord side effects."""
     stamp_epoch = await get_tempserver().stamp()
@@ -125,8 +151,15 @@ async def execute_guess() -> GuessReply:
         return _no_anchor_reply()
     current_number = await _current_anni_number()
     if stamp_epoch > time.time():
-        return _format_confirmed(current_number, stamp_epoch)
-    return _format_prediction(current_number + 1, stamp_epoch)
+        number = current_number
+        reply = _format_confirmed(number, stamp_epoch)
+    else:
+        number = current_number + 1
+        reply = _format_prediction(number, stamp_epoch)
+    # >>> PATCH BEGIN: ANNI-250 (2026-10-16)
+    reply = _with_anni_250_banner(number, reply)
+    # <<< PATCH END: ANNI-250
+    return reply
 
 
 async def _safe(fn: Callable[[], Awaitable[GuessReply]]) -> GuessReply:
