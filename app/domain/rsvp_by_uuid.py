@@ -15,9 +15,6 @@ post stay byte-identical between the two surfaces.
 from __future__ import annotations
 
 import logging
-# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-import time
-# <<< PATCH END: ANNI-250
 from typing import TYPE_CHECKING, Literal
 
 from app.bot.cogs.rsvp import (
@@ -30,9 +27,6 @@ from app.bot.cogs.rsvp import (
 from app.constants import AttendanceNotice
 from app.db.lifecycle import get_active_event
 from app.db.models import AnniPlayer
-# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-from app.domain import anni_250
-# <<< PATCH END: ANNI-250
 from app.domain import buckets as buckets_domain
 from app.domain import rsvp as rsvp_domain
 from app.services import hot_window
@@ -94,24 +88,6 @@ async def execute_uuid_rsvp(
     if notice == "revoke":
         outcome = await _do_revoke_uuid(player, event)
     else:
-        # >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-        # The in-game twin of the `\rsvp` refusal (app/bot/cogs/rsvp.py),
-        # worded to match. vetsmod prints this detail as plain chat text, so
-        # no bold, no masked link, and the time is spelled out here. Ahead
-        # of the T-90 cutoff on purpose: inside T-90, #250 still points at
-        # the form rather than saying RSVPs are closed.
-        if await anni_250.is_anni_250(event):
-            raise UuidRsvpError(
-                409,
-                f"Anni {anni_250.NUMBER} is an exception to our normal "
-                f"systems!\n"
-                f"We are celebrating this milestone by running things on "
-                f"level 30–40.\n"
-                f"Our usual RSVP system will not be used for the anni "
-                f"{_relative(event.stamp_epoch)}: yours wasn't recorded.\n\n"
-                f"Instead, please use this form: {anni_250.FORM_URL}",
-            )
-        # <<< PATCH END: ANNI-250
         if hot_window.is_rsvp_closed(event):
             raise UuidRsvpError(
                 409, "RSVP is closed (within 90 min of anni)"
@@ -126,31 +102,6 @@ async def execute_uuid_rsvp(
         await _post_public(bot, outcome.public_message)
 
     return outcome
-
-
-# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-def _relative(stamp_epoch: int) -> str:
-    """Plain-text stand-in for Discord's ``<t:N:R>``, which vetsmod's chat
-    can't render — "in 2 hours", "5 minutes ago". Same rounding steps
-    Discord uses, so the two refusals agree."""
-    delta = stamp_epoch - int(time.time())
-    s = abs(delta)
-    if s < 45:
-        span = "a few seconds"
-    elif s < 90:
-        span = "a minute"
-    elif s < 45 * 60:
-        span = f"{round(s / 60)} minutes"
-    elif s < 90 * 60:
-        span = "an hour"
-    elif s < 22 * 3600:
-        span = f"{round(s / 3600)} hours"
-    elif s < 36 * 3600:
-        span = "a day"
-    else:
-        span = f"{round(s / 86400)} days"
-    return f"in {span}" if delta >= 0 else f"{span} ago"
-# <<< PATCH END: ANNI-250
 
 
 async def _do_set_uuid(

@@ -76,17 +76,6 @@ Slash commands (e.g. `/rsvp`) are unprefixed. The prefix only applies to text/me
 
 ## Status
 
-**Ephemeral: the ANNI-250 patch (2026-10-16)** will be removed in its
-entirety within the next few days, once Anni #250 has been wiped. It is
-temporary special-casing for that one anni (level 30–40 classes, planned
-via a form): a `\guess` banner, `\rsvp`/in-game RSVPs refused with the form
-link, and no wins/losses/missed RSVPs recorded. Not part of the design:
-don't build on it or document it in the durable docs. To remove it:
-`grep -rn "ANNI-250"`, delete `app/domain/anni_250.py` and
-`tests/test_anni_250.py`, delete every `PATCH BEGIN: ANNI-250` …
-`PATCH END: ANNI-250` block, then this paragraph. (A fuller local note may
-be in the gitignored `ephemeral/anni-250-patch.md`.)
-
 Build in progress, phased: **0** ✅ skeleton+deploy → **1** ✅ App1 (user
 web) → **2** ✅ App3 (staff/board) → **3** App2 (fishbot) → **4** App4
 (vetsmod, deferred & coordinated). See the plan file for per-phase scope +

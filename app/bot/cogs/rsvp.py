@@ -50,9 +50,6 @@ from app.db.models import (
 )
 from app.domain import buckets as buckets_domain
 from app.domain import capability as capability_domain
-# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-from app.domain import anni_250
-# <<< PATCH END: ANNI-250
 from app.domain import identity as identity_domain
 from app.domain import rsvp as rsvp_domain
 from app.domain.membership import _DAZEBOT_TIER
@@ -291,40 +288,12 @@ async def _do_revoke(player: AnniPlayer, event: AnniEvent) -> RsvpOutcome:
     )
 
 
-# >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-# Reason: Anni #250 is planned through a form, not fishbot RSVPs.
-# Remove: once Anni #250 is over (see app/domain/anni_250.py).
-def _anni_250_rsvp_message(stamp_epoch: int) -> str:
-    """The refusal; its in-game twin in ``rsvp_by_uuid`` matches it."""
-    return (
-        f"Anni {anni_250.NUMBER} is an exception to our normal systems!\n"
-        f"We are celebrating this milestone by running things "
-        f"**on level 30–40**.\n"
-        f"Our usual RSVP system will not be used for the anni "
-        f"<t:{stamp_epoch}:R>: yours wasn't recorded.\n\n"
-        f"Instead, please use [this form](<{anni_250.FORM_URL}>)."
-    )
-# <<< PATCH END: ANNI-250
-
-
 async def execute_rsvp(discord_id: int | str, action: Action) -> RsvpOutcome:
     """The full decision tree, callable without a real Discord interaction.
 
     Returns a :class:`RsvpOutcome` for every input (no exceptions thrown);
     the cog renders it. Tests drive this directly.
     """
-    # >>> PATCH BEGIN: ANNI-250 (2026-10-16)
-    # Ahead of the identity round-trip: the form needs no dazebot link, so
-    # an unverified user is pointed at it too. Ahead of the T-90 cutoff
-    # below as well, so inside T-90 #250 still points at the form rather
-    # than saying RSVPs are closed. status/revoke still work.
-    if action in ("hard", "soft"):
-        event = await get_active_event()
-        if await anni_250.is_anni_250(event):
-            return RsvpOutcome(
-                private_message=_anni_250_rsvp_message(event.stamp_epoch),
-            )
-    # <<< PATCH END: ANNI-250
     identity = await get_dazebot_client().resolve_anni_identity(discord_id)
     if identity is None:
         return RsvpOutcome(
