@@ -16,18 +16,20 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-#: Maximum age (seconds) of the whole ``party_leader_by_uuid`` map, measured
-#: from the last ``anni_party_observation`` from ANY client
-#: (``party_observation_fetched_at`` is one stamp, not one per entry), before
-#: ``presence_poller`` treats the map as stale and falls back to
-#: ``ONLINE_WORLD``. vetsmod sends the frame on party events and on
-#: organiser-set changes, not on every snapshot update, so the 60s window
-#: covers the typical between-event idle without stranding stale
-#: corroboration when every reporting client disconnects mid-window. It does
-#: not age out an individual entry: a member who leaves a party drops off when
-#: that leader's party is next observed with every name resolved (the endpoint
-#: replaces the roster), and the grace-wipe clears the whole map.
-_PARTY_LEADER_TTL_SECONDS = 60
+#: Maximum age (seconds) of a ``party_leader_by_uuid`` entry, measured from the
+#: last ``anni_party_observation`` that LISTED that member
+#: (``party_seen_at_by_uuid`` holds one stamp per member), before
+#: ``presence_poller`` treats the pairing as stale and falls back to
+#: ``ONLINE_WORLD``. vetsmod re-sends the frame every 30 s while its player is
+#: in an organiser's party (on top of the party-event and organiser-set-change
+#: sends), so 90 s outlasts one lost heartbeat (beats land a little over 30 s
+#: apart, so a second lost one can let the pairing lapse until the next) and
+#: still ages out a member
+#: who left, a party that disbanded, or every reporting client disconnecting
+#: mid-window. A leaver is also dropped at once when that leader's party is
+#: next observed with every name resolved (the endpoint replaces the roster);
+#: the grace-wipe clears the whole map.
+_PARTY_LEADER_TTL_SECONDS = 90
 
 
 @dataclass(frozen=True)
@@ -129,14 +131,20 @@ class AppState:
     #: for the ``ONLINE_PARTY`` board upgrade). Names arrive over the wire and
     #: are resolved here against ``roster_by_uuid`` + ``aliases``. Each
     #: fully resolved observation replaces that leader's roster (members it no
-    #: longer lists drop off); the whole map is treated as stale by ``presence_poller`` once
-    #: :data:`_PARTY_LEADER_TTL_SECONDS` pass since ``party_observation_fetched_at``
-    #: (one stamp, refreshed by any client; a vetsmod disconnect mid-window must
-    #: not pin the user to ``ONLINE_PARTY`` forever), and the grace-wipe clears
-    #: it. Empty / stale / unresolved name => classifier falls back to
+    #: longer lists drop off); ``presence_poller`` treats an entry as stale once
+    #: :data:`_PARTY_LEADER_TTL_SECONDS` pass since ``party_seen_at_by_uuid``
+    #: last stamped that member (a vetsmod disconnect mid-window must not pin
+    #: the user to ``ONLINE_PARTY`` forever), and the grace-wipe clears the
+    #: map. Empty / stale / unresolved name => classifier falls back to
     #: ``ONLINE_WORLD`` rather than fabricating ``ONLINE_PARTY``.
     party_leader_by_uuid: dict[str, str] = field(default_factory=dict)
-    party_observation_fetched_at: float = 0.0
+    #: member_mc_uuid -> ``time.time()`` of the last observation that listed
+    #: that member (any client). One stamp per member, not per map: another
+    #: party's reports cannot keep this member fresh, and a member no
+    #: observation lists any more (left, disbanded, reporters gone) lapses on
+    #: their own after the TTL. Popped with the entry when a replace drops the
+    #: member; cleared by the grace-wipe.
+    party_seen_at_by_uuid: dict[str, float] = field(default_factory=dict)
 
     # --- api_disabled probe (Phase 2) ---------------------------------------
     #: mc_uuids of API-disabled players the slow probe currently *infers* are

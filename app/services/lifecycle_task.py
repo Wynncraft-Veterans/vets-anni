@@ -187,7 +187,7 @@ async def _wipe(event, state: AppState) -> None:
     # Party corroboration is per-event too: a leader/member pairing observed
     # during this anni must not survive into the next one.
     state.party_leader_by_uuid = {}
-    state.party_observation_fetched_at = 0.0
+    state.party_seen_at_by_uuid = {}
 
     from app.web.ws.board_hub import get_board_hub
 

@@ -87,17 +87,18 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         # roster via the S7 ``anni_party_observation`` frame when an organiser
         # is in their party; the endpoint resolves names → uuids and writes
         # ``state.party_leader_by_uuid`` (member_uuid -> leader_uuid). We only
-        # count as "confirmed in party" when (a) the dict is fresh (one stamp
-        # for the whole map, refreshed by any client's observation; a vetsmod
-        # disconnect mid-window must not pin a user to ONLINE_PARTY forever)
-        # and (b) the resolved leader matches the host the staff board
-        # assigned. Anything weaker degrades to ONLINE_WORLD — we never
-        # fabricate a join.
+        # count as "confirmed in party" when (a) this member's own stamp is
+        # fresh (``party_seen_at_by_uuid``: the last observation that listed
+        # them, from any client; another party's reports cannot keep it fresh,
+        # and a vetsmod disconnect mid-window must not pin a user to
+        # ONLINE_PARTY forever) and (b) the resolved leader matches the host
+        # the staff board assigned. Anything weaker degrades to ONLINE_WORLD —
+        # we never fabricate a join.
         # ``Party.host`` is a FK to ``AnniPlayer.mc_uuid`` (the AnniPlayer PK),
         # so ``host_id`` IS the host's mc_uuid — no extra fetch needed.
         host_uuid = party.host_id if party else None
         party_fresh = (
-            time.time() - state.party_observation_fetched_at
+            time.time() - state.party_seen_at_by_uuid.get(uuid, 0.0)
             < _PARTY_LEADER_TTL_SECONDS
         )
         in_party_confirmed = bool(

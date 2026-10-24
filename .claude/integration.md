@@ -141,11 +141,15 @@ exposed only on the verify-network internal endpoints in
   members). Each fully resolved observation replaces that leader's roster
   (members the new one doesn't list are dropped; other leaders' entries are
   untouched); one with an unresolved name only adds, since that name may be a
-  member paired by their own report's observer fallback. One
-  freshness stamp covers the whole map (any client's observation refreshes
-  it) and `presence_poller` ignores the map once it is older than 60 s, so a
-  vetsmod disconnect mid-window doesn't pin the user to yellow forever; the
-  grace-wipe clears the map.
+  member paired by their own report's observer fallback. Freshness is per
+  member: `state.party_seen_at_by_uuid` holds the time of the last observation
+  (any client) that listed each member, an observation stamps only the members
+  it lists, and `presence_poller` ignores a member's pairing once their stamp
+  is older than 90 s, so another party's reports can't keep them yellow and a
+  leaver or vetsmod disconnect lapses on its own. vetsmod re-sends every 30 s
+  while its player is in an organiser's party to keep the stamps fresh; a
+  replace that drops a member pops their stamp; the grace-wipe clears the map
+  and the stamps.
 
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),

@@ -3,17 +3,19 @@
 Covers the resolution path (roster + alias fallback), the observer-uuid
 fallback, the unresolvable-leader short-circuit, secret-gating, the
 replace-the-roster semantics (a member a re-observation no longer lists drops
-off), and the ``state.party_leader_by_uuid`` mutation that feeds
-``presence_poller``.
+off), the per-member freshness stamps (``state.party_seen_at_by_uuid``), and the
+``state.party_leader_by_uuid`` mutation that feeds ``presence_poller``.
 """
 
 from __future__ import annotations
+
+import time
 
 import pytest
 
 from app.constants import PresenceStatus
 from app.services import presence_poller
-from app.services.state import AppState, OnlinePlayer
+from app.services.state import AppState, OnlinePlayer, _PARTY_LEADER_TTL_SECONDS
 from app.settings import get_settings
 
 
@@ -62,7 +64,8 @@ async def test_resolves_member_names_via_roster(client, seeded):
     assert body["dropped"] == 0
     assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
     assert state.party_leader_by_uuid[holidaze.mc_uuid] == holidaze.mc_uuid
-    assert state.party_observation_fetched_at > 0
+    assert state.party_seen_at_by_uuid.keys() == {wen.mc_uuid, holidaze.mc_uuid}
+    assert all(t > 0 for t in state.party_seen_at_by_uuid.values())
 
 
 async def test_resolves_via_alias_fallback(client, seeded):
@@ -358,11 +361,123 @@ async def test_unresolved_leader_still_a_noop_and_drops_nothing(client, seeded):
     _wire_state(client._transport.app, state)
     await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
     before = dict(state.party_leader_by_uuid)
-    stamp = state.party_observation_fetched_at
+    stamps = dict(state.party_seen_at_by_uuid)
 
     res = await _observe(client, wen.mc_uuid, ["Wenweia"], "RandomStranger")
 
     assert res.status_code == 200 and res.json()["resolved"] == 0
     assert state.party_leader_by_uuid == before
-    assert state.party_observation_fetched_at == stamp
+    assert state.party_seen_at_by_uuid == stamps
     assert state.party_leader_by_uuid[pasta.mc_uuid] == holidaze.mc_uuid
+
+
+def _age(state: AppState, uuid: str, seconds: float) -> None:
+    """Pretend the last observation listing ``uuid`` was ``seconds`` ago."""
+    state.party_seen_at_by_uuid[uuid] = time.time() - seconds
+
+
+async def test_observation_stamps_only_the_members_it_lists(client, seeded):
+    p = seeded["players"]
+    wen, pasta, holidaze, nazzae = (
+        p["Wenweia"], p["_akaPasta"], p["Holidaze"], p["Nazzae"],
+    )
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+
+    assert state.party_seen_at_by_uuid.keys() == {
+        wen.mc_uuid, pasta.mc_uuid, holidaze.mc_uuid,
+    }
+    assert nazzae.mc_uuid not in state.party_seen_at_by_uuid
+
+
+async def test_the_observer_fallback_member_is_stamped(client, seeded):
+    """The observer maps to the leader even when their name did not resolve,
+    and that pairing is stamped like any other."""
+    p = seeded["players"]
+    holidaze = p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    new_uuid = "00000000-0000-0000-0000-000000000abc"
+
+    await _observe(client, new_uuid, ["Holidaze", "NobodyKnowsMe"], "Holidaze")
+
+    assert state.party_seen_at_by_uuid[new_uuid] > 0
+    assert state.party_leader_by_uuid[new_uuid] == holidaze.mc_uuid
+
+
+async def test_other_leaders_observation_does_not_refresh_this_leaders_members(
+    client, seeded
+):
+    """A second party reporting must not keep the first party's members fresh."""
+    p = seeded["players"]
+    wen, pasta, nazzae, holidaze = (
+        p["Wenweia"], p["_akaPasta"], p["Nazzae"], p["Holidaze"],
+    )
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+    for uuid in (wen.mc_uuid, holidaze.mc_uuid):
+        _age(state, uuid, _PARTY_LEADER_TTL_SECONDS + 1)
+
+    await _observe(client, pasta.mc_uuid, ["Nazzae", "_akaPasta"], "Nazzae")
+
+    now = time.time()
+    for uuid in (wen.mc_uuid, holidaze.mc_uuid):
+        assert now - state.party_seen_at_by_uuid[uuid] > _PARTY_LEADER_TTL_SECONDS
+    for uuid in (pasta.mc_uuid, nazzae.mc_uuid):
+        assert now - state.party_seen_at_by_uuid[uuid] < 5
+    state.online_by_uuid = {
+        wen.mc_uuid: OnlinePlayer(uuid=wen.mc_uuid, username="Wenweia",
+                                  tier="guild", server="AS5"),
+    }
+    assert (await presence_poller._compute(state))[wen.mc_uuid] is PresenceStatus.ONLINE_WORLD
+
+
+async def test_unlisted_member_expires_even_when_the_observation_has_an_unresolved_name(
+    client, seeded
+):
+    """An observation with an unresolved name cannot drop anyone, so a leaver
+    stays in the map; their stamp is not refreshed, so they lapse on their own."""
+    p = seeded["players"]
+    wen, pasta, holidaze = p["Wenweia"], p["_akaPasta"], p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    state.online_by_uuid = {
+        pasta.mc_uuid: OnlinePlayer(uuid=pasta.mc_uuid, username="_akaPasta",
+                                    tier="guild", server="AS5"),
+    }
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+    assert (await presence_poller._compute(state))[pasta.mc_uuid] is PresenceStatus.ONLINE_PARTY
+    for uuid in (wen.mc_uuid, pasta.mc_uuid, holidaze.mc_uuid):
+        _age(state, uuid, _PARTY_LEADER_TTL_SECONDS - 5)
+
+    # _akaPasta leaves, and a name in the party does not resolve (dropped > 0).
+    res = await _observe(
+        client, wen.mc_uuid, ["Holidaze", "Wenweia", "NobodyKnowsMe"], "Holidaze"
+    )
+
+    assert res.json()["dropped"] == 1
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == holidaze.mc_uuid
+    assert time.time() - state.party_seen_at_by_uuid[wen.mc_uuid] < 5
+    # Still inside the TTL for now ...
+    assert (await presence_poller._compute(state))[pasta.mc_uuid] is PresenceStatus.ONLINE_PARTY
+    # ... and gone once the TTL passes with no further listing.
+    _age(state, pasta.mc_uuid, _PARTY_LEADER_TTL_SECONDS + 1)
+    assert (await presence_poller._compute(state))[pasta.mc_uuid] is PresenceStatus.ONLINE_WORLD
+
+
+async def test_replace_drops_the_stamp_with_the_entry(client, seeded):
+    p = seeded["players"]
+    wen, pasta, holidaze = p["Wenweia"], p["_akaPasta"], p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+    assert pasta.mc_uuid in state.party_seen_at_by_uuid
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+
+    assert pasta.mc_uuid not in state.party_leader_by_uuid
+    assert pasta.mc_uuid not in state.party_seen_at_by_uuid
+    assert state.party_seen_at_by_uuid.keys() == {wen.mc_uuid, holidaze.mc_uuid}

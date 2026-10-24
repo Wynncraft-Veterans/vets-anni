@@ -48,7 +48,8 @@ S7:
   the guild resolve too), and written into ``state.party_leader_by_uuid``
   for the presence classifier's ``ONLINE_PARTY`` upgrade. Each observation
   whose names all resolve replaces that leader's roster: members it no longer
-  lists are dropped.
+  lists are dropped. Every listed member is stamped in
+  ``state.party_seen_at_by_uuid`` (per-member freshness for the classifier).
 
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
@@ -477,7 +478,14 @@ async def anni_party_observation(
             if lead == leader_uuid and m not in resolved
         ]:
             del state.party_leader_by_uuid[member]
+            state.party_seen_at_by_uuid.pop(member, None)
     state.party_leader_by_uuid.update(resolved)
-    state.party_observation_fetched_at = time.time()
+    # Stamp only the members this observation lists: freshness is per member,
+    # so a leaver (or a whole disbanded party) that no observation lists any
+    # more lapses on its own after the TTL, even when this one had an
+    # unresolved name and could not drop anyone.
+    now = time.time()
+    for member in resolved:
+        state.party_seen_at_by_uuid[member] = now
 
     return {"status": "ok", "resolved": len(resolved), "dropped": dropped}

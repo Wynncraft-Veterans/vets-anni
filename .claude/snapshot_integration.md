@@ -64,14 +64,21 @@ being corroborated at the next such observation, from any client); other
 leaders' entries are untouched. An observation with an unresolved name only
 adds, since that name may be a member paired by their own report's observer
 fallback.
-vetsmod sends no explicit "left the party" frame, so a leaver keeps their
-pairing until the party is observed again. There is **one** freshness stamp
-for the whole map: `state.party_observation_fetched_at` is touched on every
-successful write by any client, and once `_PARTY_LEADER_TTL_SECONDS` (60 s)
-pass without an observation [`presence_poller`](../app/services/presence_poller.py)
-treats the whole map as stale, so a vetsmod disconnect mid-window doesn't pin
-a user to yellow forever. Entries don't expire individually. The grace-wipe
-clears the map and the stamp.
+vetsmod sends no explicit "left the party" frame. Freshness is **per member**:
+`state.party_seen_at_by_uuid` maps each member uuid to the time of the last
+observation (from any client) that listed them, and an observation stamps only
+the members it lists (the observer included). Once `_PARTY_LEADER_TTL_SECONDS`
+(90 s) pass since a member was last listed
+[`presence_poller`](../app/services/presence_poller.py) stops corroborating
+them (`ONLINE_WORLD`), so another party's reports cannot keep a member yellow,
+and a leaver, a disbanded party or a vetsmod disconnect mid-window lapses on
+its own. This relies on vetsmod **re-sending every 30 s while its player is in
+an organiser's party** (the heartbeat; on top of the party-event and
+organiser-set-change sends), so 90 s outlasts one lost heartbeat (beats land a
+little over 30 s apart, so a second lost one can let the pairing lapse until the
+next). When a
+fully resolved observation drops a member from the map, their stamp is popped
+with the entry. The grace-wipe clears the map and the stamps.
 
 `/anni-rsvp-by-uuid` is the in-game `/wv anni rsvp <hard|soft|revoke>`
 write path. Temp-server's `anni_rsvp` inbound handler forwards the

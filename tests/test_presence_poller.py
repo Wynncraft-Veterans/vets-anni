@@ -90,15 +90,15 @@ async def test_party_leader_corroboration_flips_to_online_party(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: holidaze},
-        party_observation_fetched_at=time.time(),
+        party_seen_at_by_uuid={wen: time.time()},
     ))
     assert got[wen] is S.ONLINE_PARTY
 
 
 async def test_party_leader_corroboration_stale_falls_back(seeded):
-    """If the last observation is older than the TTL we treat the dict as
-    stale and degrade to ONLINE_WORLD — a vetsmod disconnect mid-window
-    must not pin a user to yellow forever."""
+    """If the last observation listing this member is older than the TTL we
+    treat the pairing as stale and degrade to ONLINE_WORLD — a vetsmod
+    disconnect mid-window must not pin a user to yellow forever."""
     p = seeded["players"]
     wen = p["Wenweia"].mc_uuid
     holidaze = p["Holidaze"].mc_uuid
@@ -106,9 +106,65 @@ async def test_party_leader_corroboration_stale_falls_back(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: holidaze},
-        party_observation_fetched_at=time.time() - _PARTY_LEADER_TTL_SECONDS - 1,
+        party_seen_at_by_uuid={wen: time.time() - _PARTY_LEADER_TTL_SECONDS - 1},
     ))
     assert got[wen] is S.ONLINE_WORLD
+
+
+async def test_party_freshness_is_per_member_not_per_map(seeded):
+    """Another member's fresh observation must not keep a stale member
+    yellow: Wenweia was last listed past the TTL, _akaPasta just now."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    pasta = p["_akaPasta"].mc_uuid
+    holidaze = p["Holidaze"].mc_uuid
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={
+            wen: _online(wen, server="AS5"),
+            pasta: _online(pasta, server="AS5"),
+        },
+        party_leader_by_uuid={wen: holidaze, pasta: holidaze},
+        party_seen_at_by_uuid={
+            wen: time.time() - _PARTY_LEADER_TTL_SECONDS - 1,
+            pasta: time.time(),
+        },
+    ))
+    assert got[wen] is S.ONLINE_WORLD
+    assert got[pasta] is S.ONLINE_PARTY
+
+
+async def test_a_quiet_party_stays_online_party_inside_the_ttl(seeded):
+    """With nobody else reporting, a member listed 80 s ago (a missed
+    heartbeat or two inside the 90 s TTL) is still corroborated."""
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    holidaze = p["Holidaze"].mc_uuid
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="AS5")},
+        party_leader_by_uuid={wen: holidaze},
+        party_seen_at_by_uuid={wen: time.time() - 80},
+    ))
+    assert got[wen] is S.ONLINE_PARTY
+
+
+async def test_a_member_with_no_stamp_is_not_corroborated(seeded):
+    p = seeded["players"]
+    wen = p["Wenweia"].mc_uuid
+    holidaze = p["Holidaze"].mc_uuid
+
+    got = await presence_poller._compute(AppState(
+        online_by_uuid={wen: _online(wen, server="AS5")},
+        party_leader_by_uuid={wen: holidaze},
+    ))
+    assert got[wen] is S.ONLINE_WORLD
+
+
+def test_the_party_ttl_outlasts_a_lost_heartbeat():
+    # vetsmod re-sends a little over every 30 s while in an organiser's party,
+    # so 90 s spans the beat after a lost one.
+    assert _PARTY_LEADER_TTL_SECONDS == 90
 
 
 async def test_party_leader_mismatch_stays_online_world(seeded):
@@ -122,7 +178,7 @@ async def test_party_leader_mismatch_stays_online_world(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="AS5")},
         party_leader_by_uuid={wen: nazzae},
-        party_observation_fetched_at=time.time(),
+        party_seen_at_by_uuid={wen: time.time()},
     ))
     assert got[wen] is S.ONLINE_WORLD
 
@@ -139,7 +195,7 @@ async def test_party_corroboration_without_world_match_stays_elsewhere(seeded):
     got = await presence_poller._compute(AppState(
         online_by_uuid={wen: _online(wen, server="NA1")},  # wrong world
         party_leader_by_uuid={wen: holidaze},
-        party_observation_fetched_at=time.time(),
+        party_seen_at_by_uuid={wen: time.time()},
     ))
     assert got[wen] is S.ONLINE_ELSEWHERE
 

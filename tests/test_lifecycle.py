@@ -277,15 +277,15 @@ async def test_live_api_hidden_verdict_exempts_a_miss(seeded):
 
 async def test_wipe_clears_party_leader_map(seeded):
     """The party corroboration map is per-event state: the grace-wipe clears it
-    (and its freshness stamp) with the other per-event maps."""
+    (and its per-member freshness stamps) with the other per-event maps."""
     p = seeded["players"]
     await _expire(seeded["event"])
     state = AppState(
         party_leader_by_uuid={p["Wenweia"].mc_uuid: p["Holidaze"].mc_uuid},
-        party_observation_fetched_at=time.time(),
+        party_seen_at_by_uuid={p["Wenweia"].mc_uuid: time.time()},
     )
 
     await lifecycle_task._tick(state, get_settings())
 
     assert state.party_leader_by_uuid == {}
-    assert state.party_observation_fetched_at == 0.0
+    assert state.party_seen_at_by_uuid == {}
