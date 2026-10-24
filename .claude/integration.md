@@ -6,7 +6,18 @@
 - `GET /v1/outbound/staff` → `[{uuid,username,rank,online,server}]` — online
   staff only (temp-server already paid the WAPI cost; no token spent here).
 - `GET /v1/outbound/list` → `{connected:[{uuid,username,tier,queued}]}` —
-  vetsmod-connected clients; `tier` ∈ guild|waitlist|honourary.
+  vetsmod-connected clients; `tier` ∈ guild|waitlist|honourary. temporary-server
+  lists a `guild` registration as `guild` only for a Returners member (roster
+  uuid set; a session `ws_tier` of honourary/waitlist lists that tier; a
+  registration younger than the last roster fetch + 180 s is still listed;
+  otherwise the row is withheld), so a stale client in another guild no longer
+  appears here. It also drops tab-list frames from non-guild sockets and keeps
+  only Returners names (the `server` field), and relays guild chat and rank
+  changes only for Returners members. temporary-server commits: `fix: list a
+  guild registration only for a Returners member`, `fix: keep a foreign guild's
+  tab list out of !list`, `fix: relay guild chat only from a Returners forwarder
+  or sender`, `fix: drop rank changes that involve no Returners member`
+  (hashes added at merge). No change needed here.
 - `GET /v1/outbound/roster` → `{uuid: username}` (authoritative names).
 - `GET /v1/outbound/aliases` → `{legacyname_lower: uuid}` (rename desync).
 
