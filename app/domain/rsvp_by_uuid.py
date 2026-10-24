@@ -9,12 +9,18 @@ parameter is threaded through so the public confirmation line still lands in
 
 Reuses the same downstream helpers as ``_do_set`` / ``_do_revoke`` so the
 Rsvp row, the auto-placement, the board-snapshot broadcast, and the public
-post stay byte-identical between the two surfaces.
+post match the Discord cog's. Two deliberate differences: a first-time
+player's public line names the ``uuid[:8]`` placeholder (the WS side has no
+username yet), and a revoke for a UUID with no ``AnniPlayer`` row creates
+nothing. The private reply is not forwarded to the caller; instead
+:class:`UuidRsvpResult` carries a machine-readable ``result`` so the in-game
+client can tell a real withdrawal from a revoke of nothing.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from app.bot.cogs.rsvp import (
@@ -39,6 +45,20 @@ logger = logging.getLogger("anni.domain.rsvp_by_uuid")
 
 Notice = Literal["hard", "soft", "revoke"]
 
+# What an in-game RSVP did, reported to vetsmod through the HTTP endpoint:
+# "recorded" (hard/soft stored), "withdrawn" (a live RSVP was revoked), or
+# "nothing_to_withdraw" (revoke with no active RSVP, nothing changed).
+RsvpResultKind = Literal["recorded", "withdrawn", "nothing_to_withdraw"]
+
+
+@dataclass(frozen=True)
+class UuidRsvpResult:
+    """:func:`execute_uuid_rsvp` return value: the cog-style outcome (private
+    and public message) plus the machine-readable ``result``."""
+
+    outcome: RsvpOutcome
+    result: RsvpResultKind
+
 
 class UuidRsvpError(Exception):
     """Validation/conflict error surfaced as an HTTP 4xx by the endpoint."""
@@ -53,7 +73,7 @@ async def execute_uuid_rsvp(
     bot: "commands.Bot | None",
     actor_mc_uuid: str,
     notice: Notice,
-) -> RsvpOutcome:
+) -> UuidRsvpResult:
     """Apply an in-game RSVP for ``actor_mc_uuid``.
 
     Mirrors the cog's ``_do_set`` / ``_do_revoke`` semantics including the
@@ -62,6 +82,11 @@ async def execute_uuid_rsvp(
     same Discord confirmation line; missing-bot or missing-channel is a
     silent no-op (matches the rest of fishbot's optional-Discord posture).
 
+    ``result`` is ``"recorded"`` for hard/soft, ``"withdrawn"`` for a revoke
+    that removed a live RSVP, and ``"nothing_to_withdraw"`` for a revoke with
+    no active RSVP (including a UUID fishbot has never seen, which no longer
+    gets a placeholder ``AnniPlayer`` row from a revoke).
+
     Raises :class:`UuidRsvpError` for the four-ish refusable cases so the
     HTTP layer can map them to 4xx with a useful ``detail``.
     """
@@ -69,39 +94,49 @@ async def execute_uuid_rsvp(
     if event is None:
         raise UuidRsvpError(404, "no active anni event")
 
-    player, _created = await AnniPlayer.get_or_create(
-        mc_uuid=actor_mc_uuid,
-        defaults={
-            # WS side only has the UUID; mc_username gets hydrated by the
-            # next auto-promoter / presence cycle. Same uuid[:8] fallback
-            # auto_promoter uses for online-but-unknown players.
-            "mc_username": actor_mc_uuid[:8],
-            "is_placeholder": True,
-        },
-    )
-    if _created:
-        logger.info(
-            "rsvp_by_uuid: created placeholder AnniPlayer for %s",
-            actor_mc_uuid,
-        )
-
     if notice == "revoke":
-        outcome = await _do_revoke_uuid(player, event)
+        # A revoke never materialises a placeholder card: a UUID with no
+        # AnniPlayer row cannot have an RSVP, so there is nothing to withdraw.
+        player = await AnniPlayer.filter(mc_uuid=actor_mc_uuid).first()
+        if player is None:
+            result = UuidRsvpResult(
+                RsvpOutcome(private_message="No active RSVP to withdraw."),
+                "nothing_to_withdraw",
+            )
+        else:
+            result = await _do_revoke_uuid(player, event)
     else:
         if hot_window.is_rsvp_closed(event):
             raise UuidRsvpError(
                 409, "RSVP is closed (within 90 min of anni)"
             )
+        player, _created = await AnniPlayer.get_or_create(
+            mc_uuid=actor_mc_uuid,
+            defaults={
+                # WS side only has the UUID; mc_username gets hydrated by the
+                # next auto-promoter / presence cycle. Same uuid[:8] fallback
+                # auto_promoter uses for online-but-unknown players.
+                "mc_username": actor_mc_uuid[:8],
+                "is_placeholder": True,
+            },
+        )
+        if _created:
+            logger.info(
+                "rsvp_by_uuid: created placeholder AnniPlayer for %s",
+                actor_mc_uuid,
+            )
         att_notice = (
             AttendanceNotice.RSVP_HARD if notice == "hard"
             else AttendanceNotice.RSVP_SOFT
         )
-        outcome = await _do_set_uuid(player, event, att_notice)
+        result = UuidRsvpResult(
+            await _do_set_uuid(player, event, att_notice), "recorded"
+        )
 
-    if bot is not None and outcome.public_message:
-        await _post_public(bot, outcome.public_message)
+    if bot is not None and result.outcome.public_message:
+        await _post_public(bot, result.outcome.public_message)
 
-    return outcome
+    return result
 
 
 async def _do_set_uuid(
@@ -129,21 +164,29 @@ async def _do_set_uuid(
     return RsvpOutcome(private_message=private, public_message=public)
 
 
-async def _do_revoke_uuid(player: AnniPlayer, event) -> RsvpOutcome:
+async def _do_revoke_uuid(player: AnniPlayer, event) -> UuidRsvpResult:
     """In-game revoke — sibling of the cog's ``_do_revoke``.
 
     Silent in the public channel when there was no active RSVP to withdraw
-    (matches the Discord side's "be friendly and don't spam" branch).
+    (matches the Discord side's "be friendly and don't spam" branch), and
+    reported as ``"nothing_to_withdraw"`` so the in-game client does not say
+    "withdrawn" for a no-op.
     """
     prior = await rsvp_domain.revoke(player, event)
     if prior is None:
-        return RsvpOutcome(private_message="No active RSVP to withdraw.")
+        return UuidRsvpResult(
+            RsvpOutcome(private_message="No active RSVP to withdraw."),
+            "nothing_to_withdraw",
+        )
     await buckets_domain.demote_on_revoke(event, player)
     await _broadcast_board_snapshot(event)
     username = player.mc_username or player.mc_uuid
-    return RsvpOutcome(
-        private_message=(
-            f"Your {_notice_label(prior.notice)} RSVP has been withdrawn."
+    return UuidRsvpResult(
+        RsvpOutcome(
+            private_message=(
+                f"Your {_notice_label(prior.notice)} RSVP has been withdrawn."
+            ),
+            public_message=f"`{username}` withdrew their RSVP.",
         ),
-        public_message=f"`{username}` withdrew their RSVP.",
+        "withdrawn",
     )

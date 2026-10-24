@@ -20,14 +20,14 @@ from app.domain.rsvp_by_uuid import UuidRsvpError, execute_uuid_rsvp
 async def test_hard_sets_row_and_auto_places(seeded):
     p = seeded["players"]["baz"]  # baz has no seeded RSVP/placement
 
-    outcome = await execute_uuid_rsvp(None, p.mc_uuid, "hard")
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "hard")
 
     row = await Rsvp.filter(event=seeded["event"], player=p).first()
     assert row is not None
     assert row.notice is AttendanceNotice.RSVP_HARD
     assert row.revoked_at is None
-    assert outcome.public_message is not None
-    assert "**HARD**" in outcome.public_message
+    assert res.outcome.public_message is not None
+    assert "**HARD**" in res.outcome.public_message
     # auto-placed into Unassigned (not late, not walk-in)
     placement = await BoardPlacement.filter(
         event=seeded["event"], player=p
@@ -38,34 +38,94 @@ async def test_hard_sets_row_and_auto_places(seeded):
 async def test_soft_sets_row_with_soft_label(seeded):
     p = seeded["players"]["baz"]
 
-    outcome = await execute_uuid_rsvp(None, p.mc_uuid, "soft")
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "soft")
 
     row = await Rsvp.filter(event=seeded["event"], player=p).first()
     assert row is not None
     assert row.notice is AttendanceNotice.RSVP_SOFT
-    assert outcome.public_message is not None
-    assert "**SOFT**" in outcome.public_message
+    assert res.outcome.public_message is not None
+    assert "**SOFT**" in res.outcome.public_message
 
 
 async def test_revoke_soft_deletes_existing_row(seeded):
     # Wenweia is seeded with HARD; revoke should soft-delete and announce.
     p = seeded["players"]["Wenweia"]
 
-    outcome = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
 
     row = await Rsvp.filter(event=seeded["event"], player=p).first()
     assert row is not None
     assert row.revoked_at is not None
-    assert outcome.public_message == f"`{p.mc_username}` withdrew their RSVP."
+    assert res.outcome.public_message == f"`{p.mc_username}` withdrew their RSVP."
 
 
 async def test_revoke_with_no_rsvp_is_silent(seeded):
     # baz has no seeded RSVP — revoke is a no-op + silent in Discord.
     p = seeded["players"]["baz"]
 
-    outcome = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
 
-    assert outcome.public_message is None
+    assert res.outcome.public_message is None
+
+
+async def test_hard_and_soft_report_recorded(seeded):
+    baz = seeded["players"]["baz"]
+
+    hard = await execute_uuid_rsvp(None, baz.mc_uuid, "hard")
+    soft = await execute_uuid_rsvp(None, baz.mc_uuid, "soft")
+
+    assert hard.result == "recorded"
+    assert soft.result == "recorded"
+
+
+async def test_revoke_existing_reports_withdrawn(seeded):
+    p = seeded["players"]["Wenweia"]  # seeded with a HARD RSVP
+
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+
+    assert res.result == "withdrawn"
+
+
+async def test_revoke_with_no_rsvp_reports_nothing_to_withdraw(seeded):
+    p = seeded["players"]["baz"]  # known player, no RSVP
+
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+
+    assert res.result == "nothing_to_withdraw"
+    assert res.outcome.public_message is None
+    assert await Rsvp.filter(event=seeded["event"], player=p).first() is None
+
+
+async def test_revoke_twice_second_is_nothing_to_withdraw(seeded):
+    p = seeded["players"]["Wenweia"]
+
+    first = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    second = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+
+    assert first.result == "withdrawn"
+    assert second.result == "nothing_to_withdraw"
+
+
+async def test_revoke_for_unknown_uuid_creates_no_placeholder(seeded):
+    new_uuid = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+    players_before = await AnniPlayer.all().count()
+
+    res = await execute_uuid_rsvp(None, new_uuid, "revoke")
+
+    assert res.result == "nothing_to_withdraw"
+    assert res.outcome.public_message is None
+    assert await AnniPlayer.filter(mc_uuid=new_uuid).first() is None
+    assert await AnniPlayer.all().count() == players_before
+
+
+async def test_hard_after_unknown_revoke_still_creates_placeholder(seeded):
+    new_uuid = "cccccccc-dddd-eeee-ffff-000000000000"
+    await execute_uuid_rsvp(None, new_uuid, "revoke")
+
+    res = await execute_uuid_rsvp(None, new_uuid, "hard")
+
+    assert res.result == "recorded"
+    assert await AnniPlayer.filter(mc_uuid=new_uuid).first() is not None
 
 
 async def test_t_minus_90_cutoff_refuses_hard_soft(seeded, monkeypatch):
@@ -86,9 +146,9 @@ async def test_t_minus_90_cutoff_still_permits_revoke(seeded, monkeypatch):
     monkeypatch.setattr(hot_window, "is_rsvp_closed", lambda event, **_: True)
     p = seeded["players"]["Wenweia"]
 
-    outcome = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "revoke")
 
-    assert outcome.public_message is not None
+    assert res.outcome.public_message is not None
 
 
 async def test_no_active_event_raises_404(db, monkeypatch):
@@ -192,12 +252,42 @@ async def test_creates_placeholder_for_unknown_uuid(seeded):
     new_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     assert await AnniPlayer.filter(mc_uuid=new_uuid).first() is None
 
-    outcome = await execute_uuid_rsvp(None, new_uuid, "hard")
+    res = await execute_uuid_rsvp(None, new_uuid, "hard")
 
     player = await AnniPlayer.filter(mc_uuid=new_uuid).first()
     assert player is not None
     assert player.is_placeholder is True
     # Same uuid[:8] fallback auto_promoter uses; the public message names it.
-    assert outcome.public_message is not None
+    assert res.outcome.public_message is not None
     assert player.mc_username == new_uuid[:8]
-    assert f"`{new_uuid[:8]}`" in outcome.public_message
+    assert f"`{new_uuid[:8]}`" in res.outcome.public_message
+
+
+# --- HTTP endpoint ---------------------------------------------------------
+
+_SECRET = "test-anni-internal"
+
+
+async def _post(client, monkeypatch, uuid, notice):
+    from app.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "anni_introspect_secret", _SECRET)
+    return await client.post(
+        "/api/internal/anni-rsvp-by-uuid",
+        headers={"X-Introspect-Secret": _SECRET},
+        json={"actor_mc_uuid": uuid, "notice": notice},
+    )
+
+
+async def test_endpoint_body_carries_result(client, seeded, monkeypatch):
+    baz = seeded["players"]["baz"]
+    wen = seeded["players"]["Wenweia"]
+
+    recorded = await _post(client, monkeypatch, baz.mc_uuid, "hard")
+    withdrawn = await _post(client, monkeypatch, wen.mc_uuid, "revoke")
+    nothing = await _post(client, monkeypatch, wen.mc_uuid, "revoke")
+
+    assert recorded.status_code == 200
+    assert recorded.json() == {"status": "ok", "result": "recorded"}
+    assert withdrawn.json() == {"status": "ok", "result": "withdrawn"}
+    assert nothing.json() == {"status": "ok", "result": "nothing_to_withdraw"}

@@ -93,9 +93,14 @@ exposed only on the verify-network internal endpoints in
   [`app/domain/rsvp_by_uuid.execute_uuid_rsvp`](../app/domain/rsvp_by_uuid.py)
   which reuses the cog's `set_rsvp` / `revoke` / `_auto_place_after_rsvp` /
   `_broadcast_board_snapshot` / `_post_public` chain, so an in-game RSVP
-  is byte-equivalent to a Discord-issued one (same Rsvp row, same
-  `RSVP_CHANNEL_ID` post). T-90 cutoff enforced (409); revokes are
-  unaffected and pass through.
+  writes the same Rsvp row and the same `RSVP_CHANNEL_ID` post as a
+  Discord-issued one. T-90 cutoff enforced (409); revokes are
+  unaffected and pass through. The private reply does not travel, so the
+  200 body is `{status: "ok", result}` with `result` one of `recorded`
+  (hard/soft), `withdrawn` (a live RSVP was revoked) or
+  `nothing_to_withdraw` (revoke with no active RSVP: nothing changed, no
+  public post). A revoke for a UUID with no `AnniPlayer` row also returns
+  `nothing_to_withdraw` and creates no placeholder row (hard/soft still do).
 
   **S6 bucket invariant — revoke + re-RSVP promotes back.** A revoke
   demotes UNASSIGNED → WONTASSIGN via

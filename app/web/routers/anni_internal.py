@@ -30,8 +30,10 @@ S6:
   RSVP from in-game. Body: ``{"actor_mc_uuid":"...","notice":"hard"|"soft"|"revoke"}``.
   Forwards to :func:`app.domain.rsvp_by_uuid.execute_uuid_rsvp` which
   reuses the cog's ``set_rsvp`` / ``revoke`` / auto-place / broadcast /
-  public-post chain, so a ``/wv anni rsvp hard`` is byte-equivalent to a
-  Discord ``\\rsvp hard``.
+  public-post chain, so a ``/wv anni rsvp hard`` writes the same row and
+  posts the same public line as a Discord ``\\rsvp hard``. The 200 body
+  also carries ``result`` (``recorded`` / ``withdrawn`` /
+  ``nothing_to_withdraw``) because the private reply is not forwarded.
 
 S7:
 
@@ -310,15 +312,19 @@ async def anni_rsvp_by_uuid(
     Trust chain: vetsmod -> temp-server (authenticated session stamps
     ``actor_mc_uuid``) -> here. The same downstream as the Discord cog so
     the Rsvp row, auto-placement, board-snapshot broadcast, and public
-    confirmation post are byte-identical between the two surfaces.
+    confirmation post match between the two surfaces (the private reply
+    does not travel; ``result`` stands in for it).
 
     Body shape::
 
         {"actor_mc_uuid": "...", "notice": "hard" | "soft" | "revoke"}
 
-    Returns ``{"status": "ok"}`` on success. The four refusable cases
-    (no active event, invalid notice, missing UUID, T-90 cutoff) map to
-    4xx with ``{"status":"error","detail":"..."}``.
+    Returns ``{"status": "ok", "result": ...}`` on success, where ``result``
+    is ``"recorded"`` (hard/soft), ``"withdrawn"`` (revoke removed a live
+    RSVP) or ``"nothing_to_withdraw"`` (revoke with no active RSVP; nothing
+    changed and no ``AnniPlayer`` row is created for an unknown UUID). The
+    four refusable cases (no active event, invalid notice, missing UUID,
+    T-90 cutoff) map to 4xx with ``{"status":"error","detail":"..."}``.
     """
     _check_secret(x_introspect_secret)
     if not isinstance(payload, dict):
@@ -337,10 +343,10 @@ async def anni_rsvp_by_uuid(
 
     bot = getattr(request.app.state, "fishbot", None)
     try:
-        await execute_uuid_rsvp(bot, actor_mc_uuid, notice)
+        res = await execute_uuid_rsvp(bot, actor_mc_uuid, notice)
     except UuidRsvpError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    return {"status": "ok"}
+    return {"status": "ok", "result": res.result}
 
 
 @router.post("/anni-party-observation")

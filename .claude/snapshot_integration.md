@@ -33,7 +33,7 @@ unset (503).
 | GET | `/anni-player/{uuid}` | — | one snapshot, or 404 | S1 |
 | POST | `/anni-snapshot-batch` | `{uuids: [...]}` | `{snapshots: [...]}` | S1 |
 | POST | `/anni-party-scrollspot` | `{actor_mc_uuid, scroll_spot: {x,y,z}\|null}` | `{status: "ok"}` | S5 |
-| POST | `/anni-rsvp-by-uuid` | `{actor_mc_uuid, notice: "hard"\|"soft"\|"revoke"}` | `{status: "ok"}` | S6 |
+| POST | `/anni-rsvp-by-uuid` | `{actor_mc_uuid, notice: "hard"\|"soft"\|"revoke"}` | `{status: "ok", result: "recorded"\|"withdrawn"\|"nothing_to_withdraw"}` | S6 |
 | POST | `/anni-party-observation` | `{observer_mc_uuid, party_member_usernames, leader_username, world}` | `{status: "ok", resolved, dropped}` | S7 |
 
 `/anni-party-scrollspot` is the per-party host's write path for the in-game
@@ -68,11 +68,15 @@ authenticated session's MC UUID as `actor_mc_uuid`. vets-anni delegates
 to [`app/domain/rsvp_by_uuid.execute_uuid_rsvp`](../app/domain/rsvp_by_uuid.py),
 which reuses the cog's `set_rsvp` / `revoke` / `_auto_place_after_rsvp`
 / `_broadcast_board_snapshot` / `_post_public` chain — same Rsvp row,
-same RSVP_CHANNEL_ID confirmation post as a Discord `\rsvp`. Brand-new
-UUIDs get a placeholder `AnniPlayer` row (`mc_username = uuid[:8]`,
-`is_placeholder=True`) which the next auto-promoter / presence cycle
-hydrates. 404 on no active event, 409 on T-90 cutoff (revokes pass through
-the cutoff). No schema-version bump — `board.rsvp.notice` is already on
+same RSVP_CHANNEL_ID confirmation post as a Discord `\rsvp`. The private
+reply is not forwarded; the 200 body's `result` replaces it: `recorded`
+(hard/soft), `withdrawn` (a live RSVP was revoked), `nothing_to_withdraw`
+(revoke with no active RSVP: no change, no public post). Brand-new
+UUIDs get a placeholder `AnniPlayer` row on a hard/soft (`mc_username =
+uuid[:8]`, `is_placeholder=True`) which the next auto-promoter / presence
+cycle hydrates; a revoke for an unknown UUID creates no row and returns
+`nothing_to_withdraw`. 404 on no active event, 409 on T-90 cutoff (revokes
+pass through the cutoff). No schema-version bump — `board.rsvp.notice` is already on
 the snapshot at v2/v3.
 
 `board.wont_reason` (S6 refinement) — when `state == "wont_assign"`,
