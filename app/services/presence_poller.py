@@ -87,7 +87,8 @@ async def _compute(state: AppState) -> dict[str, PresenceStatus]:
         # roster via the S7 ``anni_party_observation`` frame when an organiser
         # is in their party; the endpoint resolves names → uuids and writes
         # ``state.party_leader_by_uuid`` (member_uuid -> leader_uuid). We only
-        # count as "confirmed in party" when (a) the dict is fresh (a vetsmod
+        # count as "confirmed in party" when (a) the dict is fresh (one stamp
+        # for the whole map, refreshed by any client's observation; a vetsmod
         # disconnect mid-window must not pin a user to ONLINE_PARTY forever)
         # and (b) the resolved leader matches the host the staff board
         # assigned. Anything weaker degrades to ONLINE_WORLD — we never

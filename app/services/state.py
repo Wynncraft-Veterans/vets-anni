@@ -16,12 +16,17 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-#: Maximum age (seconds) of a ``party_leader_by_uuid`` entry before
-#: ``presence_poller`` treats it as stale and falls back to ``ONLINE_WORLD``.
-#: vetsmod pushes ``anni_party_observation`` on every party event during the
-#: anni window (snapshot updates also fire it), so a 60s window safely covers
-#: the typical between-event idle without stranding stale corroboration when a
-#: vetsmod client disconnects mid-window.
+#: Maximum age (seconds) of the whole ``party_leader_by_uuid`` map, measured
+#: from the last ``anni_party_observation`` from ANY client
+#: (``party_observation_fetched_at`` is one stamp, not one per entry), before
+#: ``presence_poller`` treats the map as stale and falls back to
+#: ``ONLINE_WORLD``. vetsmod sends the frame on party events and on
+#: organiser-set changes, not on every snapshot update, so the 60s window
+#: covers the typical between-event idle without stranding stale
+#: corroboration when every reporting client disconnects mid-window. It does
+#: not age out an individual entry: a member who leaves a party drops off when
+#: that leader's party is next observed with every name resolved (the endpoint
+#: replaces the roster), and the grace-wipe clears the whole map.
 _PARTY_LEADER_TTL_SECONDS = 60
 
 
@@ -122,12 +127,14 @@ class AppState:
     #: endpoint — vetsmod reports its local Wynncraft party roster when an
     #: organiser username appears in the party (the only signal that matters
     #: for the ``ONLINE_PARTY`` board upgrade). Names arrive over the wire and
-    #: are resolved here against ``roster_by_uuid`` + ``aliases``. Entries
-    #: older than :data:`_PARTY_LEADER_TTL_SECONDS` are treated as stale by
-    #: ``presence_poller`` (a vetsmod disconnect mid-window must not pin the
-    #: user to ``ONLINE_PARTY`` forever). Empty / stale / unresolved name =>
-    #: classifier falls back to ``ONLINE_WORLD`` rather than fabricating
-    #: ``ONLINE_PARTY``.
+    #: are resolved here against ``roster_by_uuid`` + ``aliases``. Each
+    #: fully resolved observation replaces that leader's roster (members it no
+    #: longer lists drop off); the whole map is treated as stale by ``presence_poller`` once
+    #: :data:`_PARTY_LEADER_TTL_SECONDS` pass since ``party_observation_fetched_at``
+    #: (one stamp, refreshed by any client; a vetsmod disconnect mid-window must
+    #: not pin the user to ``ONLINE_PARTY`` forever), and the grace-wipe clears
+    #: it. Empty / stale / unresolved name => classifier falls back to
+    #: ``ONLINE_WORLD`` rather than fabricating ``ONLINE_PARTY``.
     party_leader_by_uuid: dict[str, str] = field(default_factory=dict)
     party_observation_fetched_at: float = 0.0
 

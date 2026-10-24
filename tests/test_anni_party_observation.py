@@ -1,8 +1,10 @@
 """S7 ``POST /api/internal/anni-party-observation`` — vetsmod back-report.
 
 Covers the resolution path (roster + alias fallback), the observer-uuid
-fallback, the unresolvable-leader short-circuit, secret-gating, and the
-``state.party_leader_by_uuid`` mutation that feeds ``presence_poller``.
+fallback, the unresolvable-leader short-circuit, secret-gating, the
+replace-the-roster semantics (a member a re-observation no longer lists drops
+off), and the ``state.party_leader_by_uuid`` mutation that feeds
+``presence_poller``.
 """
 
 from __future__ import annotations
@@ -226,3 +228,141 @@ async def test_bad_payload_shapes_rejected(client, seeded):
         },
     )
     assert r.status_code == 400
+
+
+async def _observe(client, observer, members, leader):
+    return await client.post(
+        "/api/internal/anni-party-observation",
+        headers={"X-Introspect-Secret": SECRET},
+        json={
+            "observer_mc_uuid": observer,
+            "party_member_usernames": members,
+            "leader_username": leader,
+            "world": "AS5",
+        },
+    )
+
+
+async def test_observation_for_same_leader_drops_members_no_longer_listed(
+    client, seeded
+):
+    """A member who left the party stops being corroborated as soon as the
+    leader's party is observed again without them."""
+    p = seeded["players"]
+    wen, pasta, holidaze = p["Wenweia"], p["_akaPasta"], p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+
+    first = await _observe(
+        client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze"
+    )
+    assert first.status_code == 200
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == holidaze.mc_uuid
+
+    # _akaPasta leaves; the next observation lists only the two who remain.
+    second = await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+    assert second.status_code == 200
+
+    assert pasta.mc_uuid not in state.party_leader_by_uuid
+    assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
+    assert state.party_leader_by_uuid[holidaze.mc_uuid] == holidaze.mc_uuid
+
+
+async def test_an_unresolved_name_drops_nobody_from_the_leaders_roster(client, seeded):
+    """A new member paired only by their own report (their name is not in the
+    cache yet) keeps the pairing when another member's report lists that name
+    and cannot resolve it: an observation with an unresolved name is not
+    complete enough to drop anyone."""
+    p = seeded["players"]
+    wen, holidaze = p["Wenweia"], p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    new_uuid = "00000000-0000-0000-0000-000000000abc"
+
+    own = await _observe(client, new_uuid, ["Holidaze", "NobodyKnowsMe"], "Holidaze")
+    assert own.status_code == 200
+    assert state.party_leader_by_uuid[new_uuid] == holidaze.mc_uuid
+
+    other = await _observe(
+        client, wen.mc_uuid, ["Holidaze", "Wenweia", "NobodyKnowsMe"], "Holidaze"
+    )
+    assert other.status_code == 200
+    assert state.party_leader_by_uuid[new_uuid] == holidaze.mc_uuid
+    assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
+
+
+async def test_dropped_member_degrades_to_online_world(client, seeded):
+    """End to end: the departed member falls from ONLINE_PARTY to ONLINE_WORLD."""
+    p = seeded["players"]
+    wen, pasta = p["Wenweia"], p["_akaPasta"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    state.online_by_uuid = {
+        pasta.mc_uuid: OnlinePlayer(uuid=pasta.mc_uuid, username="_akaPasta",
+                                    tier="guild", server="AS5"),
+    }
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+    assert (await presence_poller._compute(state))[pasta.mc_uuid] is PresenceStatus.ONLINE_PARTY
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+
+    assert (await presence_poller._compute(state))[pasta.mc_uuid] is PresenceStatus.ONLINE_WORLD
+
+
+async def test_observation_for_other_leader_keeps_this_leaders_members(client, seeded):
+    """Replacing one leader's roster must not touch another party's entries."""
+    p = seeded["players"]
+    wen, pasta, nazzae, holidaze = (
+        p["Wenweia"], p["_akaPasta"], p["Nazzae"], p["Holidaze"],
+    )
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+    # A different party, led by Nazzae, is observed afterwards.
+    res = await _observe(client, pasta.mc_uuid, ["Nazzae", "_akaPasta"], "Nazzae")
+    assert res.status_code == 200
+
+    assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
+    assert state.party_leader_by_uuid[holidaze.mc_uuid] == holidaze.mc_uuid
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == nazzae.mc_uuid
+    assert state.party_leader_by_uuid[nazzae.mc_uuid] == nazzae.mc_uuid
+
+
+async def test_member_who_joined_another_party_moves_without_being_dropped(
+    client, seeded
+):
+    """A leaver's own report maps them to the new leader; the old leader's next
+    observation then has nothing of theirs left to drop or overwrite."""
+    p = seeded["players"]
+    wen, pasta, nazzae, holidaze = (
+        p["Wenweia"], p["_akaPasta"], p["Nazzae"], p["Holidaze"],
+    )
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+    await _observe(client, pasta.mc_uuid, ["Nazzae", "_akaPasta"], "Nazzae")
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == nazzae.mc_uuid
+
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia"], "Holidaze")
+
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == nazzae.mc_uuid
+    assert state.party_leader_by_uuid[wen.mc_uuid] == holidaze.mc_uuid
+
+
+async def test_unresolved_leader_still_a_noop_and_drops_nothing(client, seeded):
+    p = seeded["players"]
+    wen, pasta, holidaze = p["Wenweia"], p["_akaPasta"], p["Holidaze"]
+    state = _state_with_roster(p)
+    _wire_state(client._transport.app, state)
+    await _observe(client, wen.mc_uuid, ["Holidaze", "Wenweia", "_akaPasta"], "Holidaze")
+    before = dict(state.party_leader_by_uuid)
+    stamp = state.party_observation_fetched_at
+
+    res = await _observe(client, wen.mc_uuid, ["Wenweia"], "RandomStranger")
+
+    assert res.status_code == 200 and res.json()["resolved"] == 0
+    assert state.party_leader_by_uuid == before
+    assert state.party_observation_fetched_at == stamp
+    assert state.party_leader_by_uuid[pasta.mc_uuid] == holidaze.mc_uuid

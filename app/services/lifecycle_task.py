@@ -184,6 +184,10 @@ async def _wipe(event, state: AppState) -> None:
     # Per-event history: without this the next anni would open with everyone
     # who logged in during the last one already wearing the "gone" stamp.
     state.seen_online_uuids = set()
+    # Party corroboration is per-event too: a leader/member pairing observed
+    # during this anni must not survive into the next one.
+    state.party_leader_by_uuid = {}
+    state.party_observation_fetched_at = 0.0
 
     from app.web.ws.board_hub import get_board_hub
 

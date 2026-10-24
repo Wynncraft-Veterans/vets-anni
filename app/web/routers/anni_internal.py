@@ -46,7 +46,9 @@ S7:
   resolved here via :meth:`AppState.resolve_uuid` (roster scan → legacy
   alias fallback), then the active board's own names (so players outside
   the guild resolve too), and written into ``state.party_leader_by_uuid``
-  for the presence classifier's ``ONLINE_PARTY`` upgrade.
+  for the presence classifier's ``ONLINE_PARTY`` upgrade. Each observation
+  whose names all resolve replaces that leader's roster: members it no longer
+  lists are dropped.
 
 Hard architectural rule #2: every endpoint returns the SAME shape produced
 by :func:`app.domain.snapshot.assemble_snapshot`. Don't add per-endpoint
@@ -381,6 +383,15 @@ async def anni_party_observation(
     authoritative fallback for the observer's own entry — even if their
     username didn't resolve through the cache, we still record them.
 
+    Each observation whose names all resolve replaces the leader's roster: any
+    existing entry for the same leader whose member is not in the new roster is
+    removed (a member who left the party stops being corroborated at the next
+    such observation, from any client). An observation with an unresolved name
+    only adds, since that name may be a member paired by their own report's
+    observer fallback. Entries for other leaders are untouched, and an
+    unresolvable leader still short-circuits before anything is dropped or
+    written.
+
     Returns ``{"status": "ok", "resolved": <int>, "dropped": <int>}`` for
     observability. The poller doesn't act on the counts; they exist for
     debug-surface inspection.
@@ -452,6 +463,20 @@ async def anni_party_observation(
     # (e.g. a brand-new member whose username row hasn't ingested yet).
     resolved.setdefault(observer_mc_uuid, leader_uuid)
 
+    # Replace this leader's roster: a member who left the party is absent from
+    # the new observation, so their old pairing must go. (A leaver who joined
+    # another party is re-paired by their own observation; this only removes
+    # entries still pointing at this leader.) Only a fully resolved observation
+    # is complete enough to drop anyone: a listed name that did not resolve
+    # here may be a member paired only by their own report's observer fallback
+    # (a new player not yet in the name cache), whom an unresolvable listing
+    # would otherwise unpair. Then this observation only adds, as before.
+    if dropped == 0:
+        for member in [
+            m for m, lead in state.party_leader_by_uuid.items()
+            if lead == leader_uuid and m not in resolved
+        ]:
+            del state.party_leader_by_uuid[member]
     state.party_leader_by_uuid.update(resolved)
     state.party_observation_fetched_at = time.time()
 

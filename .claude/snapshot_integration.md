@@ -57,10 +57,21 @@ and writes `{member_uuid: leader_uuid}` pairs into
 even if their username didn't resolve (a brand-new member whose roster row
 hasn't ingested yet). An unresolvable leader short-circuits the whole
 observation (no anchor for the `ONLINE_PARTY` upgrade — the dict isn't
-mutated). `state.party_observation_fetched_at` is touched on every successful
-write; entries older than `_PARTY_LEADER_TTL_SECONDS` (60 s) are treated as
-stale by [`presence_poller`](../app/services/presence_poller.py) so a
-vetsmod disconnect mid-window doesn't pin a user to yellow forever.
+mutated and nothing is dropped). Each observation whose names all resolved
+**replaces that leader's roster**: entries already pointing at the same leader
+whose member the new roster doesn't list are removed (a member who left stops
+being corroborated at the next such observation, from any client); other
+leaders' entries are untouched. An observation with an unresolved name only
+adds, since that name may be a member paired by their own report's observer
+fallback.
+vetsmod sends no explicit "left the party" frame, so a leaver keeps their
+pairing until the party is observed again. There is **one** freshness stamp
+for the whole map: `state.party_observation_fetched_at` is touched on every
+successful write by any client, and once `_PARTY_LEADER_TTL_SECONDS` (60 s)
+pass without an observation [`presence_poller`](../app/services/presence_poller.py)
+treats the whole map as stale, so a vetsmod disconnect mid-window doesn't pin
+a user to yellow forever. Entries don't expire individually. The grace-wipe
+clears the map and the stamp.
 
 `/anni-rsvp-by-uuid` is the in-game `/wv anni rsvp <hard|soft|revoke>`
 write path. Temp-server's `anni_rsvp` inbound handler forwards the

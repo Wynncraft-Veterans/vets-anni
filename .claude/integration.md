@@ -138,8 +138,14 @@ exposed only on the verify-network internal endpoints in
   `ONLINE_PARTY` upgrade. Unresolvable leader = no-op (`{resolved: 0}`);
   unresolvable members are dropped individually; the observer's session
   UUID always lands in the dict (authoritative fallback for brand-new
-  members). Entries are TTL-gated (60 s) by `presence_poller` so a
-  vetsmod disconnect mid-window doesn't pin the user to yellow forever.
+  members). Each fully resolved observation replaces that leader's roster
+  (members the new one doesn't list are dropped; other leaders' entries are
+  untouched); one with an unresolved name only adds, since that name may be a
+  member paired by their own report's observer fallback. One
+  freshness stamp covers the whole map (any client's observation refreshes
+  it) and `presence_poller` ignores the map once it is older than 60 s, so a
+  vetsmod disconnect mid-window doesn't pin the user to yellow forever; the
+  grace-wipe clears the map.
 
 temp-server's `app/services/anni_snapshot_poller.py` polls these on an
 adaptive cadence (10s in the T-2h..T+30m hot window, 300s otherwise),

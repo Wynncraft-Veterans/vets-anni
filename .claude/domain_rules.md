@@ -424,7 +424,9 @@ even if their card carries an assigned role, since a role is routinely set
 before (or left set after) a card is dragged into a party — record reliability
 setbacks (below), delete
 `BoardPlacement`/`Rsvp` for the event, mark `wiped_at`+`is_active=False`,
-broadcast `BOARD_WIPE`. `RoleCapability`/`AnniPlayer` persist. A new/changed
+broadcast `BOARD_WIPE`. `RoleCapability`/`AnniPlayer` persist. The in-memory
+per-event state is cleared too: `presence_by_uuid`, `api_active_uuids`,
+`seen_online_uuids` and `party_leader_by_uuid` (+ its freshness stamp). A new/changed
 future stamp updates the active event (re-announcement), not a duplicate.
 
 Setbacks at the wipe: **LOSS** for exactly the members the win credit would
