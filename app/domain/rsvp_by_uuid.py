@@ -5,7 +5,10 @@ UUID supplied by the authenticated WS session in temporary-server rather than
 a Discord snowflake. Skips the dazebot identity round-trip (the UUID is
 already trusted) and never touches Discord directly; the optional ``bot``
 parameter is threaded through so the public confirmation line still lands in
-``RSVP_CHANNEL_ID`` exactly like the Discord cog produces it.
+``RSVP_CHANNEL_ID`` exactly like the Discord cog produces it. ``bot`` is
+``None`` when ``FISHBOT_TOKEN`` is unset: ``_post_public`` owns that guard
+(as well as the unset-channel and unreachable-channel ones), so the RSVP is
+recorded and only the public line is skipped.
 
 Reuses the same downstream helpers as ``_do_set`` / ``_do_revoke`` so the
 Rsvp row, the auto-placement, the board-snapshot broadcast, and the public
@@ -79,8 +82,9 @@ async def execute_uuid_rsvp(
     Mirrors the cog's ``_do_set`` / ``_do_revoke`` semantics including the
     T-90 cutoff (refused) and the auto-placement / board-snapshot broadcast
     chain. The optional ``bot`` is forwarded to :func:`_post_public` for the
-    same Discord confirmation line; missing-bot or missing-channel is a
-    silent no-op (matches the rest of fishbot's optional-Discord posture).
+    same Discord confirmation line; ``_post_public`` treats a missing bot,
+    an unset channel or an unreachable channel as a silent no-op (matches the
+    rest of fishbot's optional-Discord posture).
 
     ``result`` is ``"recorded"`` for hard/soft, ``"withdrawn"`` for a revoke
     that removed a live RSVP, and ``"nothing_to_withdraw"`` for a revoke with
@@ -133,7 +137,7 @@ async def execute_uuid_rsvp(
             await _do_set_uuid(player, event, att_notice), "recorded"
         )
 
-    if bot is not None and result.outcome.public_message:
+    if result.outcome.public_message:
         await _post_public(bot, result.outcome.public_message)
 
     return result

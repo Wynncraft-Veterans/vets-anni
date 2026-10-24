@@ -825,14 +825,19 @@ class RsvpCog(commands.Cog):
         raise error
 
 
-async def _post_public(bot: commands.Bot, content: str) -> None:
+async def _post_public(bot: commands.Bot | None, content: str) -> None:
     """Send the public confirmation line to ``RSVP_CHANNEL_ID`` (best-effort).
 
-    A missing or unreachable channel is a config issue, not a user-visible
-    failure: the ephemeral confirmation already landed, so we just log and
-    move on. Mirrors the rest of fishbot's "Discord side is optional"
-    posture (see :mod:`app.bot.client` for the FISHBOT_TOKEN gate).
+    A missing bot (``None``: ``FISHBOT_TOKEN`` unset, so the web app runs
+    without Discord), an unset channel id, or a missing or unreachable channel
+    is a config issue, not a user-visible failure: the ephemeral confirmation
+    already landed, so we just log and move on. Mirrors the rest of fishbot's
+    "Discord side is optional" posture (see :mod:`app.bot.client` for the
+    FISHBOT_TOKEN gate).
     """
+    if bot is None:
+        logger.debug("No fishbot (FISHBOT_TOKEN unset) — skipping public confirmation.")
+        return
     channel_id = get_settings().rsvp_channel_id
     if not channel_id:
         logger.debug("RSVP_CHANNEL_ID unset — skipping public confirmation.")

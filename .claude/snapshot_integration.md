@@ -75,9 +75,10 @@ reply is not forwarded; the 200 body's `result` replaces it: `recorded`
 UUIDs get a placeholder `AnniPlayer` row on a hard/soft (`mc_username =
 uuid[:8]`, `is_placeholder=True`) which the next auto-promoter / presence
 cycle hydrates; a revoke for an unknown UUID creates no row and returns
-`nothing_to_withdraw`. 404 on no active event, 409 on T-90 cutoff (revokes
-pass through the cutoff). No schema-version bump — `board.rsvp.notice` is already on
-the snapshot at v2/v3.
+`nothing_to_withdraw`. The public post is skipped (the RSVP still lands)
+when `FISHBOT_TOKEN` is unset (no bot) or `RSVP_CHANNEL_ID` is unset. 404 on
+no active event, 409 on T-90 cutoff (revokes pass through the cutoff). No
+schema-version bump — `board.rsvp.notice` is already on the snapshot at v2/v3.
 
 `board.wont_reason` (S6 refinement) — when `state == "wont_assign"`,
 this field distinguishes the two paths that land a player there:

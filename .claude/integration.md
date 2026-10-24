@@ -101,6 +101,9 @@ exposed only on the verify-network internal endpoints in
   `nothing_to_withdraw` (revoke with no active RSVP: nothing changed, no
   public post). A revoke for a UUID with no `AnniPlayer` row also returns
   `nothing_to_withdraw` and creates no placeholder row (hard/soft still do).
+  The public post is skipped (the RSVP itself still lands) when
+  `FISHBOT_TOKEN` is unset (`bot is None`) or `RSVP_CHANNEL_ID` is unset;
+  `_post_public` owns both guards.
 
   **S6 bucket invariant — revoke + re-RSVP promotes back.** A revoke
   demotes UNASSIGNED → WONTASSIGN via

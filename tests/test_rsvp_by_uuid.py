@@ -1,9 +1,11 @@
 """``app.domain.rsvp_by_uuid`` — UUID-keyed in-game RSVP entrypoint.
 
-Mirrors ``test_rsvp.py``'s pure-domain coverage style. The cog-level
-``_post_public`` is exercised via a ``bot=None`` no-op (the rest of the
-chain is identical to the cog's ``_do_set`` / ``_do_revoke`` which
-``test_rsvp.py`` already covers).
+Mirrors ``test_rsvp.py``'s pure-domain coverage style. Most cases run with
+``bot=None`` and ``RSVP_CHANNEL_ID`` unset, so ``_post_public`` returns before
+touching Discord; ``test_public_post_with_channel_set_and_no_bot_is_a_noop``
+covers the other quadrant (channel set, no bot), which only the callee's own
+``bot is None`` guard protects. The rest of the chain is identical to the
+cog's ``_do_set`` / ``_do_revoke`` which ``test_rsvp.py`` already covers.
 """
 
 from __future__ import annotations
@@ -261,6 +263,22 @@ async def test_creates_placeholder_for_unknown_uuid(seeded):
     assert res.outcome.public_message is not None
     assert player.mc_username == new_uuid[:8]
     assert f"`{new_uuid[:8]}`" in res.outcome.public_message
+
+
+async def test_public_post_with_channel_set_and_no_bot_is_a_noop(seeded, monkeypatch):
+    """FISHBOT_TOKEN unset (bot is None) with RSVP_CHANNEL_ID set: the public
+    post is skipped, the RSVP itself still lands."""
+    from app.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rsvp_channel_id", 999_999)
+    p = seeded["players"]["baz"]
+
+    res = await execute_uuid_rsvp(None, p.mc_uuid, "hard")
+
+    assert res.result == "recorded"
+    assert res.outcome.public_message is not None
+    row = await Rsvp.filter(event=seeded["event"], player=p).first()
+    assert row is not None and row.revoked_at is None
 
 
 # --- HTTP endpoint ---------------------------------------------------------

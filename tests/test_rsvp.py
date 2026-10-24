@@ -483,6 +483,17 @@ async def test_handle_defers_ephemerally_and_replies(seeded, monkeypatch):
     assert len(channel.sent) == 1 and "baz" in channel.sent[0]
 
 
+async def test_post_public_none_bot_returns(monkeypatch):
+    """No fishbot (FISHBOT_TOKEN unset) with the channel configured: the public
+    post is a silent no-op instead of an AttributeError on ``None.get_channel``."""
+    from app.bot.cogs.rsvp import _post_public
+    from app.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rsvp_channel_id", 999_999)
+
+    await _post_public(None, "anything")  # must not raise
+
+
 # --------------------------------------------------------------------------- #
 # \rsvp list / \rsvp check — read-only public subcommands (no dazebot needed) #
 # --------------------------------------------------------------------------- #
