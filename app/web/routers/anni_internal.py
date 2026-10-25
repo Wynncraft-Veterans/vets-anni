@@ -274,7 +274,9 @@ async def anni_party_scrollspot(
         await BoardPlacement.filter(
             event__is_active=True,
             player__mc_uuid=actor_mc_uuid,
-            party__isnull=False,
+            # The id column: Tortoise reads ``party__isnull`` as a Party field
+            # named ``isnull`` and raises FieldError.
+            party_id__isnull=False,
         )
         .select_related("party__host")
         .first()
